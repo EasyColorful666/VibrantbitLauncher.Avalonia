@@ -1,0 +1,125 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.CrashAnalysisWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="崩溃分析"
+    Width="660"
+    Height="560"
+    CanResize="False"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <Border
+            Grid.Row="0"
+            Height="36"
+            Background="Transparent"
+            WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock
+                Margin="14,0,0,0"
+                VerticalAlignment="Center"
+                Classes="caption"
+                Text="崩溃分析" />
+        </Border>
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,24"
+            RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+
+            <TextBlock
+                Grid.Row="0"
+                Classes="title"
+                Text="Minecraft 崩溃分析" />
+
+            <TextBlock
+                Grid.Row="1"
+                Margin="0,8,0,0"
+                Classes="caption"
+                Text="游戏进程异常退出，以下是自动分析的崩溃原因和可疑模组："
+                TextWrapping="Wrap" />
+
+            <!--  崩溃原因  -->
+            <Border
+                Grid.Row="2"
+                Margin="0,12,0,0"
+                Padding="12,10"
+                Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusM}">
+                <DockPanel>
+                    <TextBlock
+                        DockPanel.Dock="Top"
+                        Margin="0,0,0,8"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                        Text="崩溃原因" />
+                    <ListBox
+                        x:Name="CrashReasonsList"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="{StaticResource FontSizeBody}" />
+                </DockPanel>
+            </Border>
+
+            <!--  可疑模组  -->
+            <Border
+                Grid.Row="3"
+                Margin="0,12,0,0"
+                Padding="12,10"
+                Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                BorderBrush="{DynamicResource SystemFillColorCautionBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusM}">
+                <DockPanel>
+                    <TextBlock
+                        DockPanel.Dock="Top"
+                        Margin="0,0,0,8"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                        Text="可疑模组" />
+                    <ListBox
+                        x:Name="SuspiciousModsList"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="{StaticResource FontSizeBody}" />
+                </DockPanel>
+            </Border>
+
+            <!--  原始日志提示  -->
+            <TextBlock
+                Grid.Row="4"
+                Margin="0,12,0,0"
+                Classes="caption"
+                Text="详细日志请查看 .minecraft/crash-reports 目录下的崩溃报告文件。"
+                TextWrapping="Wrap" />
+
+            <!--  按钮  -->
+            <StackPanel
+                Grid.Row="5"
+                Margin="0,16,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal"
+                Spacing="10">
+                <Button
+                    x:Name="OpenCrashFolderButton"
+                    Padding="20,8"
+                    Click="OpenCrashFolderButton_Click"
+                    Content="打开崩溃报告目录" />
+                <Button
+                    x:Name="CloseButton"
+                    Padding="20,8"
+                    Classes="accent"
+                    Click="CloseButton_Click"
+                    Content="关闭" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

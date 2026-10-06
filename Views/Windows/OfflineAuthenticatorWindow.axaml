@@ -1,0 +1,64 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.OfflineAuthenticatorWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="添加离线账户"
+    Width="380"
+    Height="330"
+    CanResize="False"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <Border
+            Grid.Row="0"
+            Height="36"
+            Background="Transparent"
+            WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock
+                Margin="14,0,0,0"
+                VerticalAlignment="Center"
+                Classes="caption"
+                Text="添加离线账户" />
+        </Border>
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,24"
+            RowDefinitions="Auto,Auto,Auto">
+
+            <TextBlock
+                Grid.Row="0"
+                HorizontalAlignment="Center"
+                Classes="title"
+                Text="添加离线账户" />
+
+            <TextBlock
+                Grid.Row="1"
+                Margin="0,24,0,6"
+                Classes="body"
+                Text="用户名" />
+
+            <Grid Grid.Row="2" RowDefinitions="Auto,Auto">
+                <TextBox
+                    x:Name="textBox1"
+                    Grid.Row="0"
+                    PlaceholderText="请输入游戏内用户名"
+                    TextWrapping="Wrap" />
+                <Button
+                    Grid.Row="1"
+                    MinWidth="120"
+                    Margin="0,20,0,0"
+                    Padding="24,10"
+                    HorizontalAlignment="Right"
+                    Classes="accent"
+                    Click="Button_Click"
+                    Content="登录" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

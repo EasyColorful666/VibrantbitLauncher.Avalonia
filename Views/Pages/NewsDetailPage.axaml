@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.NewsDetailPage"
+             d:DesignWidth="1000"
+             d:DesignHeight="600">
+
+    <!--  官方新闻详情：主窗口内的页面，不是独立窗口  -->
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*">
+
+        <!--  返回  -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16" Orientation="Horizontal">
+            <Button Padding="14,5" Click="OnBackClick">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Back" />
+                    <TextBlock Text="返回" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!--  大图：占满内容宽度，带圆角  -->
+        <Border Grid.Row="1" MaxHeight="360"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusL}">
+            <Image MaxHeight="358" Stretch="Uniform" Source="{Binding Image}" />
+        </Border>
+
+        <!--  标题 + 日期  -->
+        <StackPanel Grid.Row="2" Margin="0,20,0,0">
+            <TextBlock Classes="display" Text="{Binding Title}" TextWrapping="Wrap" />
+            <TextBlock Classes="caption" Margin="0,8,0,0" Text="{Binding Date}" />
+        </StackPanel>
+
+        <!--  正文  -->
+        <ScrollViewer Grid.Row="3" Margin="0,18,0,0" Padding="0,0,8,0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <TextBlock Classes="body" MaxWidth="900" HorizontalAlignment="Left"
+                       Text="{Binding Text}" TextWrapping="Wrap" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

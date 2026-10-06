@@ -1,0 +1,24 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:VibrantbitLauncher.Converters"
+             xmlns:sty="using:FluentAvalonia.Styling"
+             x:Class="VibrantbitLauncher.App"
+             RequestedThemeVariant="Default">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/AppTheme.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--  全局转换器：皮肤路径 → Bitmap（绕过 Avalonia 的 URI 图片缓存）  -->
+            <conv:SkinPathToImageConverter x:Key="SkinPathToImage" />
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
+        <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Controls.axaml" />
+        <!--  交互动效统一放最后：同优先级下后出现的样式胜出，动效需要能覆盖基础外观  -->
+        <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Animations.axaml" />
+    </Application.Styles>
+</Application>

@@ -1,0 +1,93 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
+    <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
+    <Version>1.0.5.12</Version>
+    <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
+    <RootNamespace>VibrantbitLauncher</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <!-- 不包含运行时 -->
+
+    <!--
+      不开剪裁（PublishTrimmed=false）：本项目绑定走反射
+      （AvaloniaUseCompiledBindingsByDefault=false），剪裁会摘掉运行期才用到的属性元数据，
+      症状是页面绑不上而不是编译报错，代价远大于省下的几 MB。
+      体积改由「单文件压缩 + 剥离符号 + 去掉未用依赖」来控制。
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!--  ==================== 体积控制  ====================  -->
+
+    <!-- 单文件打包时压缩内容，解压发生在首启，换来的体积收益接近腰斩 -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- 只保留英文卫星资源：其余 12 套 *.resources.dll 不再落地。
+         界面文案本来就硬编码在 XAML 里，不依赖这些本地化资源 -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- 不把依赖包自带的 .pdb / .xml 文档复制进发布目录：
+         libSkiaSharp.pdb(84MB) + libHarfBuzzSharp.pdb(20MB) 是发布目录里最大的两块 -->
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+
+    <!-- 不需要 XML 文档产物 -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Release 不带符号：embedded 会把 PDB 塞回 exe，单文件里白白多出几 MB -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia 核心 -->
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <!-- Avalonia.Fonts.Inter 已移除：界面字体是 Segoe UI Variable / 微软雅黑 /
+         HarmonyOS Sans，内置的 Inter 字体（约 1.9MB）从未被任何 FontFamily 引用 -->
+
+    <!-- FluentAvalonia：WinUI 风格控件库（官方团队维护） -->
+    <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
+
+    <!-- MVVM -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+
+    <!-- Minecraft 启动内核（与原版保持同一版本） -->
+    <PackageReference Include="MinecraftLaunch" Version="4.0.7" />
+    <PackageReference Include="MinecraftLaunch.Base" Version="1.1.19" />
+    <PackageReference Include="MinecraftLaunch.Skin" Version="1.0.1" />
+
+    <!-- 基础设施 -->
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <!-- System.Management 已移除：全项目没有任何 ManagementObject / WMI 调用 -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+</Project>

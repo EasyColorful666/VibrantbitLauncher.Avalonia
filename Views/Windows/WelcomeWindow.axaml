@@ -1,0 +1,24 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.WelcomeWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    Title="Vibrantbit Launcher"
+    Width="960"
+    Height="600"
+    CanResize="False"
+    WindowStartupLocation="CenterScreen"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    mc:Ignorable="d">
+
+    <!--
+        底色画在自己的元素上并用 DynamicResource 引用主题画刷：
+        放到窗口自身会在切主题后被写成固定色刷，暗色下变成浅底白字。
+    -->
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ContentControl x:Name="PageHost" />
+    </Grid>
+</Window>

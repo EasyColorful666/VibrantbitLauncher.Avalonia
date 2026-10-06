@@ -1,0 +1,317 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.MultiplayerPage"
+             x:DataType="vm:MultiplayerPageViewModel"
+             d:DesignWidth="900"
+             d:DesignHeight="640">
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
+
+        <!--  ===== 页头 =====  -->
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="多人联机" />
+            <Border Margin="0,10,0,0" Classes="accentRule" />
+            <TextBlock Margin="0,6,0,0"
+                       Classes="caption"
+                       Text="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连即可加入"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="0,16,0,0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="880" HorizontalAlignment="Stretch">
+
+                <!--  ===== ① 联机服务 =====  -->
+                <Border Padding="18" Classes="card">
+                    <StackPanel>
+                        <TextBlock Classes="sectionTitle" Text="联机服务" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Classes="caption"
+                                   Text="默认使用 EasyTier 社区免费共享节点牵线，无需自建服务器；房主与房客填同一个地址即可。"
+                                   TextWrapping="Wrap" />
+
+                        <!--  缺少核心时的引导  -->
+                        <Border Margin="0,14,0,0" Padding="12,10"
+                                IsVisible="{Binding IsCoreMissing}"
+                                Background="{DynamicResource AppCautionSurfaceBrush}"
+                                CornerRadius="{StaticResource RadiusM}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <ui:FASymbolIcon VerticalAlignment="Center"
+                                                     FontSize="16"
+                                                     Foreground="{DynamicResource AppCautionBrush}"
+                                                     Symbol="Alert" />
+                                    <TextBlock Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Classes="body"
+                                               Text="没有找到 EasyTier 核心程序，需要先下载一次（约 10 MB）。"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="accent"
+                                        Command="{Binding DownloadCoreCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ui:FASymbolIcon Symbol="Download" />
+                                        <TextBlock Text="下载核心" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!--  缺少管理员权限时的提示  -->
+                        <Border Margin="0,14,0,0" Padding="12,10"
+                                IsVisible="{Binding NeedsElevation}"
+                                Background="{DynamicResource AppCautionSurfaceBrush}"
+                                CornerRadius="{StaticResource RadiusM}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <ui:FASymbolIcon VerticalAlignment="Center"
+                                                     FontSize="16"
+                                                     Foreground="{DynamicResource AppCautionBrush}"
+                                                     Symbol="ContactInfo" />
+                                    <TextBlock Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               Classes="body"
+                                               Text="当前未以管理员身份运行。EasyTier 需要管理员权限创建虚拟网卡，否则无法拿到虚拟 IP。"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="accent"
+                                        Command="{Binding RestartElevatedCommand}"
+                                        Content="以管理员身份重启" />
+                            </Grid>
+                        </Border>
+
+                        <Grid Margin="0,14,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
+                            <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                       VerticalAlignment="Center"
+                                       Classes="body"
+                                       Text="中继服务器" />
+                            <TextBox Grid.Column="1" VerticalAlignment="Center"
+                                     IsEnabled="{Binding CanEditKey}"
+                                     PlaceholderText="tcp://easytier.weiai.org.cn:11010"
+                                     Text="{Binding RelayServer, Mode=TwoWay}" />
+                            <Button Grid.Column="2" MinWidth="112" Margin="12,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Classes="accent"
+                                    Command="{Binding StartServiceCommand}"
+                                    IsEnabled="{Binding CanStartService}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ui:FASymbolIcon Symbol="Play" />
+                                    <TextBlock Text="启动服务" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="3" MinWidth="112" Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Command="{Binding StopServiceCommand}"
+                                    IsEnabled="{Binding CanStopService}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ui:FASymbolIcon Symbol="Stop" />
+                                    <TextBlock Text="停止服务" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!--  状态行  -->
+                        <Grid Margin="0,14,0,0" ColumnDefinitions="Auto,*,Auto">
+                            <Ellipse x:Name="statusDot" Grid.Column="0"
+                                     Width="10" Height="10"
+                                     VerticalAlignment="Center"
+                                     Fill="{DynamicResource SystemFillColorCriticalBrush}" />
+
+                            <TextBlock Grid.Column="1" Margin="10,0,12,0"
+                                       VerticalAlignment="Center"
+                                       Classes="body"
+                                       Text="{Binding StatusText}"
+                                       TextTrimming="CharacterEllipsis" />
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                        IsVisible="{Binding HasLocalIp}">
+                                <TextBlock VerticalAlignment="Center"
+                                           Classes="body"
+                                           Text="{Binding LocalVirtualIp, StringFormat='我的虚拟 IP：{0}'}" />
+                                <Button Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding CopyTextCommand}"
+                                        CommandParameter="{Binding LocalVirtualIp}"
+                                        ToolTip.Tip="复制我的虚拟 IP">
+                                    <ui:FASymbolIcon Symbol="Copy" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!--  ===== ② 身份与密钥 =====  -->
+                <Border Margin="0,12,0,0" Padding="18" Classes="card">
+                    <StackPanel>
+                        <TextBlock Classes="sectionTitle" Text="选择身份" />
+
+                        <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                            <RadioButton Content="我要当房主"
+                                         GroupName="MultiplayerMode"
+                                         IsChecked="{Binding IsHostMode, Mode=TwoWay}" />
+                            <RadioButton Margin="24,0,0,0"
+                                         Content="我要当房客"
+                                         GroupName="MultiplayerMode"
+                                         IsChecked="{Binding IsGuestMode, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <!--  房主  -->
+                        <StackPanel IsVisible="{Binding IsHostMode}">
+                            <TextBlock Margin="0,16,0,0"
+                                       Classes="caption"
+                                       Text="密钥就是虚拟网络的名字。把「密钥 + 你的虚拟 IP」一起发给好友，他们填进来就能进同一个网络。"
+                                       TextWrapping="Wrap" />
+
+                            <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
+                                <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Classes="body"
+                                           Text="密钥" />
+                                <TextBox Grid.Column="1" VerticalAlignment="Center"
+                                         IsEnabled="{Binding CanEditKey}"
+                                         PlaceholderText="自动生成，也可以自己改"
+                                         Text="{Binding HostKey, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding RegenerateKeyCommand}"
+                                        IsEnabled="{Binding CanRegenerateKey}"
+                                        Content="重新生成" />
+                                <Button Grid.Column="3" Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="accent"
+                                        Command="{Binding CopyTextCommand}"
+                                        CommandParameter="{Binding HostKey}"
+                                        Content="复制密钥" />
+                            </Grid>
+
+                            <TextBlock Margin="0,14,0,0"
+                                       Classes="secondary"
+                                       Text="启动服务后，进游戏按 Esc → 对局域网开放，好友就能通过虚拟 IP 连进你的世界。"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!--  房客  -->
+                        <StackPanel IsVisible="{Binding !IsHostMode}">
+                            <TextBlock Margin="0,16,0,0"
+                                       Classes="caption"
+                                       Text="把房主给你的密钥填进来，启动服务后你们就处在同一个虚拟局域网里。"
+                                       TextWrapping="Wrap" />
+
+                            <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Classes="body"
+                                           Text="密钥" />
+                                <TextBox Grid.Column="1" VerticalAlignment="Center"
+                                         IsEnabled="{Binding CanEditKey}"
+                                         PlaceholderText="粘贴房主给你的密钥"
+                                         Text="{Binding GuestKey, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding PasteGuestKeyCommand}"
+                                        IsEnabled="{Binding CanEditKey}"
+                                        Content="粘贴" />
+                            </Grid>
+
+                            <!--  房主已出现时，直接把连接地址摆出来  -->
+                            <Border Margin="0,14,0,0" Padding="12,10"
+                                    IsVisible="{Binding HasRemotePeer}"
+                                    Background="{DynamicResource AppSuccessSurfaceBrush}"
+                                    CornerRadius="{StaticResource RadiusM}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body"
+                                                   Text="{Binding RemotePeerIp, StringFormat='房主的虚拟 IP：{0}'}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Classes="caption"
+                                                   Text="在游戏里进入「多人游戏 → 直接连接」，把这个地址粘进去即可。"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Margin="12,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Classes="accent"
+                                            Command="{Binding CopyTextCommand}"
+                                            CommandParameter="{Binding RemotePeerIp}"
+                                            Content="复制地址" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Margin="0,14,0,0"
+                                       Classes="secondary"
+                                       Text="如果列表里还没看到房主，多等十几秒；组网完成后「网络成员」里就会出现对方的虚拟 IP。"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!--  ===== ③ 网络成员 =====  -->
+                <Border Margin="0,12,0,0" Padding="18" Classes="card">
+                    <StackPanel>
+                        <TextBlock Classes="sectionTitle" Text="网络成员" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Classes="caption"
+                                   Text="同一个密钥下的所有设备。每三秒自动刷新一次。"
+                                   TextWrapping="Wrap" />
+
+                        <TextBlock Margin="0,12,0,0"
+                                   Classes="secondary"
+                                   IsVisible="{Binding HasNoPeers}"
+                                   Text="还没读到的成员信息。启动服务并完成组网后，这里会列出本机和好友的虚拟 IP。"
+                                   TextWrapping="Wrap" />
+
+                        <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Peers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6" Padding="12,8"
+                                            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                            CornerRadius="{StaticResource RadiusM}">
+                                        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+                                            <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Classes="body"
+                                                       Text="{Binding NameText}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" MinWidth="120" Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Classes="body"
+                                                       Text="{Binding IpText}" />
+                                            <TextBlock Grid.Column="2" MinWidth="80" Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Classes="caption"
+                                                       Text="{Binding LinkText}" />
+                                            <TextBlock Grid.Column="3" MinWidth="64" Margin="0,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       Classes="caption"
+                                                       Text="{Binding LatencyText}" />
+                                            <Button Grid.Column="4"
+                                                    VerticalAlignment="Center"
+                                                    Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                                    CommandParameter="{Binding Ipv4}"
+                                                    Content="复制 IP" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Margin="0,14,0,8"
+                           Classes="caption"
+                           Text="提示：房主和房客都点「启动服务」后，双方各拿到一个 10 开头的虚拟 IP；房主在游戏里开放局域网，房客用房主的虚拟 IP 直连即可。若连不上，先确认防火墙没有拦截 EasyTier。"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

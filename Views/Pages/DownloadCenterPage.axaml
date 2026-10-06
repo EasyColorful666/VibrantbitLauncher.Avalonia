@@ -1,0 +1,138 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:VibrantbitLauncher.Models"
+             xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.DownloadCenterPage"
+             d:DesignWidth="800"
+             d:DesignHeight="450">
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
+
+        <!--  页面标题区：标题 + 右侧操作  -->
+        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0">
+                <TextBlock Classes="display" Text="下载任务" />
+                <Border Classes="accentRule" Margin="0,10,0,0" />
+                <TextBlock Classes="caption" Margin="0,6,0,0"
+                           Text="查看安装与下载进度，或前往下载中心添加新任务" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                <Button Command="{Binding GoToVersionDownloadCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="Globe" />
+                        <TextBlock Text="下载游戏版本" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding GoToModDownloadCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="AllApps" />
+                        <TextBlock Text="下载模组资源" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding ClearCompletedCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="Delete" />
+                        <TextBlock Text="清空已完成" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <!--  空状态提示  -->
+            <TextBlock x:Name="emptyText"
+                       Classes="secondary"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="False"
+                       Text="暂无下载任务" />
+
+            <ListBox Background="Transparent"
+                     BorderThickness="0"
+                     ItemsSource="{Binding Tasks}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Margin" Value="0,0,0,8" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Template">
+                            <ControlTemplate>
+                                <!--  Avalonia 的 ContentPresenter 在自定义模板里**不会**自动取
+                                      TemplatedParent.Content，必须显式 TemplateBinding，
+                                      否则项容器是空的（列表整片空白）。  -->
+                                <ContentPresenter
+                                    Name="PART_ContentPresenter"
+                                    Padding="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}" />
+                            </ControlTemplate>
+                        </Setter>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:DownloadTaskItem">
+                        <Border Classes="card" Padding="16,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Padding="6,2"
+                                                Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                                CornerRadius="{StaticResource RadiusS}">
+                                            <TextBlock Classes="caption"
+                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                       Text="{Binding TypeDisplay}" />
+                                        </Border>
+                                        <TextBlock Classes="subtitle" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding Name}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <ProgressBar Margin="0,10,16,4" Height="6"
+                                                 Minimum="0" Maximum="100"
+                                                 Value="{Binding Progress}" />
+
+                                    <Grid Margin="0,2,16,0">
+                                        <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                                            <TextBlock Classes="caption"
+                                                       Text="{Binding Progress, StringFormat={}{0}%}" />
+                                            <TextBlock Classes="caption" Margin="12,0,0,0" Text="{Binding Speed}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!--  状态按钮：进行中显示「查看详情」，已结束显示「移除」  -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Top"
+                                            Orientation="Horizontal" Spacing="8">
+                                    <Button Width="32" Height="32"
+                                            IsVisible="{Binding IsActive}"
+                                            Command="{Binding $parent[UserControl].DataContext.ViewDetailCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="查看详情">
+                                        <ui:FASymbolIcon Symbol="Forward" />
+                                    </Button>
+                                    <Button Width="32" Height="32"
+                                            IsVisible="{Binding !IsActive}"
+                                            Command="{Binding $parent[UserControl].DataContext.RemoveCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="移除">
+                                        <ui:FASymbolIcon Symbol="Cancel" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</UserControl>

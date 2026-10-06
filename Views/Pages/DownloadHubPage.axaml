@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.DownloadHubPage"
+             d:DesignWidth="800"
+             d:DesignHeight="450">
+
+    <!--  版式：左侧分类单选栏 + 右侧内容区  -->
+    <Grid Margin="{StaticResource PagePadding}" ColumnDefinitions="216,*">
+
+        <ListBox x:Name="CategoryList"
+                 Grid.Column="0"
+                 Margin="0,0,24,0"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 SelectionChanged="CategoryList_SelectionChanged">
+
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Margin" Value="0,1" />
+                    <Setter Property="Padding" Value="12,9" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                </Style>
+                <!--  分组标题：不可选中的装饰项  -->
+                <Style Selector="ListBoxItem.groupHeader">
+                    <Setter Property="IsEnabled" Value="False" />
+                    <Setter Property="Padding" Value="12,22,12,6" />
+                </Style>
+            </ListBox.Styles>
+
+            <!--
+                原版游戏：把原来的「Minecraft」分组标题与「原版游戏」条合并成一条
+                （分组标题本是不可选中的装饰项，合并后点一次就能进原版下载页）。
+            -->
+            <ListBoxItem IsSelected="True" Tag="0">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Globe" />
+                    <TextBlock Text="Minecraft" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+
+            <ListBoxItem Classes="groupHeader">
+                <TextBlock Classes="caption" Text="社区资源" />
+            </ListBoxItem>
+
+            <ListBoxItem Tag="1">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="AllApps" />
+                    <TextBlock Text="模组" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+
+            <ListBoxItem Tag="2">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Library" />
+                    <TextBlock Text="整合包" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+
+            <ListBoxItem Tag="3">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Code" />
+                    <TextBlock Text="数据包" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+
+            <ListBoxItem Tag="4">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Page" />
+                    <TextBlock Text="资源包" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+
+            <ListBoxItem Tag="5">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Preview" />
+                    <TextBlock Text="光影" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
+        </ListBox>
+
+        <!--
+            每个分类各自持有一个页面实例，切换时只改 IsVisible。
+            反复给同一个容器换内容会卸载/重建整棵视觉树（切换卡顿的根源）。
+        -->
+        <Grid x:Name="HostGrid" Grid.Column="1" />
+    </Grid>
+</UserControl>

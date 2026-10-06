@@ -1,0 +1,60 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.InstallEasyTierWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="安装联机模块"
+    Width="420"
+    Height="268"
+    CanResize="False"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <Border Grid.Row="0"
+                Height="36"
+                Background="Transparent"
+                WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock Margin="14,0,0,0"
+                       VerticalAlignment="Center"
+                       Classes="caption"
+                       Text="安装联机模块" />
+        </Border>
+
+        <Grid Grid.Row="1" Margin="24,8,24,24" RowDefinitions="Auto,Auto,Auto,Auto">
+
+            <TextBlock Grid.Row="0"
+                       HorizontalAlignment="Center"
+                       Classes="title"
+                       Text="安装联机模块" />
+
+            <TextBlock x:Name="statusText"
+                       Grid.Row="1"
+                       Margin="0,12,0,0"
+                       HorizontalAlignment="Center"
+                       Classes="caption"
+                       Text="将从 GitHub 下载 EasyTier 核心（约 10 MB），解压到程序的 VBL 目录。"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+
+            <ProgressBar x:Name="progressBar"
+                         Grid.Row="2"
+                         Height="8"
+                         Margin="0,20,0,0"
+                         Minimum="0" Maximum="100" />
+
+            <Button x:Name="button1"
+                    Grid.Row="3"
+                    MinWidth="160"
+                    Margin="0,24,0,0"
+                    Padding="24,10"
+                    HorizontalAlignment="Center"
+                    Classes="accent"
+                    Click="Button_Click"
+                    Content="安装" />
+        </Grid>
+    </Grid>
+</Window>

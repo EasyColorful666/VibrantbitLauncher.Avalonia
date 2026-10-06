@@ -1,0 +1,270 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.VersionManagePage"
+             x:DataType="vm:VersionManageViewModel"
+             d:DesignWidth="900"
+             d:DesignHeight="600">
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*">
+
+        <!--  顶部：返回 / 版本标题 / 刷新  -->
+        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" VerticalAlignment="Center"
+                    Command="{Binding GoBackCommand}"
+                    ToolTip.Tip="返回运行页面">
+                <ui:FASymbolIcon Symbol="Back" />
+            </Button>
+            <TextBlock Grid.Column="1" Margin="12,0"
+                       VerticalAlignment="Center"
+                       Classes="title"
+                       Text="{Binding CurrentVersion}"
+                       TextTrimming="CharacterEllipsis" />
+            <Button Grid.Column="2" VerticalAlignment="Center"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="刷新">
+                <ui:FASymbolIcon Symbol="Refresh" />
+            </Button>
+        </Grid>
+
+        <!--  标签切换 + 当前管理目录  -->
+        <Grid Grid.Row="1" Margin="0,0,0,12" ColumnDefinitions="Auto,Auto,*,Auto">
+            <Button x:Name="ModsTab" Grid.Column="0" Margin="0,0,8,0" Padding="16,6"
+                    Click="ModsTab_Click">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="AllApps" />
+                    <TextBlock Text="模组管理" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="SavesTab" Grid.Column="1" Padding="16,6"
+                    Click="SavesTab_Click">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Library" />
+                    <TextBlock Text="存档管理" />
+                </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="2" Margin="12,0"
+                       VerticalAlignment="Center"
+                       Classes="caption"
+                       Text="{Binding GameDir}"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding GameDir}" />
+            <Button Grid.Column="3" Padding="16,6"
+                    Click="OpenFolder_Click">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="OpenFile" />
+                    <TextBlock Text="打开游戏目录" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!--  ===== 模组工具栏 =====  -->
+        <Grid x:Name="ModsToolbar" Grid.Row="2" Margin="0,0,0,12"
+              ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+            <Button Grid.Column="0" Margin="0,0,8,0" Classes="accent"
+                    Command="{Binding ImportModsCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Add" />
+                    <TextBlock Text="导入模组" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Margin="0,0,8,0"
+                    Command="{Binding EnableAllModsCommand}"
+                    Content="全部启用" />
+            <Button Grid.Column="2" Margin="0,0,8,0"
+                    Command="{Binding DisableAllModsCommand}"
+                    Content="全部禁用" />
+            <Button Grid.Column="3" Margin="0,0,8,0"
+                    Command="{Binding OpenModsFolderCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="OpenFile" />
+                    <TextBlock Text="打开模组目录" />
+                </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="4" Margin="0,0,12,0"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       Classes="caption"
+                       Text="{Binding ModCountText}" />
+            <TextBox Grid.Column="5" Width="200" VerticalAlignment="Center"
+                     PlaceholderText="搜索模组…"
+                     Text="{Binding ModSearchText, Mode=TwoWay}" />
+        </Grid>
+
+        <!--  ===== 存档工具栏 =====  -->
+        <Grid x:Name="SavesToolbar" Grid.Row="2" Margin="0,0,0,12"
+              IsVisible="False"
+              ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+            <Button Grid.Column="0" Margin="0,0,8,0" Classes="accent"
+                    Command="{Binding ImportSaveFolderCommand}"
+                    ToolTip.Tip="从其他游戏目录导入存档文件夹（也可选择含多个存档的父目录）">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Add" />
+                    <TextBlock Text="导入存档" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Margin="0,0,8,0"
+                    Command="{Binding ImportSaveZipCommand}"
+                    ToolTip.Tip="从 .zip 压缩包导入存档（地图下载常见格式）">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="OpenFile" />
+                    <TextBlock Text="导入压缩包" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Margin="0,0,8,0"
+                    Command="{Binding OpenSavesFolderCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="OpenFile" />
+                    <TextBlock Text="打开存档目录" />
+                </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="4"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       Classes="caption"
+                       Text="{Binding SaveCountText}" />
+        </Grid>
+
+        <!--  内容区域  -->
+        <Grid Grid.Row="3">
+
+            <!--  模组列表  -->
+            <ListBox x:Name="ModsList"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ItemsSource="{Binding Mods}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ModItem">
+                        <Border Margin="0,0,0,6" Padding="14,10" Classes="card">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                                <CheckBox Grid.Column="0" Margin="8,0,12,0"
+                                          VerticalAlignment="Center"
+                                          IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                          ToolTip.Tip="勾选启用 / 取消勾选禁用" />
+                                <TextBlock Grid.Column="1" Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Classes="body"
+                                           Text="{Binding FileName}"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap" />
+                                <TextBlock Grid.Column="2" Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Classes="caption"
+                                           Text="{Binding FileSize}" />
+                                <Button Grid.Column="3" Margin="0,0,8,0" VerticalAlignment="Center"
+                                        Command="{Binding $parent[UserControl].DataContext.OpenModFolderCommand}"
+                                        CommandParameter="{Binding FolderPath}"
+                                        Content="打开" />
+                                <Button Grid.Column="4" VerticalAlignment="Center"
+                                        Classes="danger"
+                                        Command="{Binding $parent[UserControl].DataContext.DeleteModCommand}"
+                                        CommandParameter="{Binding}"
+                                        Content="删除" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!--  存档列表  -->
+            <ListBox x:Name="SavesList"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     IsVisible="False"
+                     ItemsSource="{Binding Saves}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SaveItem">
+                        <Border Margin="0,0,0,6" Padding="14,10" Classes="card">
+                            <Grid>
+
+                                <!--  常规态  -->
+                                <Grid IsVisible="{Binding !IsRenaming}"
+                                      ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Classes="body"
+                                               Text="{Binding FolderName}"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap" />
+                                    <TextBlock Grid.Column="1" Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Classes="caption"
+                                               Text="{Binding Size}" />
+                                    <TextBlock Grid.Column="2" Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Classes="caption"
+                                               Text="{Binding LastPlayed}" />
+                                    <Button Grid.Column="3" Margin="0,0,8,0" VerticalAlignment="Center"
+                                            Command="{Binding $parent[UserControl].DataContext.OpenSaveFolderCommand}"
+                                            CommandParameter="{Binding FolderPath}"
+                                            Content="打开" />
+                                    <Button Grid.Column="4" Margin="0,0,8,0" VerticalAlignment="Center"
+                                            Command="{Binding $parent[UserControl].DataContext.ExportSaveCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="备份"
+                                            ToolTip.Tip="导出为 .zip 压缩包" />
+                                    <Button Grid.Column="5" Margin="0,0,8,0" VerticalAlignment="Center"
+                                            Command="{Binding $parent[UserControl].DataContext.BeginRenameSaveCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="重命名" />
+                                    <Button Grid.Column="6" VerticalAlignment="Center"
+                                            Classes="danger"
+                                            Command="{Binding $parent[UserControl].DataContext.DeleteSaveCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="删除" />
+                                </Grid>
+
+                                <!--  重命名态  -->
+                                <Grid IsVisible="{Binding IsRenaming}"
+                                      ColumnDefinitions="*,Auto,Auto">
+                                    <TextBox Grid.Column="0" Margin="0,0,12,0"
+                                             VerticalAlignment="Center"
+                                             Text="{Binding EditName, Mode=TwoWay}" />
+                                    <Button Grid.Column="1" Margin="0,0,8,0" VerticalAlignment="Center"
+                                            Classes="accent"
+                                            Command="{Binding $parent[UserControl].DataContext.ConfirmRenameSaveCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="确定" />
+                                    <Button Grid.Column="2" VerticalAlignment="Center"
+                                            Command="{Binding $parent[UserControl].DataContext.CancelRenameSaveCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="取消" />
+                                </Grid>
+
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!--  空状态提示  -->
+            <TextBlock x:Name="EmptyHint"
+                       Margin="0,40,0,0"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Classes="secondary"
+                       IsVisible="False"
+                       Text="没有找到模组" />
+        </Grid>
+    </Grid>
+</UserControl>

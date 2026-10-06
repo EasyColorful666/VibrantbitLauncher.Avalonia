@@ -1,0 +1,193 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.InstallPage"
+             d:DesignWidth="800"
+             d:DesignHeight="450">
+
+    <UserControl.Styles>
+        <!--  空列表占位文案  -->
+        <Style Selector="TextBlock.emptyHint">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <!--  加载器卡片  -->
+        <Style Selector="Border.loaderCard">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
+        </Style>
+        <!--  被选中的加载器卡片：边框点亮  -->
+        <Style Selector="Border.loaderCard.selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*,Auto">
+
+        <!--  标题与操作按钮  -->
+        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Classes="display" Margin="0,0,12,0"
+                       VerticalAlignment="Center"
+                       Text="{Binding McVersion, StringFormat='安装版本 - {0}'}"
+                       TextWrapping="Wrap" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="10">
+                <Button Padding="24,10" Classes="accent"
+                        Command="{Binding InstallCommand}"
+                        IsEnabled="{Binding CanInstall}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="Download" />
+                        <TextBlock Text="安装" />
+                    </StackPanel>
+                </Button>
+                <Button Padding="24,10" Command="{Binding RefreshCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="Refresh" />
+                        <TextBlock Text="刷新" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!--  四个加载器：2x2，四张卡片自动等高等宽  -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*" RowDefinitions="*,*">
+
+            <!--  Forge  -->
+            <Border x:Name="forgeCard" Classes="loaderCard" Grid.Row="0" Grid.Column="0"
+                    Margin="0,0,8,8" Padding="16,12">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <CheckBox x:Name="checkBox1" VerticalAlignment="Center"
+                                  />
+                        <TextBlock Classes="subtitle" Margin="8,0,0,0" VerticalAlignment="Center" Text="Forge" />
+                        <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Text="{Binding ForgeVersions.Count, StringFormat='{}{0} 个版本'}" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <ListBox x:Name="forgeList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 ItemsSource="{Binding ForgeVersions}"
+                                 SelectedItem="{Binding SelectForgeVersion, Mode=TwoWay}">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,1" />
+                                    <Setter Property="Padding" Value="10,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.Styles>
+                        </ListBox>
+                        <TextBlock x:Name="forgeEmpty" Classes="caption emptyHint"
+                                   Text="该版本暂无可用版本" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!--  Fabric  -->
+            <Border x:Name="fabricCard" Classes="loaderCard" Grid.Row="0" Grid.Column="1"
+                    Margin="8,0,0,8" Padding="16,12">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <CheckBox x:Name="checkBox2" VerticalAlignment="Center"
+                                  />
+                        <TextBlock Classes="subtitle" Margin="8,0,0,0" VerticalAlignment="Center" Text="Fabric" />
+                        <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Text="{Binding FabricVersions.Count, StringFormat='{}{0} 个版本'}" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <ListBox Background="Transparent" BorderThickness="0"
+                                 ItemsSource="{Binding FabricVersions}"
+                                 SelectedItem="{Binding SelectFabricVersion, Mode=TwoWay}">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,1" />
+                                    <Setter Property="Padding" Value="10,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.Styles>
+                        </ListBox>
+                        <TextBlock x:Name="fabricEmpty" Classes="caption emptyHint"
+                                   Text="该版本暂无可用版本" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!--  NeoForge  -->
+            <Border x:Name="neoforgeCard" Classes="loaderCard" Grid.Row="1" Grid.Column="0"
+                    Margin="0,8,8,0" Padding="16,12">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <CheckBox x:Name="checkBox3" VerticalAlignment="Center"
+                                  />
+                        <TextBlock Classes="subtitle" Margin="8,0,0,0" VerticalAlignment="Center" Text="NeoForge" />
+                        <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Text="{Binding NeoforgeVersions.Count, StringFormat='{}{0} 个版本'}" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <ListBox Background="Transparent" BorderThickness="0"
+                                 ItemsSource="{Binding NeoforgeVersions}"
+                                 SelectedItem="{Binding SelectNeoforgeVersion, Mode=TwoWay}">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,1" />
+                                    <Setter Property="Padding" Value="10,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.Styles>
+                        </ListBox>
+                        <TextBlock x:Name="neoforgeEmpty" Classes="caption emptyHint"
+                                   Text="该版本暂无可用版本" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!--  Quilt  -->
+            <Border x:Name="quiltCard" Classes="loaderCard" Grid.Row="1" Grid.Column="1"
+                    Margin="8,8,0,0" Padding="16,12">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <CheckBox x:Name="checkBox4" VerticalAlignment="Center"
+                                  />
+                        <TextBlock Classes="subtitle" Margin="8,0,0,0" VerticalAlignment="Center" Text="Quilt" />
+                        <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Text="{Binding QuiltVersions.Count, StringFormat='{}{0} 个版本'}" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                        <ListBox Background="Transparent" BorderThickness="0"
+                                 ItemsSource="{Binding QuiltVersions}"
+                                 SelectedItem="{Binding SelectQuiltVersion, Mode=TwoWay}">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,1" />
+                                    <Setter Property="Padding" Value="10,6" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.Styles>
+                        </ListBox>
+                        <TextBlock x:Name="quiltEmpty" Classes="caption emptyHint"
+                                   Text="该版本暂无可用版本" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!--  安装进度  -->
+        <Grid Grid.Row="2" Margin="0,16,0,0" ColumnDefinitions="*,Auto">
+            <ProgressBar Grid.Column="0" Height="8" VerticalAlignment="Center"
+                         Minimum="0" Maximum="100"
+                         Value="{Binding InstallProgress}" />
+            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                <TextBlock Classes="subtitle" Text="{Binding InstallStep}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Margin="0,2,0,0" Text="{Binding Speed}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

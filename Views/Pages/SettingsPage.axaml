@@ -1,0 +1,532 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:helpers="using:VibrantbitLauncher.Helpers"
+             xmlns:models="using:VibrantbitLauncher.Models"
+             xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.SettingsPage"
+             d:DesignWidth="1100"
+             d:DesignHeight="700">
+
+    <UserControl.Resources>
+        <helpers:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
+    </UserControl.Resources>
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
+
+        <!--  ==================== 页面标题  ====================  -->
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="设置" />
+            <Border Classes="accentRule" Margin="0,10,0,0" />
+            <TextBlock Classes="caption"
+                       Margin="0,6,0,0"
+                       Text="外观、游戏路径与 Java 运行环境" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnDefinitions="216,*">
+
+            <!--  ==================== 左栏：分类  ====================  -->
+            <ListBox x:Name="CategoryList"
+                     Grid.Column="0"
+                     Margin="0,0,24,0"
+                     VerticalAlignment="Top"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionChanged="CategoryList_SelectionChanged">
+
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Margin" Value="0,1" />
+                        <Setter Property="Padding" Value="12,9" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                    </Style>
+                </ListBox.Styles>
+
+                <ListBoxItem IsSelected="True" Tag="0">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Home" />
+                        <TextBlock Text="主页" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+                <ListBoxItem Tag="1">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Edit" />
+                        <TextBlock Text="个性化" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+                <ListBoxItem Tag="2">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Setting" />
+                        <TextBlock Text="其他" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+            </ListBox>
+
+            <!--
+                右栏：三个面板叠放，切换时只改 IsVisible。
+                不给 Content 反复赋值 —— 那会卸载并重建整棵视觉树。
+            -->
+            <Grid x:Name="PanelHost" Grid.Column="1">
+
+                <!--  ===== 主页：当前配置概览 + 快捷操作 =====  -->
+                <ScrollViewer x:Name="HomePanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="body" Margin="0,0,16,10" MinWidth="88" Text="游戏目录" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding MinecraftFolder}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="Java 版本" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding SelectedJava.JavaVersion}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="Java 路径" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding SelectedJava.JavaPath}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="当前主题" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding CurrentThemeText}" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="body" Margin="0,0,16,0" Text="日志" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Classes="caption"
+                                           Text="{Binding LogSummary}" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+
+                        <Border Classes="card" Margin="0,0,16,0" Padding="20,16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="sectionTitle" Text="快捷操作" />
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Margin="0,0,8,8" Padding="16,8"
+                                            Command="{Binding OpenGameFolderCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="OpenFile" />
+                                            <TextBlock Text="打开游戏目录" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Margin="0,0,8,8" Padding="16,8"
+                                            Command="{Binding OpenLogFolderCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="OpenFile" />
+                                            <TextBlock Text="打开日志目录" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Margin="0,0,8,8" Padding="16,8"
+                                            Command="{Binding RefreshJavaCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Refresh" />
+                                            <TextBlock Text="重新检测 Java" />
+                                        </StackPanel>
+                                    </Button>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ===== 个性化  =====  -->
+                <ScrollViewer x:Name="PersonalizationPanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
+
+                        <!--  明暗主题 / 主题色 / 渐变色  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="个性化" />
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="明暗主题" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,20" Spacing="16">
+                                    <RadioButton GroupName="themeSelect"
+                                                 Content="亮色"
+                                                 Command="{Binding ChangeThemeCommand}"
+                                                 CommandParameter="theme_light"
+                                                 IsChecked="{Binding CurrentTheme,
+                                                                     Converter={StaticResource EnumToBooleanConverter},
+                                                                     ConverterParameter=Light,
+                                                                     Mode=OneWay}" />
+                                    <RadioButton GroupName="themeSelect"
+                                                 Content="暗色"
+                                                 Command="{Binding ChangeThemeCommand}"
+                                                 CommandParameter="theme_dark"
+                                                 IsChecked="{Binding CurrentTheme,
+                                                                     Converter={StaticResource EnumToBooleanConverter},
+                                                                     ConverterParameter=Dark,
+                                                                     Mode=OneWay}" />
+                                </StackPanel>
+
+                                <TextBlock Classes="body" Margin="0,0,0,8" Text="主题色" />
+                                <ItemsControl Margin="0,0,0,20" ItemsSource="{Binding AccentPresets}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:AccentPreset">
+                                            <Button Margin="0,0,10,10" Padding="0"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Cursor="Hand"
+                                                    ToolTip.Tip="{Binding Name}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.SelectAccentCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Width="40" Height="40"
+                                                                Background="Transparent"
+                                                                BorderBrush="{Binding AccentRingBrush}"
+                                                                BorderThickness="2"
+                                                                CornerRadius="20">
+                                                            <Border Width="28" Height="28"
+                                                                    Background="{Binding SwatchBrush}"
+                                                                    CornerRadius="14" />
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="主题渐变色" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="开启后，标题强调条等位置使用主色到终点色的渐变" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding UseAccentGradient, Mode=TwoWay}" />
+                                </Grid>
+
+                                <StackPanel Margin="0,0,0,16" IsVisible="{Binding UseAccentGradient}">
+                                    <TextBlock Classes="body" Margin="0,0,0,8" Text="渐变终点色" />
+                                    <ItemsControl ItemsSource="{Binding AccentPresets}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:AccentPreset">
+                                                <Button Margin="0,0,10,10" Padding="0"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand"
+                                                        ToolTip.Tip="{Binding Name}"
+                                                        Command="{Binding $parent[ItemsControl].DataContext.SelectGradientEndCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Width="40" Height="40"
+                                                                    Background="Transparent"
+                                                                    BorderBrush="{Binding GradientRingBrush}"
+                                                                    BorderThickness="2"
+                                                                    CornerRadius="20">
+                                                                <Border Width="28" Height="28"
+                                                                        Background="{Binding GradientEndBrush}"
+                                                                        CornerRadius="14" />
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <TextBlock Classes="caption" Margin="0,0,0,8" Text="预览" />
+                                <Border Height="44" Margin="0,0,0,20"
+                                        Background="{DynamicResource AppAccentGradientBrush}"
+                                        CornerRadius="{StaticResource RadiusM}" />
+
+                                <Button HorizontalAlignment="Left"
+                                        Command="{Binding ResetAppearanceCommand}"
+                                        Content="恢复默认外观" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  背景图  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="背景图" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="{Binding BackgroundImageDisplay}" />
+
+                                <TextBlock Classes="body" Margin="0,0,0,8" Text="内置壁纸" />
+                                <ItemsControl Margin="0,0,0,8" ItemsSource="{Binding Wallpapers}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:WallpaperOption">
+                                            <Button Margin="0,0,10,10" Padding="0"
+                                                    ToolTip.Tip="{Binding Name}"
+                                                    Command="{Binding $parent[ItemsControl].DataContext.PickWallpaperCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel Width="104">
+                                                    <Border CornerRadius="{StaticResource RadiusS}" ClipToBounds="True">
+                                                        <Image Height="58" Stretch="UniformToFill" Source="{Binding Preview}" />
+                                                    </Border>
+                                                    <TextBlock Classes="caption" Margin="0,6"
+                                                               HorizontalAlignment="Center"
+                                                               Text="{Binding Name}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16" Spacing="8">
+                                    <Button Click="OnChooseBackgroundImage" Content="选择本地图片" />
+                                    <Button Command="{Binding ClearBackgroundCommand}" Content="移除背景" />
+                                </StackPanel>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="不透明度" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0" Width="360"
+                                            HorizontalAlignment="Left"
+                                            Minimum="0.05" Maximum="1"
+                                            TickFrequency="0.05"
+                                            IsEnabled="{Binding HasBackgroundImage}"
+                                            Value="{Binding BackgroundImageOpacity, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Classes="caption"
+                                               Margin="12,0,0,0" VerticalAlignment="Center"
+                                               Text="{Binding BackgroundImageOpacity, StringFormat={}{0:P0}}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ===== 其他  =====  -->
+                <ScrollViewer x:Name="OtherPanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
+
+                        <!--  游戏设置  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="游戏设置" />
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 文件夹" />
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <!--  输入框拉满整行（去掉 MaxWidth 限制），文本左对齐  -->
+                                    <TextBox Grid.Column="0"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Left"
+                                             IsReadOnly="True"
+                                             Text="{Binding MinecraftFolder, Mode=OneWay}"
+                                             ToolTip.Tip="{Binding MinecraftFolder}" />
+                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
+                                            Click="OnSelectMinecraftFolder" Content="选择" />
+                                </Grid>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Java 版本" />
+                                <Grid Margin="0,0,0,24" ColumnDefinitions="*,Auto">
+                                    <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding JavaEntries}"
+                                              SelectedItem="{Binding SelectedJava, Mode=TwoWay}"
+                                              ToolTip.Tip="{Binding SelectedJava.JavaPath}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding JavaVersion}" VerticalAlignment="Center" />
+                                                    <TextBlock Classes="secondary" Margin="6,0" Text="-" VerticalAlignment="Center" />
+                                                    <TextBlock Classes="caption" Text="{Binding JavaPath}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
+                                            Command="{Binding RefreshJavaCommand}" Content="刷新" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  日志  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="日志" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="启动失败、下载出错时，把等级调到「调试」再复现一次，然后导出日志即可提供给开发者定位。" />
+
+                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="记录等级" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="等级越低越详细；日常使用保持「信息」即可" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="180" VerticalAlignment="Center"
+                                              ItemsSource="{Binding LogLevels}"
+                                              SelectedItem="{Binding SelectedLogLevel, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:LogLevelOption">
+                                                <TextBlock Text="{Binding Display}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="保留天数" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="超期的日志文件会自动清理" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="180" VerticalAlignment="Center"
+                                              ItemsSource="{Binding LogRetentionOptions}"
+                                              SelectedItem="{Binding SelectedLogRetention, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding StringFormat={}{0} 天}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="输出到调试器" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="同时在 Visual Studio 输出窗口显示（仅调试版有效）" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding LogToDebugOutput, Mode=TwoWay}" />
+                                </Grid>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="日志目录" />
+                                <TextBox IsReadOnly="True"
+                                         Text="{Binding LogDirectory, Mode=OneWay}"
+                                         ToolTip.Tip="{Binding LogDirectory}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,4" Spacing="8">
+                                    <Button Command="{Binding OpenLogFolderCommand}" Content="打开日志目录" />
+                                    <Button Click="OnExportLog" Content="导出日志" />
+                                    <Button Command="{Binding ClearLogsCommand}" Content="清空日志" />
+                                </StackPanel>
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="{Binding LogActionMessage}" />
+
+                                <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="最近日志" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="{Binding LogSummary}" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
+                                              ItemsSource="{Binding LogFilters}"
+                                              SelectedItem="{Binding SelectedLogFilter, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:LogLevelOption">
+                                                <TextBlock Text="{Binding Display}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Border Margin="0,6,0,0" Padding="12,8"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        CornerRadius="{StaticResource RadiusM}">
+                                    <ListBox MaxHeight="260"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             ItemsSource="{Binding RecentLogs}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <!--  日志可达上千条，必须虚拟化，否则展开日志面板会明显卡顿  -->
+                                                <VirtualizingStackPanel />
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                        <ListBox.Styles>
+                                            <Style Selector="ListBoxItem">
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="Margin" Value="0" />
+                                                <Setter Property="Focusable" Value="False" />
+                                                <Setter Property="Template">
+                                                    <ControlTemplate>
+                                                        <!--  同 DownloadCenterPage：自定义模板里的 ContentPresenter
+                                                              必须显式 TemplateBinding，否则日志列表整片空白。  -->
+                                                        <ContentPresenter
+                                                            Name="PART_ContentPresenter"
+                                                            Padding="{TemplateBinding Padding}"
+                                                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                            Content="{TemplateBinding Content}"
+                                                            ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                                    </ControlTemplate>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.Styles>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:LogEntry">
+                                                <Grid Margin="0,2" ColumnDefinitions="Auto,Auto,*">
+                                                    <TextBlock Grid.Column="0" Classes="caption"
+                                                               FontFamily="Consolas" Text="{Binding TimeText}" />
+                                                    <TextBlock Grid.Column="1" Classes="caption"
+                                                               Margin="8,0,0,0" FontFamily="Consolas"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding LevelBrush}"
+                                                               Text="{Binding LevelText}" />
+                                                    <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                                                        <TextBlock Classes="caption"
+                                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                                   Text="{Binding Message}" TextWrapping="Wrap" />
+                                                        <TextBlock Classes="caption" MaxHeight="80"
+                                                                   Foreground="{Binding LevelBrush}"
+                                                                   Text="{Binding ExceptionText}"
+                                                                   TextWrapping="Wrap"
+                                                                   IsVisible="{Binding HasException}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  关于  -->
+                        <Border Classes="card" Margin="0,0,16,0" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="关于 VibrantbitLauncher" />
+                                <TextBlock Classes="secondary" TextWrapping="Wrap">
+                                    <Run Text="{Binding AppVersion, Mode=OneWay}" />
+                                    <LineBreak />
+                                    <Run Text="一款基于 Avalonia / .NET 的 Minecraft Java 版启动器：支持多账户登录、版本下载与启动、模组浏览与一键联机。" />
+                                </TextBlock>
+
+                                <TextBlock Classes="sectionTitle" Margin="0,24,0,12" Text="致谢" />
+                                <TextBlock Classes="secondary" TextWrapping="Wrap"
+                                           Text="UI 参考 dream-pep；感谢 叶冷、3443**** 协助修复 bug。" />
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

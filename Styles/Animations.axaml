@@ -1,0 +1,121 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        VibrantbitLauncher 交互动效规范（Avalonia 版）
+        ============================================
+
+        节奏统一：小控件 0.16 ~ 0.20s，容器 0.22s，页面切换 0.30s。
+        缓动统一：需要「弹一下」的用 BackEaseOut，其余用 CubicEaseOut。
+
+        SpringAnimation 与 FAnimatedIcon 未启用，动画全部用 Transitions 表达，
+        理由是 Transitions 只在属性变化时跑一次、开销可控；
+        声明式 Animation 会常驻时钟，控件一多就明显吃 CPU。
+
+        两点必须知道的 Avalonia 行为：
+        1) 样式优先级是「模板(2) > 样式(3)」（数字越小越优先），
+           控件模板里自带 RenderTransform 的控件会盖过这里，属于无害覆盖，不会报错；
+        2) 同一个属性的多个匹配样式按**出现顺序**生效，后者胜出，
+           所以「禁用态 / 例外控件」的重置样式一律排在最后。
+
+        以下控件由 FluentAvalonia / Avalonia 自带过渡，这里不重复添加：
+        TextBox(焦点下划线) · ComboBox(弹出层+箭头) · CheckBox/RadioButton(勾选动画)
+        · ToggleSwitch(滑块位移) · Slider(滑块) · ProgressBar/ProgressRing(进度动画)
+        · Expander/InfoBar/ContentDialog/SnackBar/ToolTip(展开与淡入) · ScrollBar(滚动条淡出)
+    -->
+
+    <!--  ==================== 1. 按钮：悬停放大 + 按下回缩  ====================  -->
+
+    <Style Selector="Button">
+        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+        <!--  基准值显式写成 scale(1)：插值双方都是 TransformOperations 时过渡才自然，
+              否则「无值 → 有值」的第一下会直接跳变  -->
+        <Setter Property="RenderTransform" Value="scale(1)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <!--  BackEaseOut 收尾会轻微过冲，就是那一下「弹」的手感  -->
+                <TransformOperationsTransition Property="RenderTransform"
+                                               Duration="0:0:0.18"
+                                               Easing="BackEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Button:pointerover">
+        <Setter Property="RenderTransform" Value="scale(1.035)" />
+    </Style>
+
+    <Style Selector="Button:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.94)" />
+    </Style>
+
+    <!--  强调按钮按压力度稍大一点，点下去更有分量  -->
+    <Style Selector="Button.accent:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.925)" />
+    </Style>
+
+    <!--  危险按钮（删除类）不做放大，避免引导用户去点  -->
+    <Style Selector="Button.danger:pointerover">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <!--  ==================== 2. 列表项 / 导航项：按下回缩  ====================  -->
+
+    <!--  FANavigationViewItem 与 ComboBoxItem 都派生自 ListBoxItem，一并覆盖  -->
+    <Style Selector="ListBoxItem">
+        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+        <Setter Property="RenderTransform" Value="scale(1)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <TransformOperationsTransition Property="RenderTransform"
+                                               Duration="0:0:0.16"
+                                               Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ListBoxItem:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.985)" />
+    </Style>
+
+    <!--  ==================== 3. 卡片：悬停浮起（阴影）  ====================  -->
+
+    <Style Selector="Border.card">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BoxShadowsTransition Property="BoxShadow"
+                                      Duration="0:0:0.22"
+                                      Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Border.card:pointerover">
+        <!--  只加高度不换颜色：卡片大多不可点击，改边框色会误导用户以为能点  -->
+        <Setter Property="BoxShadow" Value="0 6 18 0 #24000000" />
+    </Style>
+
+    <!--  ==================== 4. 例外：保持原样  ====================  -->
+
+    <!--
+        ScrollBar 的行按钮（RepeatButton）尺寸只有十几像素，
+        放大 3% 会糊成一团，这里显式还原。
+        必须排在最后：同优先级下后出现的样式才会生效。
+    -->
+    <Style Selector="RepeatButton">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <!--
+        禁用态不要有任何缩放：`:disabled` 排在这里，保证盖过上面的 :pointerover
+        （鼠标悬停在禁用按钮上时 Avalonia 仍会置上 :pointerover）。
+    -->
+    <Style Selector="Button:disabled">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+</Styles>

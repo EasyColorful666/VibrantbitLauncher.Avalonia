@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.WelcomePage">
+    <Grid Background="Transparent">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <ui:FASymbolIcon HorizontalAlignment="Center"
+                             FontSize="64"
+                             Foreground="{DynamicResource SystemAccentColorBrush}"
+                             Symbol="Play" />
+            <TextBlock Classes="display"
+                       Margin="0,24,0,0"
+                       HorizontalAlignment="Center"
+                       Text="欢迎使用 Vibrantbit Launcher" />
+            <TextBlock Classes="secondary"
+                       Margin="0,12,0,0"
+                       HorizontalAlignment="Center"
+                       Text="轻量、快速、现代的 Minecraft 启动器" />
+            <Button Margin="0,48,0,0" Padding="32,10"
+                    HorizontalAlignment="Center"
+                    Classes="accent"
+                    Click="NextButton_Click">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="开始" />
+                    <ui:FASymbolIcon Symbol="Forward" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

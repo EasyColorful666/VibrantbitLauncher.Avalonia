@@ -1,0 +1,80 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.YggdrasilAuthenticatorWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="添加外置账户"
+    Width="460"
+    Height="412"
+    CanResize="False"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <Border Grid.Row="0"
+                Height="36"
+                Background="Transparent"
+                WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock Margin="14,0,0,0"
+                       VerticalAlignment="Center"
+                       Classes="caption"
+                       Text="添加外置账户" />
+        </Border>
+
+        <Grid Grid.Row="1" Margin="28,8,28,24" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+
+            <TextBlock Grid.Row="0"
+                       Classes="title"
+                       Text="添加外置账户" />
+            <TextBlock Grid.Row="1"
+                       Margin="0,6,0,0"
+                       Classes="secondary"
+                       Text="填入 Yggdrasil 认证服务器地址（如 LittleSkin）"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Grid.Row="2"
+                       Margin="0,20,0,6"
+                       Classes="body"
+                       Text="服务器地址" />
+            <TextBox x:Name="textBox1"
+                     Grid.Row="3"
+                     TextWrapping="Wrap" />
+
+            <TextBlock Grid.Row="4"
+                       Margin="0,14,0,6"
+                       Classes="body"
+                       Text="邮箱" />
+            <TextBox x:Name="textBox2"
+                     Grid.Row="5"
+                     TextWrapping="Wrap" />
+
+            <TextBlock Grid.Row="6"
+                       Margin="0,14,0,6"
+                       Classes="body"
+                       Text="密码" />
+            <TextBox x:Name="textBox3"
+                     Grid.Row="7"
+                     VerticalAlignment="Top"
+                     PasswordChar="●" />
+
+            <StackPanel Grid.Row="8"
+                        Margin="0,16,0,0"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+                <Button MinWidth="96"
+                        Padding="20,10"
+                        Click="OnCancelClick"
+                        Content="取消" />
+                <Button MinWidth="140"
+                        Margin="10,0,0,0"
+                        Padding="24,10"
+                        Classes="accent"
+                        Click="Button_Click"
+                        Content="登录" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

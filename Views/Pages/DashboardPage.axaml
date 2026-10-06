@@ -1,0 +1,78 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Pages.DashboardPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:helpers="using:VibrantbitLauncher.Helpers"
+    xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    x:DataType="vm:DashboardPageViewModel"
+    mc:Ignorable="d">
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
+
+        <!--  页面标题区  -->
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="新闻" />
+            <Border Margin="0,10,0,0" Classes="accentRule" />
+            <TextBlock
+                Margin="0,6,0,0"
+                Classes="caption"
+                Text="Minecraft 官方最新动态" />
+        </StackPanel>
+
+        <!--  新闻图墙：图铺满卡片，标题叠在底部渐变上  -->
+        <ScrollViewer
+            Grid.Row="1"
+            Padding="0,0,8,0"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding News}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="helpers:NewsItem">
+                        <Border
+                            Width="296"
+                            Height="184"
+                            Margin="{StaticResource CardGap}"
+                            Classes="hoverCard"
+                            ClipToBounds="True">
+                            <Grid>
+                                <Image Source="{Binding Image}" Stretch="UniformToFill" />
+
+                                <!--  底部渐变，保证白色标题在任何图上都可读  -->
+                                <Border>
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0%,35%" EndPoint="0%,100%">
+                                            <GradientStop Offset="0" Color="#00000000" />
+                                            <GradientStop Offset="1" Color="#E6000000" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+
+                                <TextBlock
+                                    Margin="16,0,16,14"
+                                    VerticalAlignment="Bottom"
+                                    FontFamily="{StaticResource AppFont}"
+                                    FontSize="{StaticResource FontSizeBodyLarge}"
+                                    FontWeight="SemiBold"
+                                    Foreground="{StaticResource AppOnImageTextBrush}"
+                                    MaxHeight="46"
+                                    Text="{Binding Title}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

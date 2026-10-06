@@ -1,0 +1,115 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
+        xmlns:pages="using:VibrantbitLauncher.Views.Pages"
+        xmlns:vm="using:VibrantbitLauncher.ViewModels.Windows"
+        mc:Ignorable="d"
+        x:Class="VibrantbitLauncher.Views.Windows.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="VibrantbitLauncher"
+        Width="1280"
+        Height="800"
+        CanResize="False"
+
+        MinWidth="1180"
+        MinHeight="720"
+        Background="{DynamicResource AppWindowBackgroundBrush}"
+        FontFamily="{StaticResource AppFont}"
+        FontSize="{StaticResource FontSizeBody}"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <!--  背景层：设置里选了壁纸才有内容，未设置时保持纯 Mica 底  -->
+        <Image IsHitTestVisible="False"
+               Opacity="{Binding BackgroundImageOpacity}"
+               RenderOptions.BitmapInterpolationMode="HighQuality"
+               Source="{Binding BackgroundImage}"
+               Stretch="UniformToFill" />
+
+        <!--  可读性遮罩：随明暗主题换色，半透明压在壁纸上；未设置壁纸时不显示  -->
+        <Border Background="{DynamicResource AppBackgroundScrimBrush}"
+                IsHitTestVisible="False"
+                IsVisible="{Binding HasBackgroundImage}" />
+
+        <Grid x:Name="AppRoot" RowDefinitions="Auto,*">
+            <!--  自定义标题栏（Avalonia 12 用 WindowDecorationProperties 标记拖拽区）  -->
+            <Grid Grid.Row="0"
+                  Height="40"
+                  ColumnDefinitions="Auto,*"
+                  Background="Transparent"
+                  WindowDecorationProperties.ElementRole="TitleBar">
+                <Image Grid.Column="0"
+                       Width="18"
+                       Height="18"
+                       Margin="14,0,8,0"
+                       VerticalAlignment="Center"
+                       IsHitTestVisible="False"
+                       Source="/Assets/icon.ico"
+                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+                <TextBlock Grid.Column="1"
+                           Margin="4,0"
+                           VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSizeBodyLarge}"
+                           IsHitTestVisible="False"
+                           Text="VibrantbitLauncher" />
+            </Grid>
+
+            <!--  导航容器  -->
+            <ui:FANavigationView x:Name="RootNavigation"
+                                 Grid.Row="1"
+                                 Background="Transparent"
+                                 IsSettingsVisible="False"
+                                 IsBackButtonVisible="False"
+                                 PaneDisplayMode="LeftCompact"
+                                 IsPaneToggleButtonVisible="False">
+
+                <ui:FANavigationView.MenuItems>
+                    <ui:FANavigationViewItem Content="启动" Tag="LaunchPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="Play" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                    <ui:FANavigationViewItem Content="账户" Tag="AccountPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="Contact" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                    <ui:FANavigationViewItem Content="下载中心" Tag="DownloadHubPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="Download" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                    <ui:FANavigationViewItem Content="下载任务" Tag="DownloadCenterPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="Clock" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                    <ui:FANavigationViewItem Content="多人" Tag="MultiplayerPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="People" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                </ui:FANavigationView.MenuItems>
+
+                <ui:FANavigationView.FooterMenuItems>
+                    <ui:FANavigationViewItem Content="设置" Tag="SettingsPage">
+                        <ui:FANavigationViewItem.IconSource>
+                            <ui:FASymbolIconSource Symbol="Setting" />
+                        </ui:FANavigationViewItem.IconSource>
+                    </ui:FANavigationViewItem>
+                </ui:FANavigationView.FooterMenuItems>
+            </ui:FANavigationView>
+
+            <!--  轻提示宿主：右下角，位于导航内容之上  -->
+            <Panel x:Name="SnackbarHost"
+                   Grid.Row="1"
+                   Margin="0,0,0,24"
+                   VerticalAlignment="Bottom"
+                   HorizontalAlignment="Right"
+                   ZIndex="100" />
+        </Grid>
+    </Grid>
+</Window>

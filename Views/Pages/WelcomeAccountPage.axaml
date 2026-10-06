@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.WelcomeAccountPage"
+             d:DesignWidth="960"
+             d:DesignHeight="600">
+
+    <!--  开机向导第 3 步：登录账户（可跳过）  -->
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*,Auto">
+
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="登录账户" />
+            <TextBlock Classes="caption" Margin="0,6,0,0"
+                       Text="登录后才能联机游玩；也可以先跳过，之后随时在「账户」里添加" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="660" HorizontalAlignment="Left">
+
+                <!--  已经登录的账户  -->
+                <ItemsControl ItemsSource="{Binding Users}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Classes="card" Margin="0,0,0,8" Padding="12,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Width="40" Height="40" Margin="0,0,12,0"
+                                           Stretch="Uniform"
+                                           Source="{Binding ImagePath, Converter={StaticResource SkinPathToImage}}">
+                                        <Image.Clip>
+                                            <EllipseGeometry Center="20,20" RadiusX="20" RadiusY="20" />
+                                        </Image.Clip>
+                                    </Image>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding Name}" />
+                                        <TextBlock Classes="caption" Text="{Binding AccountType}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!--  还没有账户时的提示 + 登录入口  -->
+                <StackPanel x:Name="emptyState">
+                    <ui:FASymbolIcon HorizontalAlignment="Center"
+                                     FontSize="40"
+                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                     Symbol="Add" />
+                    <TextBlock Classes="subtitle" Margin="0,14,0,0"
+                               HorizontalAlignment="Center"
+                               Text="还没有登录账户" />
+                    <TextBlock Classes="caption" Margin="0,6,0,0"
+                               HorizontalAlignment="Center"
+                               Text="选一种方式登录，正版账户可以联机" />
+                </StackPanel>
+
+                <StackPanel Margin="0,24,0,0" Orientation="Horizontal" Spacing="10">
+                    <Button Padding="20,10" Command="{Binding AuthenticateMicrosoftCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ui:FASymbolIcon Symbol="Contact" />
+                            <TextBlock Text="微软账户" />
+                        </StackPanel>
+                    </Button>
+                    <Button Padding="20,10" Command="{Binding AuthenticateYggdrasilCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ui:FASymbolIcon Symbol="Globe" />
+                            <TextBlock Text="外置账户" />
+                        </StackPanel>
+                    </Button>
+                    <Button Padding="20,10" Command="{Binding AuthenticateOfflineCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ui:FASymbolIcon Symbol="Add" />
+                            <TextBlock Text="离线账户" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Margin="0,20,0,0"
+                    HorizontalAlignment="Right" Orientation="Horizontal">
+            <Button Margin="0,0,8,0" Padding="24,10" Click="OnBack" Content="上一步" />
+            <Button Padding="24,10" Click="OnSkip" Content="跳过" />
+            <Button Margin="8,0,0,0" Padding="24,10" Classes="accent" Click="OnNext">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="下一步" />
+                    <ui:FASymbolIcon Symbol="Forward" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

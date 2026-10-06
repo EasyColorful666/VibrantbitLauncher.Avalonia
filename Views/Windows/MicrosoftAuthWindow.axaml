@@ -1,0 +1,98 @@
+<Window
+    x:Class="VibrantbitLauncher.Views.Windows.MicrosoftAuthWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="微软账户验证"
+    Width="440"
+    Height="320"
+    CanResize="False"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <!--  自绘标题栏（跟随 Fluent 主题）  -->
+        <Border
+            Grid.Row="0"
+            Height="36"
+            Background="Transparent"
+            WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock
+                Margin="14,0,0,0"
+                VerticalAlignment="Center"
+                Classes="caption"
+                Text="微软账户验证" />
+        </Border>
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,24"
+            RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+            <!--  标题  -->
+            <TextBlock
+                Grid.Row="0"
+                Classes="title"
+                Text="微软账户登录验证" />
+
+            <!--  说明  -->
+            <TextBlock
+                Grid.Row="1"
+                Margin="0,10,0,0"
+                Classes="secondary"
+                Text="请在浏览器中打开验证页面，输入以下一次性代码完成登录。代码已自动复制到剪贴板。"
+                TextWrapping="Wrap" />
+
+            <!--  一次性代码  -->
+            <Border
+                Grid.Row="2"
+                Margin="0,14,0,0"
+                Padding="16,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusM}">
+                <TextBlock
+                    x:Name="CodeText"
+                    HorizontalAlignment="Center"
+                    FontSize="28"
+                    FontWeight="Bold"
+                    Text="------" />
+            </Border>
+
+            <!--  提示  -->
+            <TextBlock
+                Grid.Row="3"
+                Margin="0,10,0,0"
+                Classes="secondary"
+                Foreground="{DynamicResource SystemAccentColor}"
+                Text="代码已复制到剪贴板，点击下方按钮打开浏览器"
+                TextWrapping="Wrap" />
+
+            <!--  按钮  -->
+            <StackPanel
+                Grid.Row="4"
+                Margin="0,14,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal"
+                Spacing="10">
+                <Button
+                    x:Name="CancelButton"
+                    MinWidth="92"
+                    Padding="16,8"
+                    Click="CancelButton_Click"
+                    Content="取消" />
+                <Button
+                    x:Name="OpenBrowserButton"
+                    MinWidth="110"
+                    Padding="16,8"
+                    Classes="accent"
+                    Click="OpenBrowserButton_Click"
+                    Content="打开浏览器" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

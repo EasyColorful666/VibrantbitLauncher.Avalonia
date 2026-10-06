@@ -1,0 +1,67 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+    <!--
+        VibrantbitLauncher 全局视觉规范（Avalonia 版）
+
+        颜色使用 FluentAvalonia 的语义化画刷键（TextFillColor* / CardBackground* 等），
+        以便 Light / Dark 主题自动适配，不要再硬编码 #RRGGBB。
+        间距走 4 的倍数，页面内容统一用 PagePadding。
+    -->
+
+    <!--  ==================== 语义色  ====================  -->
+
+    <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF10893E" />
+    <SolidColorBrush x:Key="AppCriticalBrush" Color="#FFD13438" />
+    <SolidColorBrush x:Key="AppCautionBrush" Color="#FFCC8800" />
+    <SolidColorBrush x:Key="AppCriticalSurfaceBrush" Color="#FFD13438" Opacity="0.12" />
+    <SolidColorBrush x:Key="AppCautionSurfaceBrush" Color="#FFCC8800" Opacity="0.14" />
+    <SolidColorBrush x:Key="AppSuccessSurfaceBrush" Color="#FF10893E" Opacity="0.12" />
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="AppOnImageTextBrush" Color="#FFFFFFFF" />
+
+    <!--  主题色渐变，运行时由 SettingsService.ApplyAccent() 覆盖  -->
+    <LinearGradientBrush x:Key="AppAccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Offset="0" Color="#FF0078D4" />
+        <GradientStop Offset="1" Color="#FF00B7C3" />
+    </LinearGradientBrush>
+
+    <!--  背景图遮罩  -->
+    <SolidColorBrush x:Key="AppBackgroundScrimBrush" Color="#80FFFFFF" />
+
+    <!--  ==================== 字体  ====================  -->
+
+    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI</FontFamily>
+    <FontFamily x:Key="AppDisplayFont">avares://VibrantbitLauncher.Avalonia/Assets#HarmonyOS Sans Black</FontFamily>
+
+    <!--  ==================== 字号阶梯  ====================  -->
+
+    <x:Double x:Key="FontSizeDisplay">34</x:Double>
+    <x:Double x:Key="FontSizeTitle">22</x:Double>
+    <x:Double x:Key="FontSizeSubtitle">17</x:Double>
+    <x:Double x:Key="FontSizeBodyLarge">15</x:Double>
+    <x:Double x:Key="FontSizeBody">14</x:Double>
+    <x:Double x:Key="FontSizeCaption">12</x:Double>
+
+    <!--  ==================== 间距  ====================  -->
+
+    <x:Double x:Key="SpaceXS">4</x:Double>
+    <x:Double x:Key="SpaceS">8</x:Double>
+    <x:Double x:Key="SpaceM">12</x:Double>
+    <x:Double x:Key="SpaceL">16</x:Double>
+    <x:Double x:Key="SpaceXL">24</x:Double>
+    <x:Double x:Key="SpaceXXL">32</x:Double>
+
+    <Thickness x:Key="PagePadding">32,28,32,32</Thickness>
+    <Thickness x:Key="PageHeaderMargin">0,0,0,24</Thickness>
+    <Thickness x:Key="CardGap">0,0,16,16</Thickness>
+
+    <!--  ==================== 圆角  ====================  -->
+
+    <CornerRadius x:Key="RadiusS">4</CornerRadius>
+    <CornerRadius x:Key="RadiusM">8</CornerRadius>
+    <CornerRadius x:Key="RadiusL">12</CornerRadius>
+    <CornerRadius x:Key="CardRadius">8</CornerRadius>
+
+</ResourceDictionary>

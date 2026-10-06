@@ -1,0 +1,158 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Pages.AccountPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="450"
+    d:DesignWidth="800"
+    mc:Ignorable="d">
+
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*,Auto">
+
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="账户" />
+            <Border Margin="0,10,0,0" Classes="accentRule" />
+            <TextBlock
+                Margin="0,6,0,0"
+                Classes="caption"
+                Text="管理微软、外置与离线账户，选择启动游戏时使用的身份" />
+        </StackPanel>
+
+        <!--  空状态：还没有任何账户时  -->
+        <StackPanel
+            x:Name="emptyState"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontFamily="{StaticResource AppDisplayFont}"
+                FontSize="44"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="&#xE8FA;" />
+            <TextBlock
+                Margin="0,16,0,0"
+                HorizontalAlignment="Center"
+                Classes="subtitle"
+                Text="还没有添加账户" />
+            <TextBlock
+                Margin="0,6,0,0"
+                HorizontalAlignment="Center"
+                Classes="caption"
+                Text="添加一个账户后就可以启动游戏了" />
+        </StackPanel>
+
+        <!--  账户卡片墙：随可用宽度自动换行  -->
+        <ListBox
+            x:Name="listbox1"
+            Grid.Row="1"
+            Background="Transparent"
+            BorderThickness="0"
+            ItemsSource="{Binding Users}"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+            ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Margin" Value="{StaticResource CardGap}" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListBox.Styles>
+
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border
+                        Width="248"
+                        Height="284"
+                        Classes="card"
+                        VerticalAlignment="Stretch">
+                        <Grid RowDefinitions="*,Auto">
+
+                            <!--  圆形头像：用 EllipseGeometry 裁剪  -->
+                            <Image
+                                Grid.Row="0"
+                                Width="104"
+                                Height="104"
+                                Margin="0,26,0,0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top"
+                                Source="{Binding ImagePath, Converter={StaticResource SkinPathToImage}}"
+                                Stretch="Uniform">
+                                <Image.Clip>
+                                    <EllipseGeometry Center="52,52" RadiusX="52" RadiusY="52" />
+                                </Image.Clip>
+                            </Image>
+
+                            <StackPanel Grid.Row="1" Margin="12,0,12,14">
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Classes="body"
+                                    Text="{Binding Name}"
+                                    TextAlignment="Center"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    Classes="caption"
+                                    Text="{Binding AccountType}"
+                                    TextAlignment="Center" />
+
+                                <RadioButton
+                                    Margin="0,12,0,0"
+                                    HorizontalAlignment="Center"
+                                    Command="{Binding SelectedCommand}"
+                                    CommandParameter="{Binding Account}"
+                                    Content="使用该账户"
+                                    GroupName="user" />
+
+                                <Grid Margin="0,10,0,0" ColumnDefinitions="*,8,Auto">
+                                    <Button
+                                        Grid.Column="0"
+                                        Padding="10,6"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Command="{Binding SkinCommand}"
+                                        CommandParameter="{Binding Account}"
+                                        Content="皮肤" />
+                                    <Button
+                                        Grid.Column="2"
+                                        Padding="12,6"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding DeleteCommand}"
+                                        CommandParameter="{Binding Account}"
+                                        Content="删除" />
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel
+            Grid.Row="2"
+            Margin="0,16,0,0"
+            HorizontalAlignment="Center"
+            Orientation="Horizontal"
+            Spacing="12">
+            <Button
+                Padding="24,10"
+                Command="{Binding AuthenticateMicrosoftCommand}"
+                Content="添加微软账户" />
+            <Button
+                Padding="24,10"
+                Command="{Binding AuthenticateYggdrasilCommand}"
+                Content="添加外置账户" />
+            <Button
+                Padding="24,10"
+                Command="{Binding AuthenticateOfflineCommand}"
+                Content="添加离线账户" />
+        </StackPanel>
+    </Grid>
+</UserControl>
