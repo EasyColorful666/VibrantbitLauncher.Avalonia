@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
@@ -40,6 +41,10 @@ public partial class MainWindow : FAAppWindow
 
         // ItemInvoked 是 CLR 事件（TypedEventHandler），XAML 无法直接挂，必须代码里订阅
         RootNavigation.ItemInvoked += OnNavigationItemInvoked;
+
+        // 导航项在控件模板里把 RenderTransform / Transitions 写死了，应用级样式压不过它，
+        // 点击反馈只能靠代码挂（详见 InteractionFeedback 的注释）
+        AttachMenuItemFeedback();
 
         var vm = new MainWindowViewModel();
         DataContext = vm;
@@ -115,6 +120,35 @@ public partial class MainWindow : FAAppWindow
         }
 
         return null;
+    }
+
+    /// <summary>给侧边栏所有导航项挂上「按下回缩 / 松开回弹」的点击反馈。</summary>
+    private void AttachMenuItemFeedback()
+    {
+        foreach (var item in EnumerateMenuItems(RootNavigation.MenuItems)
+                     .Concat(EnumerateMenuItems(RootNavigation.FooterMenuItems)))
+        {
+            InteractionFeedback.AttachPressFeedback(item);
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<FANavigationViewItem> EnumerateMenuItems(
+        System.Collections.IEnumerable? items)
+    {
+        if (items is null)
+            yield break;
+
+        foreach (var entry in items)
+        {
+            if (entry is not FANavigationViewItem navItem)
+                continue;
+
+            yield return navItem;
+
+            // 导航项支持嵌套子项，一并覆盖
+            foreach (var child in EnumerateMenuItems(navItem.MenuItems))
+                yield return child;
+        }
     }
 
     /// <summary>导航项点击：按 Tag 解析页面并切换（同时同步选中态）。</summary>

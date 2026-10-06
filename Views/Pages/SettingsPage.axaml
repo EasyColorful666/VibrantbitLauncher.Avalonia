@@ -23,7 +23,7 @@
             <Border Classes="accentRule" Margin="0,10,0,0" />
             <TextBlock Classes="caption"
                        Margin="0,6,0,0"
-                       Text="外观、游戏路径与 Java 运行环境" />
+                       Text="外观、启动参数、下载与日志" />
         </StackPanel>
 
         <Grid Grid.Row="1" ColumnDefinitions="216,*">
@@ -55,14 +55,32 @@
                 </ListBoxItem>
                 <ListBoxItem Tag="1">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Edit" />
-                        <TextBlock Text="个性化" VerticalAlignment="Center" />
+                        <ui:FASymbolIcon Symbol="Play" />
+                        <TextBlock Text="启动" VerticalAlignment="Center" />
                     </StackPanel>
                 </ListBoxItem>
                 <ListBoxItem Tag="2">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Setting" />
-                        <TextBlock Text="其他" VerticalAlignment="Center" />
+                        <ui:FASymbolIcon Symbol="Edit" />
+                        <TextBlock Text="个性化" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+                <ListBoxItem Tag="3">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Globe" />
+                        <TextBlock Text="网络" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+                <ListBoxItem Tag="4">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Document" />
+                        <TextBlock Text="日志" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+                <ListBoxItem Tag="5">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Help" />
+                        <TextBlock Text="关于" VerticalAlignment="Center" />
                     </StackPanel>
                 </ListBoxItem>
             </ListBox>
@@ -81,7 +99,7 @@
                     <StackPanel>
 
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="body" Margin="0,0,16,10" MinWidth="88" Text="游戏目录" />
                                 <TextBlock Grid.Row="0" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
                                            Text="{Binding MinecraftFolder}" TextWrapping="Wrap" />
@@ -94,12 +112,20 @@
                                 <TextBlock Grid.Row="2" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
                                            Text="{Binding SelectedJava.JavaPath}" TextWrapping="Wrap" />
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="当前主题" />
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="内存" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding MemoryHint}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="下载源" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
+                                           Text="{Binding DownloadSourceSummary}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="当前主题" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
                                            Text="{Binding CurrentThemeText}" />
 
-                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="body" Margin="0,0,16,0" Text="日志" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Classes="caption"
+                                <TextBlock Grid.Row="6" Grid.Column="0" Classes="body" Margin="0,0,16,0" Text="日志" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Classes="caption"
                                            Text="{Binding LogSummary}" TextWrapping="Wrap" />
                             </Grid>
                         </Border>
@@ -314,37 +340,52 @@
                             </StackPanel>
                         </Border>
 
+                        <!--  主界面：启动器自身的行为  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="主界面" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="启动游戏之后，启动器自己要做些什么。" />
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="启动游戏后" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="仅在游戏进程确实起来了之后执行（秒退时不会动启动器）" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="200" VerticalAlignment="Center"
+                                              ItemsSource="{Binding AfterLaunchActions}"
+                                              SelectedItem="{Binding SelectedAfterLaunchAction, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:SettingOption">
+                                                <TextBlock Text="{Binding Display}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  ===== 其他  =====  -->
-                <ScrollViewer x:Name="OtherPanel"
+                <!--  ===== 启动：Java 虚拟机与内存 / 游戏目录 / 高级  =====  -->
+                <ScrollViewer x:Name="LaunchPanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto"
                               IsVisible="False">
                     <StackPanel>
 
-                        <!--  游戏设置  -->
+                        <!--  Java 虚拟机与内存  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="游戏设置" />
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 文件夹" />
-                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <!--  输入框拉满整行（去掉 MaxWidth 限制），文本左对齐  -->
-                                    <TextBox Grid.Column="0"
-                                             HorizontalAlignment="Stretch"
-                                             HorizontalContentAlignment="Left"
-                                             IsReadOnly="True"
-                                             Text="{Binding MinecraftFolder, Mode=OneWay}"
-                                             ToolTip.Tip="{Binding MinecraftFolder}" />
-                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
-                                            Click="OnSelectMinecraftFolder" Content="选择" />
-                                </Grid>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="Java 虚拟机与内存" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="决定游戏用哪个 Java 运行、能用多少内存。改动在下次启动游戏时生效。" />
 
                                 <TextBlock Classes="body" Margin="0,0,0,6" Text="Java 版本" />
-                                <Grid Margin="0,0,0,24" ColumnDefinitions="*,Auto">
+                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
                                     <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
                                               ItemsSource="{Binding JavaEntries}"
                                               SelectedItem="{Binding SelectedJava, Mode=TwoWay}"
@@ -360,10 +401,216 @@
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
                                     <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
-                                            Command="{Binding RefreshJavaCommand}" Content="刷新" />
+                                            Command="{Binding RefreshJavaCommand}" Content="重新检测" />
+                                </Grid>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="最大内存（-Xmx）" />
+                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
+                                    <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding MaxMemoryOptions}"
+                                              SelectedItem="{Binding SelectedMaxMemory, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:MemoryOption">
+                                                <TextBlock Text="{Binding Display}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
+                                            Command="{Binding AutoMemoryCommand}"
+                                            Content="自动推荐"
+                                            ToolTip.Tip="按本机内存的一半自动挑一档" />
+                                </Grid>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="初始内存（-Xms）" />
+                                <ComboBox HorizontalAlignment="Stretch" Margin="0,0,0,10"
+                                          ItemsSource="{Binding MinMemoryOptions}"
+                                          SelectedItem="{Binding SelectedMinMemory, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:MemoryOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <StackPanel Margin="0,0,0,20" Spacing="2">
+                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding MemoryHint}" />
+                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding MachineMemoryText}" />
+                                </StackPanel>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="附加 JVM 参数" />
+                                <TextBlock Classes="caption" Margin="0,0,0,8" TextWrapping="Wrap"
+                                           Text="一行一条，例如 -Dfile.encoding=UTF-8；以 # 开头的行会被忽略" />
+                                <TextBox AcceptsReturn="True"
+                                         Height="86"
+                                         FontFamily="Consolas"
+                                         TextWrapping="NoWrap"
+                                         Watermark="-Dfile.encoding=UTF-8"
+                                         Text="{Binding JvmArgs, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  游戏目录  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="游戏目录" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="版本、存档、模组都放在这个目录下。" />
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 文件夹" />
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto,Auto">
+                                    <TextBox Grid.Column="0"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Left"
+                                             IsReadOnly="True"
+                                             Text="{Binding MinecraftFolder, Mode=OneWay}"
+                                             ToolTip.Tip="{Binding MinecraftFolder}" />
+                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
+                                            Click="OnSelectMinecraftFolder" Content="选择" />
+                                    <Button Grid.Column="2" Margin="8,0,0,0" Padding="16,0"
+                                            Command="{Binding OpenGameFolderCommand}" Content="打开" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="版本隔离" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="开启后每个版本使用独立的 saves / mods / config，互不干扰；关闭则所有版本共用根目录" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding VersionIsolation, Mode=TwoWay}" />
                                 </Grid>
                             </StackPanel>
                         </Border>
+
+                        <!--  高级  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="高级" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="不清楚作用就别改；改错了会表现为游戏起不来。" />
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="禁用 IPv6" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="加 -Djava.net.preferIPv4Stack=true。IPv6 环境下连不上多人服务器时打开" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding DisableIpv6, Mode=TwoWay}" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="Java 垃圾回收器（GC）" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="一般保持「自动」即可；卡顿时可试 G1GC，大内存可试 ZGC" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="200" VerticalAlignment="Center"
+                                              ItemsSource="{Binding GcModes}"
+                                              SelectedItem="{Binding SelectedGcMode, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:SettingOption">
+                                                <TextBlock Text="{Binding Display}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="全屏启动" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="开启后忽略下面的窗体大小" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding StartFullscreen, Mode=TwoWay}" />
+                                </Grid>
+
+                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 窗体大小" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding !StartFullscreen}">
+                                    <NumericUpDown Width="140" Minimum="320" Maximum="7680" Increment="10"
+                                                   Value="{Binding WindowWidth, Mode=TwoWay}" />
+                                    <TextBlock Classes="secondary" Text="×" VerticalAlignment="Center" />
+                                    <NumericUpDown Width="140" Minimum="240" Maximum="4320" Increment="10"
+                                                   Value="{Binding WindowHeight, Mode=TwoWay}" />
+                                    <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center" Text="像素" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ===== 网络：下载  =====  -->
+                <ScrollViewer x:Name="NetworkPanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="下载" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="下载源与并发数。下载慢或频繁失败时，先换成镜像试试。" />
+
+                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="使用 BMCLAPI 镜像" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="{Binding DownloadSourceText}" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding UseBmclMirror, Mode=TwoWay}" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="下载线程数" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="并发下载的文件数。带宽小就调低，能减少超时" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
+                                              ItemsSource="{Binding DownloadThreadsOptions}"
+                                              SelectedItem="{Binding DownloadThreads, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding StringFormat={}{0} 线程}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="失败重试次数" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="单个文件下载失败后的重试上限" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
+                                              ItemsSource="{Binding DownloadRetryOptionsList}"
+                                              SelectedItem="{Binding DownloadRetryCount, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding StringFormat={}{0} 次}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ===== 日志  =====  -->
+                <ScrollViewer x:Name="LogPanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
 
                         <!--  日志  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
@@ -507,6 +754,17 @@
                                 </Border>
                             </StackPanel>
                         </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ===== 关于  =====  -->
+                <ScrollViewer x:Name="AboutPanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
 
                         <!--  关于  -->
                         <Border Classes="card" Margin="0,0,16,0" Padding="20,16">

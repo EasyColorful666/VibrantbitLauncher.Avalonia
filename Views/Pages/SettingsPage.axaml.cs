@@ -57,7 +57,8 @@ public partial class SettingsPage : UserControl, INavigationAware
             return;
         }
 
-        var panels = new[] { HomePanel, PersonalizationPanel, OtherPanel };
+        // 顺序必须与左栏 ListBoxItem 的 Tag 一一对应
+        var panels = new[] { HomePanel, LaunchPanel, PersonalizationPanel, NetworkPanel, LogPanel, AboutPanel };
         if (index < 0 || index >= panels.Length)
             return;
 

@@ -7,6 +7,7 @@ using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.Views.Windows;
 using VibrantbitLauncher.ViewModels.Windows;
@@ -68,21 +69,15 @@ public partial class App : Application
                 SettingsService.Current.MinecraftFolder,
                 string.IsNullOrEmpty(SettingsService.Current.JavaPath) ? "(未设置)" : SettingsService.Current.JavaPath);
 
-            // ⑦ MinecraftLaunch 下载参数
-            MinecraftLaunch.InitializeHelper.Initialize(settings =>
-            {
-                settings.MaxThread = 256;
-                settings.MaxFragment = 128;
-                settings.MaxRetryCount = 4;
-                settings.IsEnableMirror = false;
-                settings.IsEnableFragment = false;
-            });
+            // ⑦ 下载参数（下载源 / 重试次数来自用户设置，设置页改动后同一入口重新应用）
+            SettingsService.ApplyDownloadSettings();
 
             // ⑧ 后台预热版本清单，避免首次进入「下载中心」要等几秒
             MinecraftVersionCache.Preload();
 
-            // ⑨ 修复版本 JSON 的时区格式（几十次文件读写，放后台）
-            _ = Task.Run(() => FixVersionJsonDateTimeFormat(SettingsService.Current.MinecraftFolder));
+            // ⑨ 规范化已装版本的 JSON：修时区格式 + 给 1.13 以前的版本补 arguments
+            //   （几十次文件读写，放后台）
+            _ = Task.Run(() => NormalizeVersionJsons(SettingsService.Current.MinecraftFolder));
 
             desktop.Exit += (_, _) =>
             {
@@ -104,10 +99,6 @@ public partial class App : Application
 
                 mainWindow.Opened += OnMainWindowOpenedOnce;
             }
-            // ⑪ 临时冒烟（VBL_SMOKE=1）
-            if (Environment.GetEnvironmentVariable("VBL_SMOKE") == "1")
-                SmokeTest.Run(mainWindow);
-
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -216,16 +207,19 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 扫描 .minecraft/versions 下所有 JSON，将 releaseTime 等字段的 +HHMM 时区格式修正为 +HH:MM
+    /// 扫描 .minecraft/versions 下所有 JSON 做一遍规范化：
+    /// ① releaseTime 等字段的 +HHMM 时区写法修正为 +HH:MM（System.Text.Json 解析不了前者）；
+    /// ② 1.13 以前的版本补上库解析器必需的空 arguments 对象 —— 缺了它，
+    ///    MinecraftParser 会抛 InvalidOperationException，整个版本列表 / 启动都会挂。
+    /// 详见 <see cref="VersionJsonNormalizer"/>。
     /// </summary>
-    private static void FixVersionJsonDateTimeFormat(string mcFolder)
+    private static void NormalizeVersionJsons(string mcFolder)
     {
         try
         {
             var versionsDir = Path.Combine(mcFolder, "versions");
             if (!Directory.Exists(versionsDir)) return;
 
-            var regex = new System.Text.RegularExpressions.Regex(@"([+-]\d{2})(\d{2})""");
             int fixedCount = 0;
             foreach (var dir in Directory.GetDirectories(versionsDir))
             {
@@ -233,22 +227,19 @@ public partial class App : Application
                 var jsonPath = Path.Combine(dir, dirName + ".json");
                 if (!File.Exists(jsonPath)) continue;
 
-                var text = File.ReadAllText(jsonPath);
-                if (regex.IsMatch(text))
+                if (VersionJsonNormalizer.NormalizeFile(jsonPath))
                 {
-                    var fixedText = regex.Replace(text, "$1:$2\"");
-                    File.WriteAllText(jsonPath, fixedText);
                     fixedCount++;
-                    Log.Debug("修正版本 JSON 的时区格式：{Path}", jsonPath);
+                    Log.Debug("已规范化版本 JSON：{Path}", jsonPath);
                 }
             }
 
             if (fixedCount > 0)
-                Log.Information("已修正 {Count} 个版本 JSON 的时区格式", fixedCount);
+                Log.Information("已规范化 {Count} 个版本 JSON", fixedCount);
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "修正版本 JSON 时区格式失败：{Folder}", mcFolder);
+            Log.Warning(ex, "规范化版本 JSON 失败：{Folder}", mcFolder);
         }
     }
 }

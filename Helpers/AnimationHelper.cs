@@ -56,13 +56,22 @@ namespace VibrantbitLauncher.Helpers
             var (scale, translate) = EnsureTransform(visual);
             var ease = easing ?? DefaultEasing;
 
-            // 基准值 = 终态
-            visual.Opacity = toOpacity;
-            scale.ScaleX = toScale;
-            scale.ScaleY = toScale;
-            translate.Y = toOffsetY;
-
             var tasks = new List<Task>(3);
+
+            // 基准值 = 终态。只给「本次真要动的属性」写基准：
+            // 顺手写别的属性会在控件上留下一个局部值，可能盖掉它原本的继承值
+            // （例如导航项的 Opacity 有时由面板开合动画接管）。
+            if (!AreEqual(fromOpacity, toOpacity))
+                visual.Opacity = toOpacity;
+
+            if (!AreEqual(fromScale, toScale))
+            {
+                scale.ScaleX = toScale;
+                scale.ScaleY = toScale;
+            }
+
+            if (!AreEqual(fromOffsetY, toOffsetY))
+                translate.Y = toOffsetY;
 
             if (!AreEqual(fromOpacity, toOpacity))
             {
@@ -93,6 +102,26 @@ namespace VibrantbitLauncher.Helpers
 
             return tasks.Count == 0 ? Task.CompletedTask : Task.WhenAll(tasks);
         }
+
+        /// <summary>
+        /// 只做缩放（不动透明度和位移）。
+        ///
+        /// 供「按下回缩 / 松开回弹」这类点击反馈使用：透明度写成起止相同，
+        /// <see cref="AnimateAsync"/> 就会自动跳过那一项，控件上不会留下多余的局部值。
+        /// </summary>
+        public static Task AnimateScaleAsync(
+            Visual visual,
+            double fromScale,
+            double toScale,
+            TimeSpan duration,
+            Easing? easing = null,
+            CancellationToken cancellationToken = default)
+            => AnimateAsync(
+                visual,
+                fromOpacity: 1d, toOpacity: 1d,
+                fromScale: fromScale, toScale: toScale,
+                fromOffsetY: 0d, toOffsetY: 0d,
+                duration, easing, cancellationToken);
 
         /// <summary>跳过动画时直接把元素摆到终态。</summary>
         public static void ApplyEndState(Visual visual, double opacity, double scale, double offsetY)

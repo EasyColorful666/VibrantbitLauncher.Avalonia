@@ -33,11 +33,44 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private JavaEntry? _selectedJava;
         private ObservableCollection<JavaEntry> _javaEntries = new();
 
+        // ===== 启动：Java 虚拟机与内存 =====
+        private MemoryOption _selectedMaxMemory = MemoryOptions[2];   // 2 GB
+        private MemoryOption _selectedMinMemory = MemoryOptions[1];   // 1 GB
+        private string _jvmArgs = string.Empty;
+
+        // ===== 启动：游戏目录 =====
+        private bool _versionIsolation = true;
+
+        // ===== 启动：高级 =====
+        private bool _disableIpv6;
+        private SettingOption _selectedGcMode = GcModeOptions[0];
+        private int _windowWidth = 854;
+        private int _windowHeight = 480;
+        private bool _startFullscreen;
+
+        // ===== 个性化：主界面 =====
+        private SettingOption _selectedAfterLaunchAction = AfterLaunchOptions[0];
+
+        // ===== 网络：下载 =====
+        private bool _useBmclMirror;
+        private int _downloadThreads = 10;
+        private int _downloadRetryCount = 4;
+
+        /// <summary>
+        /// 回填控件状态期间禁止把值写回配置。
+        /// 启动 / 网络这两组新设置都走「UI 改 → 立即落盘」的路子，
+        /// 初始化时逐个赋值会触发一串无意义的保存（还可能把还没读完的配置覆盖掉）。
+        /// </summary>
+        private bool _suppressSettingApply;
+
         public ICommand ChangeThemeCommand { get; private set; }
         public ICommand RefreshJavaCommand { get; private set; }
 
         /// <summary>打开当前的 .minecraft 目录（概览面板的快捷入口）。</summary>
         public RelayCommand OpenGameFolderCommand { get; }
+
+        /// <summary>按本机内存自动挑一档最大内存。</summary>
+        public RelayCommand AutoMemoryCommand { get; }
 
         public SettingsPageViewModel()
         {
@@ -49,6 +82,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             ResetAppearanceCommand = new RelayCommand(ResetAppearance);
             SelectAccentCommand = new RelayCommand<AccentPreset>(SelectAccent);
             SelectGradientEndCommand = new RelayCommand<AccentPreset>(SelectGradientEnd);
+            AutoMemoryCommand = new RelayCommand(AutoConfigureMemory);
 
             RefreshLogsCommand = new RelayCommand(RefreshLogs);
             ClearLogsCommand = new RelayCommand(ClearLogs);
@@ -211,6 +245,68 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 BackgroundImagePath = SettingsService.Current.BackgroundImagePath ?? string.Empty;
                 BackgroundImageOpacity = SettingsService.Current.BackgroundImageOpacity;
 
+                // 启动 / 网络两组设置：回填控件状态时同样只写字段 + 通知，不走 setter
+                // （走 setter 会逐个落盘，还会在初始化阶段就把下载设置重刷一遍）
+                _suppressSettingApply = true;
+                try
+                {
+                    _selectedMaxMemory = MemoryOptions.FirstOrDefault(o => o.Mb == SettingsService.Current.MaxMemoryMb)
+                        ?? MemoryOptions[2];
+                    OnPropertyChanged(nameof(SelectedMaxMemory));
+
+                    _selectedMinMemory = MemoryOptions.FirstOrDefault(o => o.Mb == SettingsService.Current.MinMemoryMb)
+                        ?? MemoryOptions[1];
+                    OnPropertyChanged(nameof(SelectedMinMemory));
+                    OnPropertyChanged(nameof(MemoryHint));
+
+                    _jvmArgs = SettingsService.Current.JvmArgs ?? string.Empty;
+                    OnPropertyChanged(nameof(JvmArgs));
+
+                    _versionIsolation = SettingsService.Current.VersionIsolation;
+                    OnPropertyChanged(nameof(VersionIsolation));
+
+                    _disableIpv6 = SettingsService.Current.DisableIpv6;
+                    OnPropertyChanged(nameof(DisableIpv6));
+
+                    _selectedGcMode = GcModeOptions.FirstOrDefault(o => o.Key == SettingsService.Current.GcMode)
+                        ?? GcModeOptions[0];
+                    OnPropertyChanged(nameof(SelectedGcMode));
+
+                    _windowWidth = SettingsService.Current.WindowWidth;
+                    OnPropertyChanged(nameof(WindowWidth));
+
+                    _windowHeight = SettingsService.Current.WindowHeight;
+                    OnPropertyChanged(nameof(WindowHeight));
+
+                    _startFullscreen = SettingsService.Current.StartFullscreen;
+                    OnPropertyChanged(nameof(StartFullscreen));
+
+                    _selectedAfterLaunchAction =
+                        AfterLaunchOptions.FirstOrDefault(o => o.Key == SettingsService.Current.AfterLaunchAction)
+                        ?? AfterLaunchOptions[0];
+                    OnPropertyChanged(nameof(SelectedAfterLaunchAction));
+
+                    _useBmclMirror = SettingsService.Current.UseBmclMirror;
+                    OnPropertyChanged(nameof(UseBmclMirror));
+                    OnPropertyChanged(nameof(DownloadSourceText));
+
+                    _downloadThreads = DownloadThreadOptions.Contains(SettingsService.Current.DownloadThreads)
+                        ? SettingsService.Current.DownloadThreads
+                        : 10;
+                    OnPropertyChanged(nameof(DownloadThreads));
+
+                    _downloadRetryCount = DownloadRetryOptions.Contains(SettingsService.Current.DownloadRetryCount)
+                        ? SettingsService.Current.DownloadRetryCount
+                        : 4;
+                    OnPropertyChanged(nameof(DownloadRetryCount));
+                }
+                finally
+                {
+                    _suppressSettingApply = false;
+                }
+
+                OnPropertyChanged(nameof(MachineMemoryText));
+
                 // 日志设置：回填控件状态时不触发保存 / 重建
                 _suppressLogApply = true;
                 try
@@ -337,6 +433,291 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
             }
         }
+
+        // ===== 启动：Java 虚拟机与内存 / 游戏目录 / 高级 =====
+
+        /// <summary>可选最大 / 初始堆内存档位。上限不设到 64G 之外，避免手滑把整机内存吃掉。</summary>
+        public static readonly IReadOnlyList<MemoryOption> MemoryOptions = new[]
+        {
+            new MemoryOption(512, "512 MB"),
+            new MemoryOption(1024, "1 GB"),
+            new MemoryOption(2048, "2 GB"),
+            new MemoryOption(3072, "3 GB"),
+            new MemoryOption(4096, "4 GB"),
+            new MemoryOption(6144, "6 GB"),
+            new MemoryOption(8192, "8 GB"),
+            new MemoryOption(12288, "12 GB"),
+            new MemoryOption(16384, "16 GB"),
+            new MemoryOption(32768, "32 GB"),
+            new MemoryOption(65536, "64 GB"),
+        };
+
+        /// <summary>垃圾回收器。Default 表示不额外指定，交给 JVM 按版本自己选。</summary>
+        public static readonly IReadOnlyList<SettingOption> GcModeOptions = new[]
+        {
+            new SettingOption("Default", "自动（JVM 默认）"),
+            new SettingOption("G1GC", "G1GC · 通用推荐"),
+            new SettingOption("ZGC", "ZGC · 大内存低停顿"),
+            new SettingOption("Parallel", "ParallelGC · 老版本友好"),
+            new SettingOption("Serial", "SerialGC · 单核 / 小内存"),
+        };
+
+        /// <summary>启动游戏后对启动器自身做什么。</summary>
+        public static readonly IReadOnlyList<SettingOption> AfterLaunchOptions = new[]
+        {
+            new SettingOption("None", "不做任何操作"),
+            new SettingOption("Minimize", "最小化启动器"),
+            new SettingOption("Close", "关闭启动器"),
+        };
+
+        /// <summary>下载并发档位。</summary>
+        public static readonly IReadOnlyList<int> DownloadThreadOptions = new[] { 1, 2, 4, 6, 8, 10, 12, 16, 24, 32 };
+
+        /// <summary>下载失败重试次数档位。</summary>
+        public static readonly IReadOnlyList<int> DownloadRetryOptions = new[] { 0, 1, 2, 3, 4, 6, 8, 10 };
+
+        public IReadOnlyList<MemoryOption> MaxMemoryOptions => MemoryOptions;
+        public IReadOnlyList<MemoryOption> MinMemoryOptions => MemoryOptions;
+        public IReadOnlyList<SettingOption> GcModes => GcModeOptions;
+        public IReadOnlyList<SettingOption> AfterLaunchActions => AfterLaunchOptions;
+        public IReadOnlyList<int> DownloadThreadsOptions => DownloadThreadOptions;
+        public IReadOnlyList<int> DownloadRetryOptionsList => DownloadRetryOptions;
+
+        /// <summary>本机可用物理内存的粗略值（取自 GC 对进程可见的内存上限），用于给出建议档位。</summary>
+        public string MachineMemoryText
+        {
+            get
+            {
+                try
+                {
+                    var bytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+                    if (bytes <= 0)
+                        return string.Empty;
+
+                    return $"本机内存约 {bytes / 1024.0 / 1024 / 1024:F1} GB";
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+        }
+
+        /// <summary>最大堆内存。改动即落盘，下次启动游戏生效。</summary>
+        public MemoryOption SelectedMaxMemory
+        {
+            get => _selectedMaxMemory;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedMaxMemory, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.MaxMemoryMb = value.Mb;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(MemoryHint));
+                Serilog.Log.Information("最大内存已设为 {Mb} MB", value.Mb);
+            }
+        }
+
+        /// <summary>初始堆内存。</summary>
+        public MemoryOption SelectedMinMemory
+        {
+            get => _selectedMinMemory;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedMinMemory, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.MinMemoryMb = value.Mb;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(MemoryHint));
+                Serilog.Log.Information("初始内存已设为 {Mb} MB", value.Mb);
+            }
+        }
+
+        /// <summary>内存档位的一句提醒（初始值高于最大值时是无效配置，要提前告诉用户）。</summary>
+        public string MemoryHint =>
+            _selectedMinMemory.Mb > _selectedMaxMemory.Mb
+                ? "初始内存高于最大内存，启动时会自动按最大内存处理"
+                : $"启动参数：-Xmx{_selectedMaxMemory.Mb}m -Xms{_selectedMinMemory.Mb}m";
+
+        /// <summary>自定义 JVM 参数，一行一条。</summary>
+        public string JvmArgs
+        {
+            get => _jvmArgs;
+            set
+            {
+                if (!SetProperty(ref _jvmArgs, value ?? string.Empty) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.JvmArgs = _jvmArgs;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>版本隔离：每个版本使用独立的 saves / mods / config 目录。</summary>
+        public bool VersionIsolation
+        {
+            get => _versionIsolation;
+            set
+            {
+                if (!SetProperty(ref _versionIsolation, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.VersionIsolation = value;
+                SettingsService.Save();
+                Serilog.Log.Information("版本隔离：{Enabled}", value ? "开" : "关");
+            }
+        }
+
+        /// <summary>禁用 IPv6（-Djava.net.preferIPv4Stack=true）。</summary>
+        public bool DisableIpv6
+        {
+            get => _disableIpv6;
+            set
+            {
+                if (!SetProperty(ref _disableIpv6, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DisableIpv6 = value;
+                SettingsService.Save();
+                Serilog.Log.Information("禁用 IPv6：{Enabled}", value ? "开" : "关");
+            }
+        }
+
+        /// <summary>垃圾回收器。</summary>
+        public SettingOption SelectedGcMode
+        {
+            get => _selectedGcMode;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedGcMode, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.GcMode = value.Key;
+                SettingsService.Save();
+                Serilog.Log.Information("GC 模式已设为 {Mode}", value.Key);
+            }
+        }
+
+        /// <summary>游戏窗口宽度。</summary>
+        public int WindowWidth
+        {
+            get => _windowWidth;
+            set
+            {
+                if (!SetProperty(ref _windowWidth, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.WindowWidth = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>游戏窗口高度。</summary>
+        public int WindowHeight
+        {
+            get => _windowHeight;
+            set
+            {
+                if (!SetProperty(ref _windowHeight, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.WindowHeight = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>是否全屏启动（开启后忽略窗体宽高）。</summary>
+        public bool StartFullscreen
+        {
+            get => _startFullscreen;
+            set
+            {
+                if (!SetProperty(ref _startFullscreen, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.StartFullscreen = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>启动游戏后对启动器自身执行的动作。</summary>
+        public SettingOption SelectedAfterLaunchAction
+        {
+            get => _selectedAfterLaunchAction;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedAfterLaunchAction, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.AfterLaunchAction = value.Key;
+                SettingsService.Save();
+                Serilog.Log.Information("启动后行为已设为 {Action}", value.Key);
+            }
+        }
+
+        // ===== 网络：下载 =====
+
+        /// <summary>使用 BMCLAPI 镜像（国内加速）。</summary>
+        public bool UseBmclMirror
+        {
+            get => _useBmclMirror;
+            set
+            {
+                if (!SetProperty(ref _useBmclMirror, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.UseBmclMirror = value;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(DownloadSourceText));
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+
+                // 立即生效：镜像开关会马上影响后续所有下载的 URL 改写
+                SettingsService.ApplyDownloadSettings();
+            }
+        }
+
+        /// <summary>下载并发数。</summary>
+        public int DownloadThreads
+        {
+            get => _downloadThreads;
+            set
+            {
+                if (!SetProperty(ref _downloadThreads, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadThreads = value;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+                Serilog.Log.Information("下载并发已设为 {Count}", value);
+            }
+        }
+
+        /// <summary>下载失败重试次数。</summary>
+        public int DownloadRetryCount
+        {
+            get => _downloadRetryCount;
+            set
+            {
+                if (!SetProperty(ref _downloadRetryCount, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadRetryCount = value;
+                SettingsService.Save();
+                SettingsService.ApplyDownloadSettings();
+            }
+        }
+
+        /// <summary>下载源的一句话说明。</summary>
+        public string DownloadSourceText =>
+            _useBmclMirror
+                ? "BMCLAPI 镜像：国内节点，速度通常更快，但更新可能略滞后于官方"
+                : "官方源：直接连 Mojang，版本信息最新，国内访问可能较慢";
+
+        /// <summary>概览面板用的下载源摘要。</summary>
+        public string DownloadSourceSummary =>
+            $"{(_useBmclMirror ? "BMCLAPI 镜像" : "官方源")} · {_downloadThreads} 线程";
 
         // ===== 个性化：主题色 / 渐变色 / 背景图 =====
 
@@ -678,6 +1059,39 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             // 与启动日志横幅共用同一份展示逻辑（形如 "1.0.4" 或 "1.0.4.1"，不含 SourceLink 的 "+<commit>"）
             return App.GetDisplayVersion();
+        }
+
+        /// <summary>
+        /// 按本机内存自动挑一档最大内存：取本机内存的一半，向下就近落到已有档位。
+        ///
+        /// 之所以留一半给系统和其他程序 —— 把 -Xmx 顶到物理内存上限，
+        /// 游戏跑起来后系统会因为换页而整体变卡。
+        /// </summary>
+        private void AutoConfigureMemory()
+        {
+            try
+            {
+                var totalMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024;
+                if (totalMb <= 0)
+                {
+                    Serilog.Log.Warning("自动配置内存失败：读不到本机内存大小");
+                    return;
+                }
+
+                var best = MemoryOptions.LastOrDefault(o => o.Mb <= totalMb / 2);
+                if (best is null)
+                {
+                    Serilog.Log.Warning("自动配置内存失败：本机内存过小（{Total} MB）", totalMb);
+                    return;
+                }
+
+                SelectedMaxMemory = best;
+                Serilog.Log.Information("已按本机内存（{Total} MB）自动设为 {Mb} MB", totalMb, best.Mb);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "自动配置内存失败");
+            }
         }
 
         private void OnChangeTheme(string? parameter)

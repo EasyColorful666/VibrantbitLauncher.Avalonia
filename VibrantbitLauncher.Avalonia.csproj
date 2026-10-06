@@ -11,9 +11,13 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.5.12</Version>
+    <Version>1.0.5.16</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
+    <!-- 目标平台固定 win-x64：决定构建输出目录（bin/<cfg>/net10.0/win-x64/），
+         也决定发布时挑哪一套原生库（libSkiaSharp / av_libglesv2）。
+         千万不要删 —— 删掉后输出目录会悄悄变成 bin/<cfg>/net10.0/，
+         结果就是「编译成功但跑到的是旧 exe」这种极难排查的假象。 -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
@@ -29,15 +33,11 @@
 
     <!--  ==================== 体积控制  ====================  -->
 
-    <!-- 单文件打包时压缩内容，解压发生在首启，换来的体积收益接近腰斩 -->
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-
     <!-- 只保留英文卫星资源：其余 12 套 *.resources.dll 不再落地。
          界面文案本来就硬编码在 XAML 里，不依赖这些本地化资源 -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 
-    <!-- 不把依赖包自带的 .pdb / .xml 文档复制进发布目录：
-         libSkiaSharp.pdb(84MB) + libHarfBuzzSharp.pdb(20MB) 是发布目录里最大的两块 -->
+    <!-- 不把依赖包自带的 .pdb / .xml 文档当成「引用附属文件」复制（走的是 RAR 任务） -->
     <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
 
     <!-- 不需要 XML 文档产物 -->
@@ -55,8 +55,44 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!--
+      单文件压缩（EnableCompressionInSingleFile）只在「独立部署」下可用，
+      框架依赖发布时会被 SDK 拦下来（NETSDK1176）。
+      实测框架依赖的单文件是 ~41MB，改成独立部署再压缩反而更大，
+      所以这里保持框架依赖，不启用压缩。
+    -->
   </PropertyGroup>
+
+  <!--
+    清掉发布目录里不该出现的东西。两类：
+
+    1) 上游包误带的测试框架
+       MinecraftLaunch.Base 的 nuspec 把 xunit / Microsoft.NET.Test.Sdk /
+       Microsoft.CodeCoverage 写成了运行时依赖，于是 xunit.v3.*、
+       Microsoft.TestPlatform.*、Microsoft.VisualStudio.TestPlatform.*、testhost.dll
+       都会被复制进发布目录（约 2.1MB），对本应用毫无用处。
+
+    2) 原生库的符号文件
+       libSkiaSharp.pdb(80MB) + libHarfBuzzSharp.pdb(20MB) 是通过
+       runtimes/*/native 下的运行时资产带进来的，AllowedReferenceRelatedFileExtensions
+       管不到它们（那只作用于 RAR 任务）。
+
+    按文件名 / 扩展名匹配，不锁版本号，上游升级也不会失效。
+  -->
+  <Target Name="TrimPublishPayload" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish
+          Remove="@(ResolvedFileToPublish)"
+          Condition="
+            '%(Extension)' == '.pdb' or
+            $([System.String]::Copy('%(Filename)').StartsWith('xunit.')) or
+            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.TestPlatform')) or
+            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.TestPlatform')) or
+            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.CodeCoverage')) or
+            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.CodeCoverage')) or
+            '%(Filename)' == 'testhost'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <!-- Avalonia 核心 -->

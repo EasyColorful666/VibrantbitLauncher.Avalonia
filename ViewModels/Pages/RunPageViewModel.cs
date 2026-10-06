@@ -420,6 +420,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 else
                 {
                     Avalonia.Threading.Dispatcher.UIThread.Invoke(() => ShowSuccess("Minecraft 已启动"));
+
+                    // 确认游戏真的起来了（不是秒退）再执行「启动后行为」，
+                    // 否则会把用户的启动器一起关掉而游戏根本没开起来。
+                    ApplyAfterLaunchAction();
                 }
 
                 Diag("=== Launch setup complete, waiting for process ===");
@@ -558,13 +562,44 @@ namespace VibrantbitLauncher.ViewModels.Pages
             var nativesDir = Path.Combine(mcFolder, "versions", versionId, "natives");
             Directory.CreateDirectory(nativesDir);
 
-            // 版本隔离：每个版本使用独立的游戏目录（saves/mods/config 等）
-            var gameDir = Path.Combine(mcFolder, "versions", versionId);
-            Directory.CreateDirectory(gameDir);
-            diag($"Version isolation gameDir: {gameDir}");
+            // 启动配置（设置页「启动」分类）：
+            // 全部先夹紧再使用 —— 用户可能手改 settings.json 写出 0 / 负数，
+            // -Xmx0m 之类会让 JVM 直接起不来，而报错信息完全看不出是配置问题。
+            var cfg = SettingsService.Current;
+            var maxMb = Math.Clamp(cfg.MaxMemoryMb, 512, 65536);
+            var minMb = Math.Clamp(cfg.MinMemoryMb, 128, Math.Max(128, maxMb));
 
-            psi.ArgumentList.Add("-Xmx2048m");
-            psi.ArgumentList.Add("-Xms512m");
+            // 版本隔离：开启时每个版本使用独立的游戏目录（saves / mods / config 等）
+            var gameDir = cfg.VersionIsolation
+                ? Path.Combine(mcFolder, "versions", versionId)
+                : mcFolder;
+            Directory.CreateDirectory(gameDir);
+            diag($"Version isolation: {cfg.VersionIsolation}, gameDir: {gameDir}");
+
+            psi.ArgumentList.Add($"-Xmx{maxMb}m");
+            psi.ArgumentList.Add($"-Xms{minMb}m");
+            diag($"Memory: -Xmx{maxMb}m -Xms{minMb}m, GC={cfg.GcMode}, IPv4Only={cfg.DisableIpv6}");
+
+            // 垃圾回收器：不指定时交给 JVM 自己决定（新版 JVM 默认就是 G1）
+            switch (cfg.GcMode)
+            {
+                case "G1GC":
+                    psi.ArgumentList.Add("-XX:+UseG1GC");
+                    break;
+                case "ZGC":
+                    psi.ArgumentList.Add("-XX:+UseZGC");
+                    break;
+                case "Parallel":
+                    psi.ArgumentList.Add("-XX:+UseParallelGC");
+                    break;
+                case "Serial":
+                    psi.ArgumentList.Add("-XX:+UseSerialGC");
+                    break;
+            }
+
+            // 禁用 IPv6：部分网络环境下 Java 会优先走 AAAA 记录而连不上服务器
+            if (cfg.DisableIpv6)
+                psi.ArgumentList.Add("-Djava.net.preferIPv4Stack=true");
 
             // 离线账户皮肤：把本地皮肤文件路径通过 JVM 系统属性传给游戏，
             // 配合支持自定义皮肤的加载器（CustomSkinLoader / SkinPort 等）在游戏内生效。
@@ -599,11 +634,43 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     .Replace("${classpath}", classpath);
                 psi.ArgumentList.Add(arg);
             }
+
+            // 用户自定义 JVM 参数：一行一条，'#' 开头视为注释。
+            // 放在 -cp 之前，这样用户可以用 -Dxxx=yyy 之类覆盖上面的默认值。
+            foreach (var rawLine in (cfg.JvmArgs ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var custom = rawLine.Trim();
+                if (custom.Length == 0 || custom.StartsWith("#"))
+                    continue;
+
+                psi.ArgumentList.Add(custom);
+            }
+
             psi.ArgumentList.Add("-cp");
             psi.ArgumentList.Add(classpath);
             psi.ArgumentList.Add(mainClass);
 
-            foreach (var arg in gameArgs)
+            // 版本 JSON 里自带的窗体参数要先剔除：值是它的下一个元素，必须连值一起跳过，
+            // 否则会留下一个游离的位置参数。剔除后统一由设置页的窗体大小决定。
+            var cleanedGameArgs = new List<string>(gameArgs.Count);
+            for (var i = 0; i < gameArgs.Count; i++)
+            {
+                var a = gameArgs[i];
+                if (a is "--width" or "--height")
+                {
+                    i++;
+                    continue;
+                }
+                if (a == "--fullscreen")
+                    continue;
+
+                cleanedGameArgs.Add(a);
+            }
+
+            var winW = Math.Clamp(cfg.WindowWidth, 320, 7680);
+            var winH = Math.Clamp(cfg.WindowHeight, 240, 4320);
+
+            foreach (var arg in cleanedGameArgs)
             {
                 var replaced = arg
                     .Replace("${auth_player_name}", accName)
@@ -615,10 +682,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     .Replace("${assets_index_name}", assetsIndex)
                     .Replace("${user_type}", accType)
                     .Replace("${version_type}", "release")
-                    .Replace("${resolution_width}", "854")
-                    .Replace("${resolution_height}", "480");
+                    .Replace("${resolution_width}", winW.ToString())
+                    .Replace("${resolution_height}", winH.ToString());
                 psi.ArgumentList.Add(replaced);
             }
+
+            // 窗体大小 / 全屏：1.13 以前的版本用的是老式 minecraftArguments，
+            // 其 game 参数数组是空的（我们只补了空的 arguments.game），
+            // 所以这两个参数必须由启动器显式传入。
+            if (cfg.StartFullscreen)
+            {
+                psi.ArgumentList.Add("--fullscreen");
+            }
+            else
+            {
+                psi.ArgumentList.Add("--width");
+                psi.ArgumentList.Add(winW.ToString());
+                psi.ArgumentList.Add("--height");
+                psi.ArgumentList.Add(winH.ToString());
+            }
+            diag($"Window: {(cfg.StartFullscreen ? "fullscreen" : $"{winW}x{winH}")}");
 
             // 版本隔离：显式添加 --gameDir 参数（确保游戏使用版本独立目录）
             if (!psi.ArgumentList.Contains("--gameDir"))
@@ -679,6 +762,45 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// 按设置页「主界面 · 启动后行为」对启动器自身执行动作。
+        ///
+        /// 取值：None（不动）/ Minimize（最小化）/ Close（关闭启动器）。
+        /// 关闭走 <c>Window.Close()</c> 而不是 <c>AppLifetime.Shutdown()</c>：
+        /// 前者会正常触发主窗口的关闭流程（托盘 / 退出清理），后者是硬退出。
+        /// </summary>
+        private void ApplyAfterLaunchAction()
+        {
+            var action = SettingsService.Current.AfterLaunchAction;
+            if (string.IsNullOrWhiteSpace(action) || action.Equals("None", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    var window = AppLifetime.MainWindow;
+                    if (window is null)
+                        return;
+
+                    if (action.Equals("Minimize", StringComparison.OrdinalIgnoreCase))
+                    {
+                        window.WindowState = Avalonia.Controls.WindowState.Minimized;
+                        Serilog.Log.Debug("[启动] 启动后行为：已最小化启动器");
+                    }
+                    else if (action.Equals("Close", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Serilog.Log.Debug("[启动] 启动后行为：关闭启动器");
+                        window.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "[启动] 启动后行为执行失败");
+                }
+            });
         }
 
         private void ShowError(string msg) =>

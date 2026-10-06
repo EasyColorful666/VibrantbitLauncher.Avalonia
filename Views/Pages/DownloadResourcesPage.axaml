@@ -81,6 +81,7 @@
         <!--  资源列表  -->
         <Grid Grid.Row="2">
             <ListBox x:Name="listBox"
+                     Classes="smoothScroll"
                      Background="Transparent"
                      BorderThickness="0"
                      ItemsSource="{Binding ModrinthMods}"

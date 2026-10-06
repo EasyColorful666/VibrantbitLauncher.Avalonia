@@ -95,7 +95,35 @@
         <Setter Property="BoxShadow" Value="0 6 18 0 #24000000" />
     </Style>
 
-    <!--  ==================== 4. 例外：保持原样  ====================  -->
+    <!--  ==================== 4. 平滑滚动（按需挂载）  ====================  -->
+
+    <!--
+        给滚动容器加 Classes="smoothScroll"，滚轮 / 键盘翻页改位移时走补间，
+        而不是一格一格硬跳。
+
+        故意不做成全局：拖动滚动条时补间会带来「跟不上手」的拖影感，
+        只有内容较长、以阅读/浏览为主的列表才适合开。
+
+        注意 ListBox / ItemsControl 的滚动条在控件模板内部，
+        挂在 ListBox 上的类名要用 /template/ 选到里面那层 ScrollViewer。
+    -->
+    <Style Selector="ScrollViewer.smoothScroll">
+        <Setter Property="Transitions">
+            <Transitions>
+                <VectorTransition Property="Offset" Duration="0:0:0.26" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ListBox.smoothScroll /template/ ScrollViewer">
+        <Setter Property="Transitions">
+            <Transitions>
+                <VectorTransition Property="Offset" Duration="0:0:0.26" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <!--  ==================== 5. 例外：保持原样  ====================  -->
 
     <!--
         ScrollBar 的行按钮（RepeatButton）尺寸只有十几像素，

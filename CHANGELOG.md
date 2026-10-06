@@ -6,6 +6,270 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
+## [1.0.5.16] - 2026-10-06
+
+大幅完善设置页面：左栏由「主页 / 个性化 / 其他」三个分类扩成
+**主页 / 启动 / 个性化 / 网络 / 日志 / 关于** 六个分类，并把新增的启动与下载设置真正接进游戏启动链路。
+
+### 新增
+
+- **启动 · Java 虚拟机与内存**：Java 版本选择（带「重新检测」）、最大内存（-Xmx）/ 初始内存（-Xms）
+  下拉（默认 2G/1G，可「自动推荐」按本机内存一半挑档）、附加 JVM 参数多行输入（一行一条，`#` 开头忽略）。
+- **启动 · 游戏目录**：Minecraft 文件夹可选可打开；**版本隔离**开关（每个版本用独立 saves/mods/config）。
+- **启动 · 高级**：禁用 IPv6（`-Djava.net.preferIPv4Stack=true`）、GC 模式（自动/G1GC/ZGC/Parallel/Serial）、
+  全屏启动、Minecraft 窗体大小（宽×高，改后同时用于 `${resolution_width/height}` 与 `--width/--height`）。
+- **个性化 · 主界面**：启动游戏后对启动器自身的行为（不处理 / 最小化 / 关闭）——只在游戏进程确实起来后才执行。
+- **网络 · 下载**：BMCLAPI 镜像开关（改动立即影响后续所有下载的 URL 改写）、下载线程数、失败重试次数。
+- **日志分类**独立成页：记录等级、保留天数、是否输出到调试器、日志目录与打开/导出/清空、最近日志列表。
+- **关于分类**：版本号、简介与致谢。
+
+### 改进
+
+- **启动链路全部接入用户设置**：内存、GC、IPv6、自定义 JVM 参数、窗体大小 / 全屏、版本隔离
+  原先都写死在代码里，现在一律读配置（启动日志会打印实际生效的参数）。
+- 设置项改动即落盘（`settings.json`），初始化回填控件时用抑制标志挡住无意义的重复保存。
+- 新增 `Models/SettingOption.cs`（通用「键-显示名」选项）与内存档位模型，供各下拉复用。
+- 下载并发数改为读配置（原版安装器的并发也从 10 固定值改为跟随设置）。
+
+### 修复
+
+- **设置页「关于」图标用了不存在的 `FASymbol` 成员 `Info`**，导致 XAML 编译报
+  `AVLN3000: Unable to find suitable setter ... for property Symbol`。已改为合法成员 `Help`。
+  注：增量构建会跳过 XAML 校验、看不到该错误，需完整重建才会暴露。
+
+
+
+修复安装 1.13 以前的老版本（1.12.2 等）时立刻报
+「Operation is not valid due to the current state of the object.」的问题。
+
+### 修复
+
+- **老版本（1.13 以前）装不上、也列不出来**。根因在 MinecraftLaunch 4.0.7 的解析器：
+  `MinecraftParser.IsVanilla()` 拿版本 JSON 里的 `arguments` 直接调
+  `JsonElement.TryGetProperty("game")`，而 1.13 以前的版本用的是老式的
+  `minecraftArguments` 字符串、**根本没有 `arguments` 字段**；此时该 JsonElement 的
+  ValueKind 是 Undefined，System.Text.Json 会抛 `InvalidOperationException`，
+  文案正是上面那句。同一个 bug 还存在于 `GameArgumentParser` / `JvmArgumentParser`
+  （它们也**无条件**对 `Arguments` 调 TryGetProperty），所以老版本连启动都会炸。
+
+- **修法：给缺 `arguments` 的版本 JSON 补一个 `"arguments": {"game": []}`**
+  （见新增的 `Helpers/VersionJsonNormalizer.cs`）。库没有留出「JSON 落盘后、解析前」的钩子，
+  所以新写了 `Services/VanillaDownloader.cs`——按 `VanillaInstaller` 同样的步骤走一遍：
+  下载版本 JSON → 规范化 → 落盘 → 交给库的 `MinecraftParser` 解析 → 交给库的
+  `MinecraftResourceDownloader` 下载 client jar / 库 / 资源索引与资源对象。
+  重活仍在库里，新增的只有「下载 + 修补 + 解析」这三步。
+
+- **补的 `arguments` 里只放 `game`、不放 `jvm`**。这是踩出来的：`JvmArgumentParser`
+  靠「有没有 `jvm` 键」区分新旧两套 JVM 参数，一旦写了 `"jvm": []` 就会走现代分支，
+  只吐一个 `-cp`、**丢掉 `-Djava.library.path=${natives_directory}`**，
+  老版本进游戏会直接找不到 LWJGL 原生库。留空键即回到老式分支，参数与官方启动器一致
+  （实机核对：1.12.2 生成 23 条参数，含 `-Djava.library.path`、`--username`、
+  `--version 1.12.2`、`--assetIndex 1.12`、`--accessToken`）。
+
+- **已经装好的老版本会在启动时被自动修复**。App 启动的第 ⑨ 步原本只修 JSON 的
+  `+HHMM` 时区格式，现在改成统一的 `NormalizeVersionJsons()`：顺带补 `arguments`。
+  这样别家启动器留下的老版本 JSON 也能被正常枚举与启动（否则运行页 /
+  版本管理页的 `MinecraftParser.GetMinecrafts()` 会整个崩掉）。
+
+### 改进
+
+- 原版安装的进度文案改为「下载版本信息 / 解析版本 / 下载文件 n/m / 安装完成」，
+  并恢复了速度显示（自实现安装器同样回调 `Speed`）。
+
+### 说明
+
+- 改动文件：`Helpers/VersionJsonNormalizer.cs`（新增）、`Services/VanillaDownloader.cs`（新增）、
+  `ViewModels/Pages/InstallPageViewModel.cs`、`App.axaml.cs`。
+- 实测：1.12.2 原版安装 8 秒完成、26.4-snapshot-2 原版安装 3 秒完成（均已缓存），
+  启动日志无任何异常；版本列表能解析出 3 个已装版本。
+
+
+## [1.0.5.14] - 2026-10-06
+
+本版修掉安装页「安装」按钮会被误判禁用的问题，并让四张加载器卡片在加载期间
+有正确的占位文案与勾选状态。
+
+### 修复
+
+- **「安装」按钮不再被误判禁用**。原判断是 `CanInstall => !IsLoading`，而 `IsLoading` 是个
+  「什么都算」的总开关，进页面拉取加载器版本列表时它也是 `true`，于是刚进页面那几秒按钮就是灰的。
+  现在把忙碌状态拆成两个：
+
+  - `IsLoadingVersions`：正在拉取 Forge / Fabric / NeoForge / Quilt 的版本列表；
+  - `IsInstalling`：正在执行安装。
+
+  按钮只看后者：`CanInstall => !IsInstalling`——**只在安装中禁用，其它时候一律可用**。
+  「刷新」按钮两者都看（`CanRefresh => !IsLoadingVersions && !IsInstalling`）。
+  另保留只读的 `IsLoading = IsLoadingVersions || IsInstalling` 供「有没有在忙」的语义使用。
+
+- **`IsInstalling` 永远会被复位**。原先整个安装流程只有开头一次 `IsLoading = true`、结尾一次
+  `IsLoading = false`，中间好几处网络调用（Java 探测、版本清单、加载器枚举）都在 `try` 之外；
+  只要其中任一抛异常，标志位就从 `async void` 命令里逃逸出去、永远停在 `true`，按钮就**永久**灰掉。
+  现在安装入口拆成 `InstallAsync`（只负责占用 / 释放标志，`try / catch / finally` 兜死）
+  与 `InstallCoreAsync`（真正的流程），中途的每个 `IsLoading = false; return;` 都交给 `finally`。
+
+- **连续切换版本时不再互相串台**。`SetMcVersion` 是 `async void`，`await` 期间用户可能又点了
+  另一个版本；旧那次加载回来后会拿过期数据去改界面（勾选框被错误禁用、占位文案显示成别的版本的状态）。
+  现在加了版本令牌 `_loadToken`，回来时令牌变了就直接丢弃结果；同时换 VM 时**先退订旧的
+  `PropertyChanged`**，避免被替换掉的 VM 继续触发刷新。
+
+### 改进
+
+- **加载期间列表占位文案改为「正在加载中」**。原先只要列表为空就显示「该版本暂无可用版本」，
+  而列表在拉取完成前本来就是空的，所以加载中看到的是「没有可用版本」——
+  更糟的是首次进入页面时代码还没刷过占位文案，显示的可能是**上一个版本残留的状态**。
+  现在：正在拉取 → 「正在加载中」；拉取结束仍然为空 → 「该版本暂无可用版本」。
+  改版本时也会先把加载跑起来（`vm.Load()` 同步执行到内部第一个 `await`，`IsLoadingVersions` 已置 `true`）
+  再刷占位文案，所以不会先闪一下上一个版本的残留文案。
+
+- **加载器勾选框与列表状态对齐**。四个 `CheckBox` 的可用性统一由 `UpdateLoaderAvailability()` 计算，
+  优先级从高到低：
+
+  1. 版本列表还没拉完 → **四个框全部禁用**（加载好之前不给勾）；
+  2. 该加载器在这个版本下没有可选版本（404 或列表为空）→ 禁用
+     （例如 1.20.1 的 NeoForge 列表为空，勾选框直接灰掉，不会让用户勾了却选不出东西）；
+  3. 共存互斥规则（沿用原 WPF 版语义）：Forge 挡住 Fabric / Quilt；Fabric 挡住其余全部；
+     NeoForge 挡住 Fabric / Quilt；Quilt 挡住其余全部。已被勾中的框始终保持可用，否则没法取消。
+
+  顺带把原来「勾谁就手工关谁」的 8 个 `Checked/Unchecked` 处理器合并成一个 `OnLoaderToggled()`；
+  点「刷新」后若某个已勾选的加载器变成没有版本，会自动取消勾选。
+
+### 说明
+
+- 实机验证（`VBL_SMOKE` 跳安装页 + `VBL_PROBE` 每 120ms 采样，日志 `logs/vibrantbit-*.log`）：
+
+  - 加载中：`cb=FFFF btn=true/true`，四张卡片全是「正在加载中」，**安装按钮全程可用**；
+  - 加载完成：`cb=TFFF`（Forge 已勾选 → Fabric/Quilt 被互斥挡住，NeoForge 因 0 个版本禁用），
+    NeoForge 卡片显示「该版本暂无可用版本」，其余卡片占位隐藏；
+  - 点「刷新」：立刻回到 `cb=FFFF` + 「正在加载中」，加载完自动恢复；
+  - 模拟 `IsInstalling = true`：`btn=false/false`；置回 `false` 后立刻 `btn=true/true`。
+
+- 探针代码与 `VBL_SMOKE` 冒烟钩子验证完已全部删除（全局 grep `PROBE` = 0）。
+
+
+## [1.0.5.13] - 2026-10-06
+
+本版给「下载资源」页加上平滑滚动，并修回一个会让构建输出跑到别处、从而「跑的其实是旧 exe」的 csproj 隐患。
+
+### 新增
+
+- **下载资源页平滑滚动**：`DownloadResourcesPage` 的资源列表加上 `Classes="smoothScroll"`，
+  滚轮 / 键盘翻页时的位移由硬跳改为 260ms `CubicEaseOut` 补间。
+
+  - 实现方式：`Styles/Animations.axaml` 里给 `Offset` 挂 `VectorTransition`。
+    注意 `ListBox` 的滚动条在**控件模板内部**，挂在 `ListBox` 上的类名要用
+    `ListBox.smoothScroll /template/ ScrollViewer` 才选得到里面那层 `ScrollViewer`。
+  - 故意**不做成全局**：拖动滚动条时补间会带来「跟不上手」的拖影感，
+    只有内容较长、以浏览为主的列表才适合开。其他页面想开只需加一个 `Classes="smoothScroll"`。
+  - 实测数据（给 300 项列表设置 `Offset = 600` 后每 45ms 采样）：
+    `0 → 262.5 → 448.2 → 548.7 → 590.6 → 599 → 600`，确认是补间而不是跳变。
+  - 与页内「滚到底自动加载下一页」不冲突：那里的 `_loadMoreRequested` 标记本来就防连发。
+
+### 修复
+
+- **`FolderProfile.pubxml` 关掉 `PublishReadyToRun`**：这才是「用发布档案发布出来还是 70MB」的真正原因。
+
+  - `PublishReadyToRun` 会预编译 IL 到本地代码塞进单文件，冷启动略快，但体积暴涨：
+    **开 73.6MB · 关 42.6MB**（同一份代码实测，差额约 31MB）。
+  - 1.0.5.12 里对 csproj 做的那些体积优化（去测试框架、去原生 PDB、去未用依赖）
+    在发布档案下**同样生效**，只是被 R2R 的 31MB 盖住了，看起来「没变化」。
+  - 一并把 `EnableCompressionInSingleFile` 显式写 false 并写清原因，避免以后被误开。
+
+- **`<RuntimeIdentifier>win-x64</RuntimeIdentifier>` 补回**（1.0.5.12 整理 csproj 时被误删）。
+
+  - 影响远不止「发布时挑哪套原生库」：RID 一旦缺失，**构建输出目录会从
+    `bin/<配置>/net10.0/win-x64/` 变成 `bin/<配置>/net10.0/`**。
+    结果是编译一路显示成功，但实际运行的仍是旧目录里的旧 exe —— 表现成
+    「改的代码完全没生效、日志里也没有新增的调试输出」，极难排查（本轮真的踩了一次）。
+  - 已在 csproj 里就地写了注释说明这一点，避免以后再被顺手删掉。
+
+## [1.0.5.12] - 2026-10-06
+
+本版做两件事：**把发布体积砍下来**，以及**给整个界面补上动效**（页面切换过渡、按钮点击缩放、列表与卡片反馈）。
+
+### 新增
+
+- **页面切换过渡动画**：新增 `Helpers/FluidPageTransition.cs`（自定义 `IPageTransition`），
+  旧页淡出并轻微收缩（200ms），新页自下方浮起 + 淡入 + 从 98.2% 推到 100%（300ms），
+  交叉的那几帧有明确的层次感，不是单纯叠两张半透明页面。
+
+  - 承载方式：主窗口里把 `FANavigationView.Content` 固定成一个
+    `TransitioningContentControl`（`_pageHost`），之后所有页面都写进它的 `Content`；
+    `NavigationService` 相应改为只认一个 `ContentControl` 宿主，
+    不再直接操作 `FANavigationView`。「换哪个页面」与「怎么演」因此彻底解耦。
+  - 没用自带 `PageSlide`（左右平移会让侧边栏切页产生「可以左右返回」的误导）
+    也没用自带 `CrossFade`（只有透明度，交叉帧会糊作一团）。
+
+- **窗口入场动画**：主窗口首次显示时整体淡入 + 从 98.5% 推到 100%（360ms）。
+  窗口底色是 Mica（透明），观感上像内容从系统材质里浮出来。
+
+- **`Helpers/AnimationHelper.cs`**：动效底层工具，把「透明度 + 缩放 + 纵向位移」的
+  组合动画收敛成一份实现，页面切换、分栏切换、窗口入场、点击反馈共用同一套节奏。
+
+- **`Helpers/InteractionFeedback.cs`**：点击反馈（按下缩到 0.97，松开用 `BackEaseOut` 弹回）。
+
+### 改进
+
+- **新增 `Styles/Animations.axaml`（交互动效规范）**，在 `App.axaml` 里置于 `Controls.axaml` 之后：
+
+  | 控件 | 效果 |
+  | --- | --- |
+  | `Button`（含 `ToggleButton` / `CheckBox` / `RadioButton`） | 悬停放大到 1.035，按下缩到 0.94（强调按钮 0.925），`BackEaseOut` 收尾带轻微过冲 |
+  | `ListBoxItem`（含 `ComboBoxItem`） | 按下缩到 0.985 |
+  | `Border.card` | 悬停升起阴影，只加高度不换颜色（卡片多数不可点击，改边框色会误导） |
+  | `Border.hoverCard` | 原有的悬停放大 1.06 之外，补上阴影抬升 |
+  | `RepeatButton` | 显式还原（`ScrollBar` 的行按钮只有十几像素，放大 3% 会糊） |
+  | `Button:disabled` | 显式还原，禁用态不参与缩放 |
+
+  - `TextBox` / `ComboBox` / `ToggleSwitch` / `Slider` / `ProgressBar` / `ProgressRing` /
+    `Expander` / `InfoBar` / `ContentDialog` / `SnackBar` / `ToolTip` / `ScrollBar`
+    由 FluentAvalonia 自带过渡，未重复添加。
+  - 侧边栏导航项（`FANavigationViewItem`）单独走代码挂载：它在控件模板里把
+    `RenderTransform` / `Transitions` 写死，Avalonia 的应用级样式优先级（3）压不过
+    控件模板（2），样式形同虚设；改成 `Animation` 优先级 + 局部 `RenderTransform` 才生效。
+
+- **`PageTransitionHelper`** 内部改用 `AnimationHelper`，分栏切换（下载中心 / 设置页）
+  的观感与新页面切换统一，并由「纯上浮 + 淡入」升级为「上浮 + 淡入 + 轻微推近」。
+
+### 修复
+
+- **发布目录体积**：`bin/Release/net10.0/publish` 从 **147 MB 降到 41 MB**。
+
+  - **剔除上游包误带的测试框架**：`MinecraftLaunch.Base` 的 nuspec 把
+    `xunit` / `Microsoft.NET.Test.Sdk` / `Microsoft.CodeCoverage` 声明成了运行时依赖，
+    于是 `xunit.v3.*`、`Microsoft.TestPlatform.*`、`Microsoft.VisualStudio.TestPlatform.*`、
+    `testhost.dll` 全都会被复制进发布目录（约 2.1 MB），对本应用毫无用处。
+    新增 `TrimPublishPayload` 目标按文件名前缀摘除，不锁版本号。
+  - **剔除原生库符号文件**：`libSkiaSharp.pdb`（80 MB）+ `libHarfBuzzSharp.pdb`（20 MB）
+    是通过 `runtimes/*/native` 运行时资产带进来的，
+    `AllowedReferenceRelatedFileExtensions` 管不到（那只作用于 RAR 任务），同样在
+    `TrimPublishPayload` 里按扩展名摘除。
+  - **移除两个从未用到的依赖**：`Avalonia.Fonts.Inter`（内置 Inter 字体约 1.9 MB，
+    界面字体实际是 Segoe UI Variable / 微软雅黑 / HarmonyOS Sans，
+    任何 `FontFamily` 都没引用过 Inter，`Program.cs` 里的 `.WithInterFont()` 一并去掉）、
+    `System.Management`（全项目没有任何 WMI 调用）。
+  - 单文件 exe：**48.6 MB → 40.6 MB**。
+  - **未开启剪裁**：本工程绑定走反射（`AvaloniaUseCompiledBindingsByDefault=false`），
+    剪裁会摘掉运行期才用到的属性元数据，症状是页面绑不上去而不是编译报错，风险远大于收益；
+    实测「独立部署 + 单文件压缩」反而更大（53 MB），因此保持框架依赖发布。
+  - Release 改为 `DebugType=none`（原来 `embedded` 会把 PDB 塞回 exe）。
+
+### 说明
+
+- **动效实现要点**（踩过的坑，写下来备用）：
+
+  1. `Animation.RunAsync` 的宿主**必须是 `Visual`**。Avalonia 的 `TransformAnimator` 会去
+     `visual.RenderTransform` 里按类型找对应的 `Scale` / `Translate` 子变换；
+     直接对 `ScaleTransform` 对象跑动画会抛
+     `InvalidCastException: Unable to cast object of type 'ScaleTransform' to type 'Visual'`。
+  2. 属性优先级是 `Animation(-1) > LocalValue(0) > StyleTrigger(1) > 控件模板(2) > 应用样式(3)`。
+     控件模板里写死的属性，应用级样式（含 `:pressed` 这类伪类）**永远压不过**，
+     只能靠代码动画或局部值。
+  3. 同优先级下按样式出现顺序生效，**后出现者胜出** ——
+     「禁用态 / 例外控件」的重置样式必须排在文件最后。
+  4. 动画基准值直接写成**终态** + `FillMode.None`，播完自动回落，不需要收尾赋值，
+     也不会把元素「钉」在动画值上。
+
 ## [1.0.5.11] - 2026-10-06
 
 本版修复「下载任务」页整片空白、向导里添加账户报错，以及账户弹窗的两个逻辑缺陷。

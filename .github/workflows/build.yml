@@ -1,0 +1,183 @@
+# =============================================================================
+# VibrantbitLauncher.Avalonia — 跨平台桌面构建工作流
+# 覆盖 6 个运行时目标（RID）：
+#   win-x64 / win-arm64 / linux-x64 / linux-arm64 / osx-x64 / osx-arm64
+#
+# 触发：
+#   - 推送到 main 分支（仅构建，不上传 Release）
+#   - 推送以 v 开头的 tag（构建 + 自动创建 GitHub Release）
+#   - 手动触发 (workflow_dispatch)
+#
+# 说明：
+#   各 RID 通过 `dotnet publish -r <rid>` 在命令行指定；
+#   csproj 中原本写死的 <RuntimeIdentifier>win-x64</RuntimeIdentifier> 已移除，
+#   发布目标完全由本工作流矩阵控制。
+#   macOS 的 Info.plist 版本号从 csproj 的 <Version> 动态读取（Read version 步骤）。
+# =============================================================================
+
+name: Build Desktop
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# 同一分支/PR 只保留最新一次运行，节省 CI 分钟
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: VibrantbitLauncher.Avalonia
+  CONFIGURATION: Release
+  DOTNET_VERSION: '10.0.x'
+  # 框架依赖单文件发布（与 csproj 设定一致）
+  SELF_CONTAINED: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 构建矩阵：每个 RID 在对应平台的 runner 上发布
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,    os: windows-latest }
+          - { rid: win-arm64,  os: windows-latest }
+          - { rid: linux-x64,  os: ubuntu-latest }
+          - { rid: linux-arm64, os: ubuntu-latest }
+          - { rid: osx-x64,    os: macos-latest }
+          - { rid: osx-arm64,  os: macos-latest }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore "VibrantbitLauncher.Avalonia.csproj"
+
+      # 从 csproj 的 <Version> 读取版本号，供 macOS Info.plist 使用（避免版本写死）
+      - name: Read version from csproj
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's|.*<Version>\([^<]*\)</Version>.*|\1|p' "VibrantbitLauncher.Avalonia.csproj" | head -n1)
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Detected version: $VERSION"
+
+      - name: Publish ${{ matrix.rid }}
+        shell: bash
+        run: |
+          dotnet publish "VibrantbitLauncher.Avalonia.csproj" \
+            -c "$CONFIGURATION" \
+            -r "${{ matrix.rid }}" \
+            --no-self-contained \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o "publish/${{ matrix.rid }}"
+
+      # macOS 需要打包成 .app 才能真正双击运行（含 Info.plist）
+      - name: Package macOS .app bundle
+        if: startsWith(matrix.rid, 'osx')
+        shell: bash
+        run: |
+          RID="${{ matrix.rid }}"
+          SRC="publish/$RID"
+          APP="dist/$APP_NAME.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp "$SRC/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+          chmod +x "$APP/Contents/MacOS/$APP_NAME"
+
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+            <dict>
+              <key>CFBundleName</key>
+              <string>VibrantbitLauncher</string>
+              <key>CFBundleDisplayName</key>
+              <string>VibrantbitLauncher</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.vibrantbit.launcher</string>
+              <key>CFBundleVersion</key>
+              <string>${APP_VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${APP_VERSION}</string>
+              <key>CFBundleExecutable</key>
+              <string>VibrantbitLauncher.Avalonia</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+            </dict>
+          </plist>
+          PLIST
+
+          tar -czf "dist/$APP_NAME-$RID.tar.gz" -C dist "$APP_NAME.app"
+
+      # Windows / Linux 直接把发布目录打包成 tar.gz（跨平台且保留 +x 权限）
+      - name: Package (non-macOS)
+        if: "!startsWith(matrix.rid, 'osx')"
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -czf "dist/$APP_NAME-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.rid }}
+          path: dist/${{ env.APP_NAME }}-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # 仅在推送 v* tag 时，把 6 个产物汇总成一个 GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -lh artifacts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*.tar.gz

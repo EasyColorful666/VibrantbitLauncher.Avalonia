@@ -37,6 +37,42 @@ namespace VibrantbitLauncher.Services
         public string MinecraftFolder { get; set; } = "./.minecraft";
         public string JavaPath { get; set; } = string.Empty;
 
+        // ===== 启动 · Java 虚拟机与内存 =====
+        /// <summary>最大堆内存（MB），对应 JVM 的 -Xmx。</summary>
+        public int MaxMemoryMb { get; set; } = 2048;
+        /// <summary>初始堆内存（MB），对应 JVM 的 -Xms。</summary>
+        public int MinMemoryMb { get; set; } = 512;
+        /// <summary>用户追加的 JVM 参数，一行一条，原样拼在 -cp 之前。</summary>
+        public string JvmArgs { get; set; } = string.Empty;
+
+        // ===== 启动 · 游戏目录 =====
+        /// <summary>版本隔离：每个版本使用独立的游戏目录（saves / mods / config 等）。</summary>
+        public bool VersionIsolation { get; set; } = true;
+
+        // ===== 启动 · 高级 =====
+        /// <summary>禁用 IPv6（加 -Djava.net.preferIPv4Stack=true）。IPv6 环境连不上服务器时开启。</summary>
+        public bool DisableIpv6 { get; set; }
+        /// <summary>Java 垃圾回收器：Default / G1GC / ZGC / Parallel / Serial。</summary>
+        public string GcMode { get; set; } = "Default";
+        /// <summary>游戏窗口宽度（同时用于 ${resolution_width} 占位符与 --width）。</summary>
+        public int WindowWidth { get; set; } = 854;
+        /// <summary>游戏窗口高度。</summary>
+        public int WindowHeight { get; set; } = 480;
+        /// <summary>是否以全屏启动游戏。</summary>
+        public bool StartFullscreen { get; set; }
+
+        // ===== 个性化 · 主界面 =====
+        /// <summary>启动游戏后对启动器自身执行的动作：None / Minimize / Close。</summary>
+        public string AfterLaunchAction { get; set; } = "None";
+
+        // ===== 网络 · 下载 =====
+        /// <summary>使用 BMCLAPI 镜像下载（国内加速）。</summary>
+        public bool UseBmclMirror { get; set; }
+        /// <summary>游戏文件下载并发数。</summary>
+        public int DownloadThreads { get; set; } = 10;
+        /// <summary>下载失败重试次数。</summary>
+        public int DownloadRetryCount { get; set; } = 4;
+
         // ===== 联机（EasyTier） =====
         /// <summary>EasyTier 中继节点地址，默认用社区免费共享节点。</summary>
         public string EasyTierRelayServer { get; set; } = "tcp://easytier.weiai.org.cn:11010";
@@ -221,6 +257,42 @@ namespace VibrantbitLauncher.Services
                 case OfflineAccount off:
                     RemoveOfflineAccount(off.Name);
                     break;
+            }
+        }
+
+        // ===== 下载（下载源 / 重试次数） =====
+
+        /// <summary>
+        /// 把下载相关设置应用到 MinecraftLaunch。
+        ///
+        /// 实测 <c>InitializeHelper.Initialize</c> 内部只是把参数写进 <c>DownloadManager</c> 的静态属性，
+        /// 可反复调用且立即生效（镜像开关会立刻影响 <c>DownloadManager.BmclApi.TryFindUrl</c> 的改写结果），
+        /// 所以设置页改完直接调一次即可，无需重启。
+        ///
+        /// 注意 BMCLAPI 的改写范围：launchermeta / piston-meta / libraries / resources / launcher.mojang.com
+        /// 会被换成 bmclapi2.bangbang93.com，但 <c>piston-data.mojang.com</c> 不在其覆盖内
+        /// （部分版本的 client.jar 仍走官方源）。
+        /// </summary>
+        public static void ApplyDownloadSettings()
+        {
+            try
+            {
+                MinecraftLaunch.InitializeHelper.Initialize(settings =>
+                {
+                    settings.MaxThread = 256;
+                    settings.MaxFragment = 128;
+                    settings.MaxRetryCount = Math.Clamp(Current.DownloadRetryCount, 0, 10);
+                    settings.IsEnableMirror = Current.UseBmclMirror;
+                    settings.IsEnableFragment = false;
+                });
+
+                Serilog.Log.Information("下载设置：下载源={Source} 重试={Retry} 次",
+                    Current.UseBmclMirror ? "BMCLAPI 镜像" : "官方源",
+                    Current.DownloadRetryCount);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "应用下载设置失败");
             }
         }
 
