@@ -56,3 +56,5 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 /.vs
+/.workbuddy/memory
+/SmokeTest.cs
