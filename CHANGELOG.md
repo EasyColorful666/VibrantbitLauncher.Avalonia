@@ -6,6 +6,120 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
+## [1.0.5.20] - 2026-10-07
+
+修复**发布包在 macOS / Linux 上无法直接使用**的问题，并给 macOS 包补上开箱即用的安装脚本。
+
+### 修复
+
+- **打包丢了可执行位**：Windows 文件系统没有「可执行位」，在 Windows 上打出来的 `.tar.gz`
+  里所有文件权限都是 0666、目录 0777 → 解压到 macOS 后 `.app` 的主可执行文件不可执行
+  （双击毫无反应），Linux 上 `./VibrantbitLauncher.Avalonia`、`./install.sh` 也都跑不起来。
+  修法：打包统一走 `make_tar` / `New-TarGz`，**检测到 GNU tar 就加 `--mode=u+rwx,go+rx` 强制 0755**；
+  只有 bsdtar（Windows 自带）时退化为原行为并明确警告。
+  - `.sh` 侧直接用 `tar`（Git Bash / Linux / macOS 上都是 GNU tar）；
+  - `.ps1` 侧优先用 Git 自带的 `C:\Program Files\Git\usr\bin\tar.exe`（GNU tar 1.35），
+    系统自带的 `System32\tar.exe` 是 bsdtar 3.8、不支持 `--mode`，仅在没有 Git 时兜底。
+  - 实测归档内权限由 `-rw-rw-rw-` 变为 `-rwxr-xr-x`（目录 0755）。
+- **`Info.plist` 带 UTF-8 BOM**：PS 5.1 的 `Set-Content -Encoding UTF8` 会写 BOM，plist 以 `EF BB BF`
+  开头，macOS 的 `plutil` 会判为非法格式。改为 UTF-8 **无 BOM** 落盘。
+- **`SHA256SUMS.txt` 带 UTF-8 BOM**：同样来自 PS 5.1 的 `-Encoding UTF8`。带 BOM 时
+  `sha256sum -c SHA256SUMS.txt` 在 Linux / macOS 上会直接失败（首行文件名被拼上了 BOM）。改为无 BOM。
+- **`install.sh` 的中文被写成问号**：PS 5.1 用 `-Encoding ASCII` 落盘，中文注释全成 `?`。改为 UTF-8 无 BOM。
+- **`SHA256SUMS.txt` 用了 CRLF 换行**：写文件时取了 `[Environment]::NewLine`，在 Windows 上是 `\r\n`，
+  于是 Linux / macOS 上 `sha256sum -c` 读到的文件名尾部多一个 `\r`，报
+  `No such file or directory`（十个包全报 FAILED）。改为 `\n`。
+- **Windows 的 zip 覆盖被环境的删除钩子打断**：`Compress-Archive` 覆盖同名文件时内部会先删一次，
+  而某些环境把「删除」改写成回收站操作并抛错（`SAFE_DELETE_FAIL_CLOSED`），
+  会让整个平台被标记为失败。改为**先用 `Remove-FileSafe` 清掉旧 zip**（删完复查是否真的没了），
+  并把 zip 生成失败降级为警告（tar.gz 已经出好，不受影响）。
+
+### 新增
+
+- **macOS 包内附 `install.command`（双击即执行）**，一次做完三件事：
+  ① `chmod +x` 补可执行位；② `xattr -dr com.apple.quarantine` 去掉下载隔离属性（绕过 Gatekeeper）；
+  ③ `codesign --force --deep --sign -` 做 **ad-hoc 自签名**。
+  > 第 ③ 步是硬性的：Apple Silicon 内核**拒绝执行未签名的 arm64 二进制**，
+  > 而在 Windows 上交叉发布的 osx-arm64 可执行文件没有签名，直接双击会闪退或提示「已损坏」。
+  > ad-hoc 签名属本地自签，不需要开发者证书、不需要联网。
+- **macOS 包内附 `README-macOS.txt`**：架构选择（M 系列 → osx-arm64 / Intel → osx-x64）、
+  装 .NET 10 Runtime（**macOS 上没有 "Desktop Runtime"，就是 Runtime**；Homebrew 装的可能需
+  `export DOTNET_ROOT=$(brew --prefix)/opt/dotnet/libexec`）、安装三步、四类常见故障的排查命令、卸载方式。
+- 两个脚本的头部注释与 `-h` 帮助补上 macOS 首次运行说明。
+
+### 说明
+
+- `publish-all.ps1` 侧改用 Git 自带的 GNU tar，并把打包拆成两步：`tar --mode=... --force-local -cf`
+  打成裸 tar，再用 .NET 的 `GZipStream` 压成 `.tar.gz`。绕开两个坑：
+  GNU tar 会把 `C:\…` 里的冒号当成「远程主机」语法（`Cannot connect to C: resolve failed`，用 `--force-local` 关掉）；
+  而 `-z` 会 fork 外部 `gzip.exe`，PowerShell 这边的 PATH 里没有 Git 的 `usr\bin`（`gzip: command not found`）。
+  `publish-all.sh` 侧不需要这层，GNU tar + `-z` 直接可用。
+- **本机仍只能实跑 win-x64**；osx / linux 六个平台只做了归档结构校验（权限位、BOM、`.app` 布局、
+  包内脚本存在）。macOS 上的实际启动需要真机验证。
+- 验证方式：`tar -tvzf` 看归档内权限位、`xxd` 看首字节（BOM / CR）、`sha256sum -c` 验全套哈希，
+  本次三个平台 7 个包全部通过；发布全量 7 平台一次跑通（退出码 0）。
+
+## [1.0.5.19] - 2026-10-07
+
+新增**多平台一键发布**能力：一条命令产出 7 个平台的可分发包，并把 CI 也统一到同一套脚本上。
+
+### 新增
+
+- **`publish-all.ps1`（Windows）与 `publish-all.sh`（Linux / macOS / Git Bash）**，两者功能等价：
+  一次产出 `win-x64` / `win-x86` / `win-arm64` / `linux-x64` / `linux-arm64` / `osx-x64` / `osx-arm64`。
+  逐 RID 发布 → 按平台打包 → 算 SHA256 → 打一张汇总表；单个平台失败不影响其它平台，退出码反映最终结果。
+  - 原始发布目录落在 `publish/<rid>/`，可分发包落在 `dist/`；
+  - `win-*` 出 `.tar.gz` + `.zip`（Windows 上双击解压更顺手）；
+  - `linux-*` 出 `.tar.gz`，包内附 `install.sh`（解压后 `sh install.sh` 赋可执行权限）；
+  - `osx-*` 额外组装 `VibrantbitLauncher.Avalonia.app`（含 `Info.plist`，版本号从 csproj 读）再打包；
+  - `dist/SHA256SUMS.txt` 汇总全部包的校验和。
+  - 可选参数：`-Rids`（只发部分平台）、`-SelfContained`（自带运行时）、`-Clean`、`-NoPackage`、`-NoTrim`。
+
+### 改进
+
+- **csproj 的 `<RuntimeIdentifier>` 改为条件默认**：`Condition="'$(RuntimeIdentifier)' == ''"` 时才回落 `win-x64`。
+  这样 `dotnet publish -r <rid>` 可以自由指定平台，而本地 `dotnet build` / F5 的输出目录仍固定为
+  `bin/<cfg>/net10.0/win-x64/`（避免出现「编译成功但跑到的是旧 exe」这种假象）。
+- **`TrimPlatformPayload` 从「仅 win-x64」泛化为「按 RID 剥掉其它平台的后端程序集」**：
+  - `win-*` → 去掉 X11 / FreeDesktop / DBus / Native / Metal
+  - `linux-*` → 去掉 Win32 / Win32.Automation / Native / Metal
+  - `osx-*` → 去掉 Win32 / Win32.Automation / X11 / FreeDesktop / DBus
+  - 设计器相关（`DesignerSupport` / `Remote.Protocol`）所有平台都去掉
+
+  实测每个平台再省 1.6 ~ 2.8 MB。逃生阀：`-p:SkipPlatformTrim=true`。
+- csproj 显式写出 `PublishReadyToRun=false` / `EnableCompressionInSingleFile=false`，
+  与 IDE 的发布配置文件（pubxml）行为对齐（此前只有 pubxml 里有，命令行靠默认值）。
+- **CI（`.github/workflows/build.yml`）改为直接调用 `publish-all.sh`**，不再自己维护第二套打包逻辑，
+  避免两套逻辑长期漂移；同时补上此前缺失的 **`win-x86`**，矩阵从 6 个 RID 扩到 7 个。
+- `.gitignore` 增加 `/publish/` 与 `/dist/`（都是几十 MB 的二进制产物）。
+
+### 说明
+
+- 发布模式仍是**框架依赖**（不含 .NET 运行时）。目标机器需要自备：
+  Windows → .NET 10 **Desktop** Runtime；Linux / macOS → .NET 10 Runtime。
+  想免装运行时，用 `-SelfContained` 重发（体积约 +20 MB）。
+- **实测 7 个平台（单文件 / 压缩包 / 平台剥离省下的体积）**：
+
+  | RID | 单文件 | 压缩包 | 剥离省下 |
+  |---|---|---|---|
+  | win-x64 | 35.8 MB | 15.4 MB | —（早已剥离） |
+  | win-x86 | 33.5 MB | 14.7 MB | 2.8 MB |
+  | win-arm64 | 34.5 MB | 14.8 MB | 2.8 MB |
+  | linux-x64 | 31.2 MB | 13.5 MB | 1.7 MB |
+  | linux-arm64 | 30.9 MB | 13.2 MB | 1.6 MB |
+  | osx-x64 | 35.9 MB | 16.2 MB | 2.7 MB |
+  | osx-arm64 | 36.0 MB | 16.2 MB | 2.8 MB |
+
+  全 7 个平台串行发布总耗时约 **72 秒**（本机增量实测）。
+- **只有 win-x64 能在本机实机验证**（实跑结果：日志 `VibrantbitLauncher 1.0.5.19 启动`，异常数 0，配置正常加载）。
+  其余 6 个平台做了结构校验（`.app` bundle 布局、`install.sh` 存在、载荷剥离清单），
+  但**没有在对应系统上真正启动过**。万一某个平台起不来，先用 `-NoTrim` 重发以排除平台剥离这个因素。
+- 写 `.ps1` 时踩到的两个环境坑（都已在脚本里处理）：
+  1. **Windows PowerShell 5.1 会按系统 ANSI 代码页解析「无 BOM 的 .ps1」**，中文注释会整体乱码并诱发语法错误
+     → 脚本必须存成 **UTF-8 with BOM**；
+  2. 某些执行环境把 `Remove-Item` 改写成「移到回收站」，可能**删成功了却仍然抛错**
+     → 删除后复查目录是否真的还在，只有还在才算失败。
+
 ## [1.0.5.18] - 2026-10-07
 
 继续精简发布体积：**37.9 MB → 35.8 MB**（单文件，−2.1 MB）。这次是**重写 `SkinService`、把

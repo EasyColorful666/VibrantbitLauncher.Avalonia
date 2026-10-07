@@ -58,3 +58,7 @@ nunit-*.xml
 /.vs
 /.workbuddy/memory
 /SmokeTest.cs
+
+# 多平台发布产物（由 publish-all.ps1 / publish-all.sh 生成，都是几十 MB 的二进制）
+/publish/
+/dist/

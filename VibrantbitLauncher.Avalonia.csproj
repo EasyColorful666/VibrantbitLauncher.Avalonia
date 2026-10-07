@@ -11,17 +11,37 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.5.18</Version>
+    <Version>1.0.5.20</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
-    <!-- 目标平台固定 win-x64：决定构建输出目录（bin/<cfg>/net10.0/win-x64/），
-         也决定发布时挑哪一套原生库（libSkiaSharp / av_libglesv2）。
-         千万不要删 —— 删掉后输出目录会悄悄变成 bin/<cfg>/net10.0/，
-         结果就是「编译成功但跑到的是旧 exe」这种极难排查的假象。 -->
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!--
+      目标平台：**默认** win-x64，但允许命令行覆盖。
+
+      为什么要带 Condition：`dotnet publish -r linux-x64` 传进来的是 MSBuild
+      全局属性，优先级高于本文件——所以无条件赋值其实也不会拦住它。
+      加 Condition 是为了让语义显式：只有「没人指定 RID」时才回落到 win-x64，
+      VS 里 F5（不传 -r）依旧落在 win-x64。
+
+      两条红线，千万别改：
+      1. **不要删掉这一行**。删了之后本地不带 -r 构建时输出目录会悄悄变成
+         bin/<cfg>/net10.0/（少了 win-x64 一层），结果是「编译成功但跑到的是旧 exe」
+         这种极难排查的假象。
+      2. **不要写成无条件赋值以外的怪写法**（比如放 PropertyGroup 外面），
+         否则 IDE 的发布配置文件（Properties/PublishProfiles/*.pubxml）会失效。
+
+      多平台一键发布见根目录 publish-all.ps1 / publish-all.sh。
+    -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
-    <!-- 不包含运行时 -->
+    <!-- 不包含运行时：产物里没有 coreclr/hostfxr/System.Private.CoreLib，
+         用户机器须自备 .NET 10 Desktop Runtime（见 CHANGELOG 说明）。 -->
+
+    <!-- 显式关掉 R2R。它会把 IL 预编译成本地代码塞进单文件，冷启动略快但体积暴涨
+         （历史实测 73.6MB vs 42.6MB），本项目更在意分发体积。
+         写在这里是为了让命令行发布与 IDE 的 pubxml 行为一致 -->
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
 
     <!--
       不开剪裁（PublishTrimmed=false）：本项目绑定走反射
@@ -95,37 +115,73 @@
   </Target>
 
   <!--
-    仅 win-x64：剥掉 Linux / macOS 专用后端与设计器程序集。
+    按 RID 剥掉「本平台永远不会加载」的其它平台后端与设计器程序集。
 
-    Avalonia.Desktop 会把**所有**平台后端一起带进发布目录，但 win-x64 上
-    UsePlatformDetect() 只会走 Win32 分支，下面这些永远不会被加载：
+    Avalonia.Desktop 会把**所有**平台后端一起带进发布目录，而运行时
+    UsePlatformDetect() 只会挑本平台那一套，其余的纯属白占地方：
 
-      Avalonia.X11                Linux X11 后端
-      Avalonia.FreeDesktop        Linux 桌面后端
-      Avalonia.FreeDesktop.AtSpi  Linux 无障碍（DBus/AT-SPI）
-      Tmds.DBus.Protocol          Linux DBus 协议栈
-      Avalonia.Native             macOS 后端
-      Avalonia.Metal              macOS Metal 渲染
-      Avalonia.DesignerSupport    设计器专用（运行时不需要）
-      Avalonia.Remote.Protocol    设计器远程协议
-      System.Diagnostics.EventLog.Messages  事件日志资源（本应用不写事件日志）
+      Avalonia.Win32
+      Avalonia.Win32.Automation                    Windows 后端 / UIA
+      Avalonia.X11
+      Avalonia.FreeDesktop
+      Avalonia.FreeDesktop.AtSpi
+      Tmds.DBus.Protocol                           Linux X11 / 桌面集成 / DBus 无障碍 / DBus 协议栈
+      Avalonia.Native
+      Avalonia.Metal                               macOS 后端 / Metal 渲染
+      Avalonia.DesignerSupport
+      Avalonia.Remote.Protocol                     设计器专用，运行时零引用
+      System.Diagnostics.EventLog.Messages         事件日志资源（只有 win 载荷里有）
 
-    合计约 3 MB。加了 RID 条件，其它平台的发布不受影响。
+    每个平台实测能省 1.6 ~ 2.8 MB。
+
+    ⚠️ 注意这段是「删掉别的平台、留下本平台」，删错会直接导致目标平台起不来。
+    逃生阀：`-p:SkipPlatformTrim=true` 整体关闭（出问题就用它，别在这上面猜）。
   -->
   <Target Name="TrimPlatformPayload"
           AfterTargets="ComputeResolvedFilesToPublishList"
-          Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+          Condition="'$(SkipPlatformTrim)' != 'true'">
+
+    <!-- ① 全平台都不需要：设计器相关 -->
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.X11'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.FreeDesktop'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.FreeDesktop.AtSpi'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Tmds.DBus.Protocol'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Native'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Metal'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.DesignerSupport'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Remote.Protocol'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'Avalonia.DesignerSupport' or
+                                        '%(Filename)' == 'Avalonia.Remote.Protocol'" />
     </ItemGroup>
+
+    <!-- ② Windows（win-x64 / win-x86 / win-arm64）：不需要 Linux / macOS 后端 -->
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win-'))">
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'Avalonia.X11' or
+                                        '%(Filename)' == 'Avalonia.FreeDesktop' or
+                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or
+                                        '%(Filename)' == 'Tmds.DBus.Protocol' or
+                                        '%(Filename)' == 'Avalonia.Native' or
+                                        '%(Filename)' == 'Avalonia.Metal' or
+                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+    </ItemGroup>
+
+    <!-- ③ Linux：不需要 Windows / macOS 后端 -->
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('linux-'))">
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'Avalonia.Win32' or
+                                        '%(Filename)' == 'Avalonia.Win32.Automation' or
+                                        '%(Filename)' == 'Avalonia.Native' or
+                                        '%(Filename)' == 'Avalonia.Metal' or
+                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+    </ItemGroup>
+
+    <!-- ④ macOS：不需要 Windows / Linux 后端（Native + Metal 是 macOS 自己的，保留） -->
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('osx-'))">
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'Avalonia.Win32' or
+                                        '%(Filename)' == 'Avalonia.Win32.Automation' or
+                                        '%(Filename)' == 'Avalonia.X11' or
+                                        '%(Filename)' == 'Avalonia.FreeDesktop' or
+                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or
+                                        '%(Filename)' == 'Tmds.DBus.Protocol' or
+                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+    </ItemGroup>
+
   </Target>
 
   <ItemGroup>
