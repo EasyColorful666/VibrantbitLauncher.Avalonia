@@ -5,7 +5,6 @@ using MinecraftLaunch.Base.Models.Authentication;
 using MinecraftLaunch.Base.Models.Authentication.Yggdrasil;
 using MinecraftLaunch.Components.Authenticator;
 using MinecraftLaunch.Components.Provider;
-using SixLabors.ImageSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -340,11 +339,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 using var ms = new MemoryStream();
                 await skinStream.CopyToAsync(ms, cts.Token);
                 var skinBytes = ms.ToArray();
-                var skin = new MinecraftLaunch.Skin.SkinResolver(skinBytes);
                 var resDir = Path.Combine(AppContext.BaseDirectory, "res");
                 if (!Directory.Exists(resDir)) Directory.CreateDirectory(resDir);
                     var skinPath = Path.Combine(resDir, $"{userProfile.Uuid}.png");
-                    skin.CropSkinHeadBitmap().SaveAsPng(skinPath);
+                    SkinService.WriteHeadBitmap(skinPath, skinBytes);
                     // 同时保存完整皮肤（供皮肤管理与预览使用）
                     var fullSkinPath = Path.Combine(resDir, $"{userProfile.Uuid}_full.png");
                     File.WriteAllBytes(fullSkinPath, skinBytes);
@@ -398,11 +396,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     using var ms = new MemoryStream();
                     await skinStream.CopyToAsync(ms, cts.Token);
                     var skinBytes = ms.ToArray();
-                    var skin = new MinecraftLaunch.Skin.SkinResolver(skinBytes);
                     var resDir = Path.Combine(AppContext.BaseDirectory, "res");
                     if (!Directory.Exists(resDir)) Directory.CreateDirectory(resDir);
                     var skinPath = Path.Combine(resDir, $"{account.Uuid}.png");
-                    skin.CropSkinHeadBitmap().SaveAsPng(skinPath);
+                    SkinService.WriteHeadBitmap(skinPath, skinBytes);
                     // 同时保存完整皮肤（供皮肤管理与预览使用）
                     var fullSkinPath = Path.Combine(resDir, $"{account.Uuid}_full.png");
                     File.WriteAllBytes(fullSkinPath, skinBytes);
@@ -460,8 +457,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     }
                     // 生成头部头像
                     var skinBytes = File.ReadAllBytes(fullSkinPath);
-                    var skin = new MinecraftLaunch.Skin.SkinResolver(skinBytes);
-                    skin.CropSkinHeadBitmap().SaveAsPng(skinPath);
+                    SkinService.WriteHeadBitmap(skinPath, skinBytes);
                 }
                 catch (Exception ex)
                 {

@@ -1,6 +1,4 @@
 using MinecraftLaunch.Base.Models.Authentication;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.IO;
 using System.Net;
@@ -10,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using VibrantbitLauncher.Helpers;
 
 namespace VibrantbitLauncher.Services
 {
@@ -122,18 +121,18 @@ namespace VibrantbitLauncher.Services
             {
                 Directory.CreateDirectory(SkinDirectory);
 
-                using var skin = Image.Load<Rgba32>(skinBytes);
+                var skin = RgbaBitmap.Decode(skinBytes);
                 var legacy = skin.Width == 64 && skin.Height == 32;
 
-                using var canvas = new Image<Rgba32>(FrontCanvasWidth * FrontScale, FrontCanvasHeight * FrontScale);
+                var canvas = new RgbaBitmap(FrontCanvasWidth * FrontScale, FrontCanvasHeight * FrontScale);
 
-                (Rgba32 Rgb, byte A) Sample((int X, int Y, int W, int H) rect, int x, int y, bool mirror)
+                (Rgba Rgb, byte A) Sample((int X, int Y, int W, int H) rect, int x, int y, bool mirror)
                 {
                     var sx = rect.X + (mirror ? rect.W - 1 - x : x);
                     var sy = rect.Y + y;
                     if (sx < 0 || sy < 0 || sx >= skin.Width || sy >= skin.Height)
                         return (default, 0);
-                    var p = skin[sx, sy];
+                    var p = skin.GetPixel(sx, sy);
                     return (p, p.A);
                 }
 
@@ -153,7 +152,7 @@ namespace VibrantbitLauncher.Services
                             {
                                 for (var ox = 0; ox < FrontScale; ox++)
                                 {
-                                    canvas[dx + ox, dy + oy] = AlphaBlend(px, canvas[dx + ox, dy + oy]);
+                                    canvas.SetPixel(dx + ox, dy + oy, AlphaBlend(px, canvas.GetPixel(dx + ox, dy + oy)));
                                 }
                             }
                         }
@@ -192,7 +191,7 @@ namespace VibrantbitLauncher.Services
                 BlitPart(LeftLegFront, LeftLegOverlay, 8, 20);
 
                 var path = FrontViewPath(uuid);
-                canvas.SaveAsPng(path);
+                canvas.Save(path);
                 return path;
             }
             catch (Exception ex)
@@ -203,7 +202,7 @@ namespace VibrantbitLauncher.Services
         }
 
         /// <summary>标准「over」alpha 混合：把 src 叠在 dst 之上。</summary>
-        private static Rgba32 AlphaBlend(Rgba32 src, Rgba32 dst)
+        private static Rgba AlphaBlend(Rgba src, Rgba dst)
         {
             if (src.A == 255) return src;
             if (src.A == 0) return dst;
@@ -216,10 +215,37 @@ namespace VibrantbitLauncher.Services
             byte Mix(byte s, byte d)
                 => (byte)Math.Clamp((s * sa + d * da * (1 - sa)) / outA + 0.5f, 0f, 255f);
 
-            return new Rgba32(Mix(src.R, dst.R), Mix(src.G, dst.G), Mix(src.B, dst.B), (byte)Math.Clamp(outA * 255f + 0.5f, 0f, 255f));
+            return new Rgba(Mix(src.R, dst.R), Mix(src.G, dst.G), Mix(src.B, dst.B), (byte)Math.Clamp(outA * 255f + 0.5f, 0f, 255f));
         }
 
         // ================= 本地文件 =================
+
+        // ================= 头像裁剪 =================
+
+        // 64×64 皮肤里头部「正面底图」与「叠加层（帽子/头发）」的矩形。
+        private const int HeadBaseX = 8, HeadBaseY = 8;
+        private const int HeadOverlayX = 40, HeadOverlayY = 8;
+        private const int HeadSize = 8;
+
+        /// <summary>头像输出边长（与原 MinecraftLaunch.Skin 一致）。</summary>
+        private const int HeadOutputSize = 60;
+
+        /// <summary>
+        /// 读取图片尺寸（不解码像素）。读不出来时返回 false。
+        /// </summary>
+        public static bool TryReadImageSize(string path, out int width, out int height)
+        {
+            width = height = 0;
+            try
+            {
+                return RgbaBitmap.TryReadSize(path, out width, out height);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "读取图片尺寸失败：{Path}", path);
+                return false;
+            }
+        }
 
         /// <summary>
         /// 校验皮肤文件：必须是 PNG，且尺寸为 64×64（新版）或 64×32（旧版）。
@@ -235,9 +261,11 @@ namespace VibrantbitLauncher.Services
                 if (!string.Equals(Path.GetExtension(path), ".png", StringComparison.OrdinalIgnoreCase))
                     return (false, "皮肤必须是 PNG 图片。");
 
-                using var image = Image.Load<Rgba32>(path);
-                if (image.Width != 64 || (image.Height != 64 && image.Height != 32))
-                    return (false, $"皮肤尺寸必须是 64×64 或 64×32，当前为 {image.Width}×{image.Height}。");
+                if (!TryReadImageSize(path, out var width, out var height))
+                    return (false, "无法读取皮肤文件：不是有效的图片。");
+
+                if (width != 64 || (height != 64 && height != 32))
+                    return (false, $"皮肤尺寸必须是 64×64 或 64×32，当前为 {width}×{height}。");
 
                 return (true, string.Empty);
             }
@@ -271,22 +299,58 @@ namespace VibrantbitLauncher.Services
         }
 
         /// <summary>
-        /// 从完整皮肤裁出头部头像。失败时抛出，由调用方决定如何提示
-        /// （头像裁不出来属于可见功能缺失，不该静默吞掉）。
+        /// 从完整皮肤字节裁出 60×60 头像并写到指定路径。
+        /// 失败时抛出，由调用方决定如何提示（头像裁不出来属于可见功能缺失，不该静默吞掉）。
+        /// </summary>
+        public static void WriteHeadBitmap(string path, byte[] skinBytes)
+        {
+            var head = BuildHeadBitmap(skinBytes);
+            head.Save(path);
+        }
+
+        /// <summary>
+        /// 从完整皮肤裁出头部头像（写到 <see cref="HeadSkinPath"/>）。
         /// </summary>
         private static void TryWriteHead(string uuid, byte[] skinBytes)
         {
             try
             {
-                var skin = new MinecraftLaunch.Skin.SkinResolver(skinBytes);
-                using var head = skin.CropSkinHeadBitmap();
-                head.SaveAsPng(HeadSkinPath(uuid));
+                WriteHeadBitmap(HeadSkinPath(uuid), skinBytes);
             }
             catch (Exception ex)
             {
                 Serilog.Log.Warning(ex, "皮肤头像裁剪失败（完整皮肤已保存）");
                 throw new InvalidOperationException("皮肤已保存，但从皮肤裁剪头像失败。", ex);
             }
+        }
+
+        /// <summary>
+        /// 裁头像：底图取头部正面 8×8（(8,8)–(16,16)），叠加层取 8×8（(40,8)–(48,16)），
+        /// 叠加层**只在完全不透明（A=255）时**覆盖底图，再最近邻放大到 60×60。
+        ///
+        /// <para>
+        /// 这套判定与参数是刻意**逐字照搬原 MinecraftLaunch.Skin 的行为**的
+        /// （含「叠加层必须 A=255 才生效」这个略显粗糙的规则）。
+        /// 目的就是让换库前后生成的头像逐像素一致，不引入任何视觉变化。
+        /// </para>
+        /// </summary>
+        public static RgbaBitmap BuildHeadBitmap(byte[] skinBytes)
+        {
+            var skin = RgbaBitmap.Decode(skinBytes);
+
+            var merged = new RgbaBitmap(HeadSize, HeadSize);
+            for (var y = 0; y < HeadSize; y++)
+            {
+                for (var x = 0; x < HeadSize; x++)
+                {
+                    var basePixel = skin.GetPixel(HeadBaseX + x, HeadBaseY + y);
+                    var overlayPixel = skin.GetPixel(HeadOverlayX + x, HeadOverlayY + y);
+
+                    merged.SetPixel(x, y, overlayPixel.A == 255 ? overlayPixel : basePixel);
+                }
+            }
+
+            return merged.ResizeNearest(HeadOutputSize, HeadOutputSize);
         }
 
         /// <summary>

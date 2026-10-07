@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.5.16</Version>
+    <Version>1.0.5.18</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!-- 目标平台固定 win-x64：决定构建输出目录（bin/<cfg>/net10.0/win-x64/），
@@ -94,6 +94,40 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    仅 win-x64：剥掉 Linux / macOS 专用后端与设计器程序集。
+
+    Avalonia.Desktop 会把**所有**平台后端一起带进发布目录，但 win-x64 上
+    UsePlatformDetect() 只会走 Win32 分支，下面这些永远不会被加载：
+
+      Avalonia.X11                Linux X11 后端
+      Avalonia.FreeDesktop        Linux 桌面后端
+      Avalonia.FreeDesktop.AtSpi  Linux 无障碍（DBus/AT-SPI）
+      Tmds.DBus.Protocol          Linux DBus 协议栈
+      Avalonia.Native             macOS 后端
+      Avalonia.Metal              macOS Metal 渲染
+      Avalonia.DesignerSupport    设计器专用（运行时不需要）
+      Avalonia.Remote.Protocol    设计器远程协议
+      System.Diagnostics.EventLog.Messages  事件日志资源（本应用不写事件日志）
+
+    合计约 3 MB。加了 RID 条件，其它平台的发布不受影响。
+  -->
+  <Target Name="TrimPlatformPayload"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.X11'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.FreeDesktop'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.FreeDesktop.AtSpi'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Tmds.DBus.Protocol'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Native'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Metal'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.DesignerSupport'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Remote.Protocol'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Avalonia 核心 -->
     <PackageReference Include="Avalonia" Version="12.1.0" />
@@ -113,13 +147,20 @@
     <!-- Minecraft 启动内核（与原版保持同一版本） -->
     <PackageReference Include="MinecraftLaunch" Version="4.0.7" />
     <PackageReference Include="MinecraftLaunch.Base" Version="1.1.19" />
-    <PackageReference Include="MinecraftLaunch.Skin" Version="1.0.1" />
+    <!-- MinecraftLaunch.Skin 已移除：它唯一被用到的是 CropSkinHeadBitmap()，
+         而它的实现依赖 SixLabors.ImageSharp（见 Helpers/RgbaBitmap.cs 的说明）。
+         现在头像裁剪由 SkinService.BuildHeadBitmap 用 SkiaSharp 自己实现，像素结果与原库逐字节一致。 -->
 
     <!-- 基础设施 -->
     <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <!-- System.Management 已移除：全项目没有任何 ManagementObject / WMI 调用 -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+
+    <!-- SkiaSharp：Avalonia 的渲染后端本来就依赖它，这里是**显式**声明，
+         供 Helpers/RgbaBitmap.cs 做皮肤 PNG 的解码 / 编码。
+         版本与 Avalonia 12.1.0 解析出的版本一致，不改变发布载荷。 -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <!-- SixLabors.ImageSharp 已移除（2 MB）：全项目仅皮肤裁剪用到，已由 SkiaSharp 顶替 -->
   </ItemGroup>
 
   <ItemGroup>

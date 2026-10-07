@@ -6,7 +6,64 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
-## [1.0.5.16] - 2026-10-06
+## [1.0.5.18] - 2026-10-07
+
+继续精简发布体积：**37.9 MB → 35.8 MB**（单文件，−2.1 MB）。这次是**重写 `SkinService`、把
+SixLabors.ImageSharp 整块摘掉**，功能与像素结果完全不变。
+
+### 改进
+
+- **新增 `Helpers/RgbaBitmap.cs`**：基于 **SkiaSharp**（Avalonia 渲染后端本来就依赖它）的最小 RGBA 位图，
+  提供 PNG 解码 / 编码、像素读写、最近邻缩放。
+- **`SkinService` 改用 `RgbaBitmap` 自己实现头像裁剪与正面立绘拼合**，不再依赖 `MinecraftLaunch.Skin` 的
+  `CropSkinHeadBitmap()`；新增公开入口 `SkinService.WriteHeadBitmap(path, skinBytes)` 与
+  `SkinService.TryReadImageSize(...)`（只读尺寸、不解码像素）。
+- `SkinService.ValidateSkinFile` 改为只读图片头拿尺寸，不再为校验而整图解码。
+- `AccountPageViewModel` 的三处头像裁剪（微软登录 / 外置登录 / 离线默认皮肤）统一改走 `SkinService.WriteHeadBitmap`。
+
+### 移除
+
+- **`SixLabors.ImageSharp`（2.0 MB）**：全项目仅皮肤裁剪用到，已由 SkiaSharp 顶替。
+- **`MinecraftLaunch.Skin`（0.02 MB）**：唯一被用到的是 `CropSkinHeadBitmap()`，其实现正是 ImageSharp。
+- 新增显式 `SkiaSharp` 引用（版本与 Avalonia 12.1.0 解析出的 3.119.4 一致，不改变发布载荷，
+  只是把原先的隐式传递引用写明白，避免将来 Avalonia 换版本时编译静默失效）。
+
+### 说明
+
+- **踩到的坑：`SKBitmap.Decode` 返回的是预乘（Premul）位图。** 半透明像素在预乘 / 反预乘往返时会有 ±1 取整误差，
+  `A=1` 的像素 RGB 甚至会被抹成 0。改用 `SKCodec` 并显式要求 `SKAlphaType.Unpremul` 后，
+  实测可与 PNG 原值**逐字节一致**。
+- 头像裁剪的算法与参数（底图 (8,8)–(16,16)、叠加层 (40,8)–(48,16)、叠加层仅 `A=255` 时覆盖、
+  最近邻放大到 60×60）**逐字照搬原库行为**，刻意连它「叠加层必须完全不透明才生效」这个略显粗糙的规则一起保留，
+  就是为了让换库前后生成的头像逐像素一致。
+- **对照验证 18 项全过**：新实现 vs 旧库 `CropSkinHeadBitmap`、新实现 vs 旧 `SaveFrontView`（ImageSharp 复现），
+  以及**新实现 vs 改动前旧代码真实产出的存量头像 / 立绘 PNG**，逐像素一致；
+  另覆盖 64×32 旧皮肤的镜像分支、半透明 / `A=1` 合成皮肤、以及文件校验的 6 种输入。
+- 发布产物确认：`SixLabors.ImageSharp` 与 `MinecraftLaunch.Skin` 已不在载荷中；实跑 0 异常。
+
+
+## [1.0.5.17] - 2026-10-07
+
+继续精简发布体积：**42.6 MB → 37.9 MB**（单文件，−4.7 MB / −11%）。
+
+### 改进
+
+- **剥掉打进发布目录、但 Windows 上永远不会加载的平台程序集**（新增 `TrimPlatformPayload` 目标，
+  带 `RuntimeIdentifier == win-x64` 条件，其它平台发布不受影响）：
+  `Avalonia.X11`、`Avalonia.FreeDesktop`、`Avalonia.FreeDesktop.AtSpi`、`Tmds.DBus.Protocol`（Linux）、
+  `Avalonia.Native`、`Avalonia.Metal`（macOS）、`Avalonia.DesignerSupport`、`Avalonia.Remote.Protocol`（设计器）、
+  `System.Diagnostics.EventLog.Messages`（事件日志资源）。
+  根因是 `Avalonia.Desktop` 会把所有平台后端一起带进发布载荷，而 win-x64 上 `UsePlatformDetect()`
+  只会走 Win32 分支。
+
+### 说明
+
+- 实测排除的几条路：**框架依赖 + 单文件 + 压缩**被 SDK 直接拒绝（`NETSDK1176`：压缩仅支持独立部署）；
+  **自包含 + 单文件 + 压缩**反而更大（55.3 MB）；**剪裁**（`PublishTrimmed`）因绑定走反射不能开。
+- `Avalonia.Controls.DataGrid` / `Avalonia.Controls.ColorPicker`（共 0.8 MB）虽然本工程没直接用，
+  但 FluentAvalonia 有引用，删除有风险，保持不动。
+
+
 
 大幅完善设置页面：左栏由「主页 / 个性化 / 其他」三个分类扩成
 **主页 / 启动 / 个性化 / 网络 / 日志 / 关于** 六个分类，并把新增的启动与下载设置真正接进游戏启动链路。
