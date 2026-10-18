@@ -9,8 +9,8 @@
 #
 # 产物结构：
 #     publish/<rid>/              原始发布目录
-#     dist/<名字>-<rid>.tar.gz    Linux / macOS 用
-#     dist/<名字>-<rid>.zip       Windows 用（仅 win-* 出）
+#     dist/<名字>-<rid>.zip       Windows 用（仅 win-*，只出 zip，双击解压友好）
+#     dist/<名字>-<rid>.tar.gz    Linux / macOS 用（仅 linux-* / osx-*）
 #     dist/<名字>-<rid>.app       macOS 的 .app（仅 osx-*，另附同名 tar.gz）
 #     dist/SHA256SUMS.txt         全部包的校验和
 #
@@ -366,17 +366,41 @@ PLIST
             make_tar "$DIST_DIR/$tar_name" "$app_stage" \
                      "$APP_NAME.app" "install.command" "README-macOS.txt"
             packages="$tar_name"
+        elif [[ $is_win -eq 1 ]]; then
+            # Windows 只出 zip。按可用性挑打包器：
+            #   ① zip 命令；② Windows 自带的 bsdtar（System32\tar.exe，-a 会按 .zip 扩展名选 zip 格式）；
+            #   ③ 都没有就退回 tar.gz，免得这个平台一件产物都没有。
+            zip_name="$APP_NAME-$rid.zip"
+            zip_path="$DIST_DIR/$zip_name"
+
+            packer=""
+            if command -v zip >/dev/null 2>&1; then
+                packer="zip"
+            elif command -v bsdtar >/dev/null 2>&1; then
+                packer="bsdtar"
+            elif [[ -x /c/WINDOWS/system32/tar.exe ]]; then
+                packer="/c/WINDOWS/system32/tar.exe"
+            fi
+
+            if [[ -n "$packer" ]]; then
+                rm -f "$zip_path"
+                if [[ "$packer" == "zip" ]]; then
+                    ( cd "$out_dir" && zip -qr "$zip_path" . )
+                else
+                    ( cd "$out_dir" && "$packer" -a -cf "$zip_path" . )
+                fi
+                packages="$zip_name"
+            else
+                echo "  [提示] 未找到 zip / bsdtar，$rid 退回 tar.gz 打包。" >&2
+                tar_name="$APP_NAME-$rid.tar.gz"
+                make_tar "$DIST_DIR/$tar_name" "$out_dir" .
+                packages="$tar_name"
+            fi
         else
+            # Linux：只出 tar.gz
             tar_name="$APP_NAME-$rid.tar.gz"
             make_tar "$DIST_DIR/$tar_name" "$out_dir" .
             packages="$tar_name"
-
-            if [[ $is_win -eq 1 ]] && command -v zip >/dev/null 2>&1; then
-                zip_name="$APP_NAME-$rid.zip"
-                rm -f "$DIST_DIR/$zip_name"
-                ( cd "$out_dir" && zip -qr "$DIST_DIR/$zip_name" . )
-                packages="$packages, $zip_name"
-            fi
         fi
     fi
 

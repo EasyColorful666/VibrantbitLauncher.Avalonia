@@ -21,6 +21,20 @@
     <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#26FFFFFF" />
     <SolidColorBrush x:Key="AppOnImageTextBrush" Color="#FFFFFFFF" />
 
+    <!--
+        ApplicationBackgroundBrush：所有窗口（含二级窗口）的整窗底色。
+
+        ⚠️ 它是**一次性定义 + 运行时手写**的键，不随主题变体自动换色 ——
+        正因如此，主题变体和这个手写值必须始终同步：唯一写入口是
+        <see cref="VibrantbitLauncher.Services.SettingsService.ApplyTheme"/>，
+        而它现在保证「先关掉 FluentAvalonia 的跟随系统，最后才切变体」，
+        两边不会再各走各的（1.0.7.14 之前会出现「浅色底 + 浅色字」的整窗发白）。
+
+        ⚠️ 别改成 FluentAvalonia 的 SolidBackgroundFillColorBase：那是 **Color** 资源，
+        赋给 IBrush 类型的 Background 会因类型不匹配静默失效 → 窗口无背景 → 白屏。
+    -->
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFF3F3F3" />
+
     <!--  主题色渐变，运行时由 SettingsService.ApplyAccent() 覆盖  -->
     <LinearGradientBrush x:Key="AppAccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
         <GradientStop Offset="0" Color="#FF0078D4" />
@@ -30,6 +44,21 @@
     <!--  背景图遮罩  -->
     <SolidColorBrush x:Key="AppBackgroundScrimBrush" Color="#80FFFFFF" />
 
+    <!--
+        强调色浅底（图标块 / 计数徽标 / 选中卡片底板）。
+
+        这里只是启动早期的兜底值，真实值由 SettingsService.ApplyAccentCore 在运行时
+        按当前主题色覆写成「主色 + 12% / 20% 透明度」。页面里请用这两个键，
+        不要硬编码 #1F0078D4 之类的值 —— 换主题色时硬编码不会跟着变。
+    -->
+    <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1F0078D4" />
+    <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#330078D4" />
+
+    <!--  拖入整合包时的整窗提示层：半透明压暗 + 内嵌面板跟随主题  -->
+    <SolidColorBrush x:Key="AppDropOverlayBrush" Color="#66000000" />
+    <SolidColorBrush x:Key="AppDropPanelBrush" Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF0078D4" />
+
     <!--  ==================== 字体  ====================  -->
 
     <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI</FontFamily>
@@ -38,6 +67,8 @@
     <!--  ==================== 字号阶梯  ====================  -->
 
     <x:Double x:Key="FontSizeDisplay">34</x:Double>
+    <!--  页内 Hero（账户页的「当前身份」名）专用一档：34 是页标题，22 是区块标题，中间缺一级  -->
+    <x:Double x:Key="FontSizeHero">26</x:Double>
     <x:Double x:Key="FontSizeTitle">22</x:Double>
     <x:Double x:Key="FontSizeSubtitle">17</x:Double>
     <x:Double x:Key="FontSizeBodyLarge">15</x:Double>

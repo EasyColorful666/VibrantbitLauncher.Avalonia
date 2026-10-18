@@ -22,6 +22,9 @@
         TextBox(焦点下划线) · ComboBox(弹出层+箭头) · CheckBox/RadioButton(勾选动画)
         · ToggleSwitch(滑块位移) · Slider(滑块) · ProgressBar/ProgressRing(进度动画)
         · Expander/InfoBar/ContentDialog/SnackBar/ToolTip(展开与淡入) · ScrollBar(滚动条淡出)
+
+        ⚠️ 性能模式（设置 → 个性化）会通过 MainWindow 给 Application 打上 `PerformanceMode` 类，
+        由文件末尾的 `.performanceMode` 系列样式把上面这些效果整体关掉。
     -->
 
     <!--  ==================== 1. 按钮：悬停放大 + 按下回缩  ====================  -->
@@ -144,6 +147,82 @@
     -->
     <Style Selector="Button:disabled">
         <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <!--  ==================== 6. 性能模式：整体关掉动效  ====================  -->
+
+    <!--
+        以下样式在应用根节点带 `performanceMode` 类时生效（由 MainWindow 挂上）。
+        目标是「一帧都不多画」：所有 Transitions 清空、所有缩放复位、阴影全去掉。
+
+        为什么用根类而不是资源开关：Avalonia 的样式选择器不能读资源值，
+        想按设置整体关动效，最省事且零运行时开销的做法就是给根元素加一个类。
+        这些样式必须排在**文件最后** —— 同优先级下后出现的才生效。
+    -->
+
+    <Style Selector=".performanceMode Button">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode Button:pointerover">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode Button:pressed">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode Button.accent:pressed">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode ListBoxItem">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode ListBoxItem:pressed">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <!--  卡片阴影：阴影在低配上要每帧重算模糊，是最贵的视觉效果之一，直接移除  -->
+    <Style Selector=".performanceMode Border.card">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode Border.card:pointerover">
+        <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
+    </Style>
+
+    <Style Selector=".performanceMode Border.hoverCard">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode Border.hoverCard:pointerover">
+        <Setter Property="BoxShadow" Value="0 0 0 0 Transparent" />
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <!--  平滑滚动：滚动补间要持续重排，关掉后滚轮是硬跳，但响应更跟手  -->
+    <Style Selector=".performanceMode ScrollViewer.smoothScroll">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode ListBox.smoothScroll /template/ ScrollViewer">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
     </Style>
 
 </Styles>

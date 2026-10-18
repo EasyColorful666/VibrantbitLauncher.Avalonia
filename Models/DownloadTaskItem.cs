@@ -16,6 +16,13 @@ namespace VibrantbitLauncher.Models
     {
         GameInstall,
         ModDownload,
+
+        /// <summary>
+        /// 按「配装码」从零装一个实例。走的是整合包的安装器，但对用户来说是两回事 ——
+        /// 任务列表里必须显示「配装码」，不能显示成「游戏版本」或「整合包」。
+        /// </summary>
+        LoadoutInstall,
+
         Other
     }
 
@@ -30,6 +37,20 @@ namespace VibrantbitLauncher.Models
         public string Name { get; set; } = string.Empty;
         public DownloadTaskType TaskType { get; set; } = DownloadTaskType.Other;
         public DateTime CreatedTime { get; } = DateTime.Now;
+
+        /// <summary>
+        /// 这是不是一个整合包安装任务。用于让「查看详情」直接打开整合包进度详情页
+        /// （而不是跳到下载中心的通用列表）。不加对 Models 之外的依赖，只放一个标记。
+        /// </summary>
+        public bool IsModpack { get; set; }
+
+        /// <summary>
+        /// 该任务关联的 Minecraft 版本号（如 "1.20.1"）。
+        ///
+        /// 「下载任务」页点「查看详情」时，安装型任务要靠它跳到**对应版本**的
+        /// 「安装版本」页（InstallPage）看进度；模组文件下载等没有关联版本的任务留空。
+        /// </summary>
+        public string? TargetMcVersion { get; set; }
 
         public int Progress
         {
@@ -74,6 +95,7 @@ namespace VibrantbitLauncher.Models
         {
             DownloadTaskType.GameInstall => "游戏版本",
             DownloadTaskType.ModDownload => "模组文件",
+            DownloadTaskType.LoadoutInstall => "配装码",
             _ => "其他"
         };
 

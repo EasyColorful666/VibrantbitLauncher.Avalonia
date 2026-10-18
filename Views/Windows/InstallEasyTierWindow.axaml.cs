@@ -8,20 +8,23 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using VibrantbitLauncher.Services;
+using VibrantbitLauncher.Services.Download;
 
 namespace VibrantbitLauncher.Views.Windows;
 
 /// <summary>
 /// 安装联机模块：下载 EasyTier 核心压缩包并解压到 VBL 目录。
 /// </summary>
-public partial class InstallEasyTierWindow : Window
+public partial class InstallEasyTierWindow : UserControl, Services.IInlinePage
 {
+
+    /// <summary>内嵌到主窗口时，顶栏显示的标题。</summary>
+    public string InlineTitle => "安装联机模块";
+
     public InstallEasyTierWindow()
     {
         InitializeComponent();
 
-        // 兜底：挂到主窗口上，CenterOwner 才会真的居中于主窗口
-        Owner ??= AppLifetime.MainWindow;
     }
 
     private async void Button_Click(object? sender, RoutedEventArgs e)
@@ -49,7 +52,7 @@ public partial class InstallEasyTierWindow : Window
                 File.Delete(zipPath);
 
             statusText.Text = "安装完成";
-            Close();
+            Services.InlineHost.Close();
         }
         catch (Exception ex)
         {
@@ -59,31 +62,30 @@ public partial class InstallEasyTierWindow : Window
         }
     }
 
+    /// <summary>
+    /// 下载 EasyTier 核心包。
+    ///
+    /// 1.0.7.15 起走统一下载内核：镜像走的是 gh-proxy，单连接经常只有几百 KB/s，
+    /// 分块并行后能明显快一截；进度也由内核按「已收字节 / 总字节」精确给出。
+    /// </summary>
     private async Task DownloadWithProgressAsync(string url, string savePath)
     {
-        using var httpClient = new HttpClient();
-        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
+        var item = new DownloadItem(url, savePath, DisplayName: Path.GetFileName(savePath));
 
-        using var contentStream = await response.Content.ReadAsStreamAsync();
-        using var fileStream = new FileStream(savePath, FileMode.Create);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var lastReportMs = 0L;
 
-        var totalBytes = response.Content.Headers.ContentLength.GetValueOrDefault();
-        var buffer = new byte[8192];
-        long bytesRead = 0;
-        int bytesReceived;
-
-        while ((bytesReceived = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+        await FileDownloader.DownloadAsync(item, onProgress: (received, total) =>
         {
-            await fileStream.WriteAsync(buffer, 0, bytesReceived);
-            bytesRead += bytesReceived;
+            if (total <= 0)
+                return;
 
-            // 报告进度（服务器没给 Content-Length 时跳过，否则会算成 NaN）
-            if (totalBytes > 0)
-            {
-                var percent = (double)bytesRead / totalBytes * 100;
-                await Dispatcher.UIThread.InvokeAsync(() => progressBar.Value = percent);
-            }
-        }
+            if (clock.ElapsedMilliseconds - lastReportMs < 120)
+                return;
+            lastReportMs = clock.ElapsedMilliseconds;
+
+            var percent = Math.Clamp(received * 100d / total, 0, 100);
+            Dispatcher.UIThread.Post(() => progressBar.Value = percent);
+        });
     }
 }

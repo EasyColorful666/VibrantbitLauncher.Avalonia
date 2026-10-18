@@ -1,0 +1,119 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Windows.LoadoutImportWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    mc:Ignorable="d"
+    Background="{DynamicResource ApplicationBackgroundBrush}"
+    Width="720"
+    Height="600">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ctrl:TitleBar
+            Grid.Row="0"
+            Height="36"
+            Title="配装码"
+            Icon="/Assets/icon.ico"
+            IsInline="True" />
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,20"
+            RowDefinitions="Auto,*,Auto">
+
+            <!--  顶部说明  -->
+            <StackPanel Grid.Row="0" Spacing="6">
+                <TextBlock Classes="title" Text="用配装码添加游戏" />
+                <TextBlock
+                    Classes="secondary"
+                    TextWrapping="Wrap"
+                    Text="朋友发来一串配装码？粘贴到下面，会自动下载 Minecraft 本体、对应的模组加载器和他的模组，装成一个完整实例。本机还没有 Minecraft 也能直接用。" />
+            </StackPanel>
+
+            <!--  输入 + 识别结果  -->
+            <Grid
+                Grid.Row="1"
+                Margin="0,12,0,0"
+                RowDefinitions="*,Auto,Auto">
+
+                <TextBox
+                    x:Name="CodeBox"
+                    Grid.Row="0"
+                    MinHeight="120"
+                    AcceptsReturn="True"
+                    FontFamily="Consolas, Cascadia Mono, monospace"
+                    FontSize="{StaticResource FontSizeCaption}"
+                    TextWrapping="Wrap"
+                    Watermark="在这里粘贴配装码（VBL1- 开头，一长串字母数字），也支持直接粘贴分享码里的 JSON"
+                    TextChanged="OnCodeChanged" />
+
+                <Border
+                    x:Name="ResultCard"
+                    Grid.Row="1"
+                    Margin="0,12,0,0"
+                    Padding="14,12"
+                    Classes="card"
+                    IsVisible="False">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="ResultTitle" Classes="subtitle" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ResultLine1" Classes="body" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ResultLine2" Classes="caption" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ResultLine3" Classes="caption" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Row="2"
+                    Margin="0,12,0,0"
+                    Padding="12,10"
+                    Classes="accentBanner">
+                    <TextBlock
+                        Classes="caption"
+                        TextWrapping="Wrap"
+                        Text="安装需要联网下载（Minecraft 本体 + 加载器 + 模组），国内网络建议先在「设置 → 下载」启用 BMCLAPI 镜像。下载过程会弹出进度详情页，可在「下载任务」里随时查看。" />
+                </Border>
+            </Grid>
+
+            <!--  状态 + 操作  -->
+            <StackPanel Grid.Row="2" Margin="0,14,0,0" Spacing="8">
+                <TextBlock
+                    x:Name="StatusText"
+                    Classes="caption"
+                    TextWrapping="Wrap" />
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Classes="caption"
+                        Opacity="0.7"
+                        TextWrapping="Wrap"
+                        Text="支持 VBL1- 前缀的分享码；粘贴后会自动识别。" />
+
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="ImportButton"
+                            Padding="20,8"
+                            Classes="accent"
+                            Click="OnImportClick"
+                            Content="开始添加"
+                            IsEnabled="False" />
+                        <Button
+                            x:Name="CloseButton"
+                            Padding="20,8"
+                            Click="OnCloseClick"
+                            Content="关闭" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

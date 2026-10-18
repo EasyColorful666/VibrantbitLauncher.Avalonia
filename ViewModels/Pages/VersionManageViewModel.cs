@@ -46,6 +46,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private string modCountText = "还没有模组";
         private string saveCountText = "还没有存档";
 
+        /// <summary>加载令牌：只让最新一次 LoadDataAsync 的结果落到界面上。</summary>
+        private int loadToken;
+
         public ObservableCollection<ModItem> Mods { get; } = new();
         public ObservableCollection<SaveItem> Saves { get; } = new();
 
@@ -152,6 +155,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         private void Load()
         {
+            // 页面每次进入都要按「当前版本」重新解析目录并重读一次 —
+            // 否则从启动页点「设置」切过来时，页面上还是上一次（或默认）的目录与列表。
+            _ = LoadDataAsync();
         }
 
         // ==================== 目录解析 ====================
@@ -180,6 +186,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         private async Task LoadDataAsync()
         {
+            // 「切版本」与「页面重进」可能叠在一起：用令牌确保最后只有最新那次的结果落到界面上，
+            // 否则旧目录的模组列表可能在新目录的列表之后写进来，看起来就是「不刷新」。
+            var token = ++loadToken;
+
             ResolveFolders();
             GameDir = Path.GetFullPath(GameDir);
 
@@ -195,6 +205,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
 
             await LoadModsAsync();
+            if (token != loadToken)
+                return;
+
             await LoadSavesAsync();
         }
 

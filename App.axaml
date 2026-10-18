@@ -16,9 +16,36 @@
     </Application.Resources>
 
     <Application.Styles>
-        <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
+        <!--
+            ⚠️ PreferSystemTheme / PreferUserAccentColor 必须是 False（1.0.7.14 血案）：
+            为 True 时 FluentAvalonia 会**自己**把 Application.RequestedThemeVariant 改成
+            「操作系统」的主题、并把系统强调色写进 NavigationView 等专属资源。
+            而本工程所有手写色（窗口底色 / 遮罩 / 拖放面板）都是按用户设置算好写进资源的，
+            于是两者会打架：界面上出现「浅色底 + 暗色主题的浅色字」，整窗像是蒙了一层白雾。
+            应用自带「设置 → 个性化」的主题开关，就该由我们自己说了算。
+        -->
+        <sty:FluentAvaloniaTheme PreferSystemTheme="False" PreferUserAccentColor="False" />
         <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Controls.axaml" />
+        <!--  自定义标题栏（含默认模板）  -->
+        <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/TitleBar.axaml" />
         <!--  交互动效统一放最后：同优先级下后出现的样式胜出，动效需要能覆盖基础外观  -->
         <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Animations.axaml" />
+
+        <!--
+            ⚠️ 所有窗口的不透明底色兜底（1.0.6.11「换台电脑整窗透明」防线之三）：
+            二级窗口若 XAML 里漏写 Background（窗口层和根 Grid 层都没有），
+            窗口就是「无背景」——DWM 合成开的机器上表现为整窗透明透出桌面，
+            合成关的机器上表现为白屏。这里给应用级样式兜底。
+
+            用**本工程自己的** ApplicationBackgroundBrush 而不是 FluentAvalonia 的
+            SolidBackgroundFillColorBase：后者是 Color 资源（同名 Brush 是 *Brush 版本），
+            赋给 IBrush 类型的 Background 会因类型不匹配而静默不生效 —— 兜底等于没兜。
+            本键在 AppTheme.axaml 里以 SolidColorBrush 定义，并由 ApplyTheme 按当前主题覆写。
+            局部值优先级高于应用样式，所以 MainWindow 的 Mica 透明背景、
+            各二级窗口自己写的 Background 都不会被这条压掉——它只兜「什么都没写」的窗口。
+        -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource ApplicationBackgroundBrush}" />
+        </Style>
     </Application.Styles>
 </Application>

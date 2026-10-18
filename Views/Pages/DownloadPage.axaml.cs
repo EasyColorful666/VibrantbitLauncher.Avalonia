@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using CommunityToolkit.Mvvm.Messaging;
 using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
@@ -24,6 +25,19 @@ public partial class DownloadPage : UserControl
 
     private readonly DispatcherTimer _debounceTimer;
     private bool _loadedOnce;
+
+    /// <summary>最近一次发起版本列表加载的时刻，用于自动刷新的节流。</summary>
+    private DateTime _lastVersionsLoadUtc = DateTime.MinValue;
+
+    /// <summary>是否正在拉版本列表（挡住同一时刻的重复请求）。</summary>
+    private bool _versionsLoading;
+
+    /// <summary>
+    /// 自动刷新的最小间隔（毫秒）。
+    /// 取 800ms：既能挡住「页面刚建好 / 刚加载完」紧跟着的重复请求，
+    /// 又不会误伤「启动后 1.3 秒的刷新」。
+    /// </summary>
+    private const int RefreshThrottleMs = 800;
 
     public DownloadPage()
     {
@@ -49,6 +63,27 @@ public partial class DownloadPage : UserControl
             _loadedOnce = true;
             await LoadMcVersionsAsync();
         };
+
+        // 程序运行后 1.3 秒的启动刷新（主窗口广播）
+        WeakReferenceMessenger.Default.Register<RefreshDownloadDataMessage>(
+            this, (_, _) => RefreshVersions());
+    }
+
+    /// <summary>
+    /// 重新拉取 Minecraft 版本列表。
+    /// 触发点：启动后 1.3 秒的广播、切入下载中心、以及在下载中心里切回「原版游戏」分类。
+    /// 带节流，避免「刚进入页面」和「启动广播」同时到达时白拉一遍。
+    /// </summary>
+    public void RefreshVersions()
+    {
+        if (_versionsLoading)
+            return;
+
+        if ((DateTime.UtcNow - _lastVersionsLoadUtc).TotalMilliseconds < RefreshThrottleMs)
+            return;
+
+        Serilog.Log.Information("下载页刷新：Minecraft 版本列表");
+        _ = LoadMcVersionsAsync();
     }
 
     /// <summary>
@@ -80,6 +115,13 @@ public partial class DownloadPage : UserControl
     /// </summary>
     private async Task LoadMcVersionsAsync()
     {
+        if (_versionsLoading)
+            return;
+
+        // 开头就打戳：这次加载「刚发生过」，紧随其后的自动刷新请求要被跳过
+        _lastVersionsLoadUtc = DateTime.UtcNow;
+        _versionsLoading = true;
+
         try
         {
             var allVersions = await Task.Run(async () =>
@@ -102,7 +144,15 @@ public partial class DownloadPage : UserControl
         }
         catch (Exception ex)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => AppServices.Notifications?.Error(ex.Message));
+            // 这里以前直接弹 ex.Message，超时时就是那句英文
+            // “The operation was canceled.”；统一走中文翻译。
+            var reason = VibrantbitLauncher.Helpers.FriendlyError.Describe(ex);
+            Serilog.Log.Warning(ex, "下载页：版本列表加载失败");
+            await Dispatcher.UIThread.InvokeAsync(() => AppServices.Notifications?.Error(reason));
+        }
+        finally
+        {
+            _versionsLoading = false;
         }
     }
 

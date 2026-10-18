@@ -1,0 +1,127 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Windows.AssetRepairWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    mc:Ignorable="d"
+    Background="{DynamicResource ApplicationBackgroundBrush}"
+    Width="780"
+    Height="640">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ctrl:TitleBar
+            Grid.Row="0"
+            Height="36"
+            Title="补全资源"
+            Icon="/Assets/icon.ico"
+            IsInline="True" />
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,20"
+            RowDefinitions="Auto,*,Auto">
+
+            <!--  顶部说明  -->
+            <StackPanel Grid.Row="0" Spacing="6">
+                <TextBlock Classes="title" Text="补全资源" />
+                <TextBlock
+                    x:Name="SubtitleText"
+                    Classes="secondary"
+                    TextWrapping="Wrap" />
+                <Border Classes="accentBanner" Padding="12,10" Margin="0,6,0,0">
+                    <TextBlock
+                        Classes="caption"
+                        TextWrapping="Wrap"
+                        Text="只需补齐下面列出的缺失部分，不会重装整个版本。补全过程会联网下载，国内网络建议在「设置 → 下载」里启用 BMCLAPI 镜像。" />
+                </Border>
+            </StackPanel>
+
+            <!--  缺失清单  -->
+            <Border Grid.Row="1" Classes="card" Margin="0,12,0,0" Padding="12">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock
+                        Grid.Row="0"
+                        Classes="sectionTitle"
+                        Margin="4,0,0,8"
+                        Text="缺失的资源" />
+
+                    <ListBox
+                        x:Name="IssueList"
+                        Grid.Row="1"
+                        Background="Transparent"
+                        BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*" Margin="0,6">
+                                    <Border
+                                        Grid.Column="0"
+                                        Margin="0,2,10,0"
+                                        Padding="8,2"
+                                        VerticalAlignment="Top"
+                                        CornerRadius="4"
+                                        Background="{DynamicResource AppCautionSurfaceBrush}">
+                                        <TextBlock
+                                            Classes="caption"
+                                            Text="{Binding KindText}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Classes="body" Text="{Binding Title}" />
+                                        <TextBlock
+                                            Classes="caption"
+                                            Text="{Binding Detail}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!--  进度 + 操作  -->
+            <StackPanel Grid.Row="2" Margin="0,14,0,0" Spacing="8">
+                <ProgressBar
+                    x:Name="RepairProgress"
+                    Height="8"
+                    Minimum="0"
+                    Maximum="100"
+                    Value="0" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock
+                            x:Name="StatusText"
+                            Classes="subtitle"
+                            Text="尚未开始"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="SpeedText"
+                            Classes="caption"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                        <Button
+                            x:Name="RepairButton"
+                            Classes="accent"
+                            Padding="20,8"
+                            Click="OnRepairClick"
+                            Content="开始补全" />
+                        <Button
+                            x:Name="CloseButton"
+                            Padding="20,8"
+                            Click="OnCloseClick"
+                            Content="关闭" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

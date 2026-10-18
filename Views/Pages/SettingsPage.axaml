@@ -287,6 +287,25 @@
                             </StackPanel>
                         </Border>
 
+                        <!--  性能模式：低配电脑总开关  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="性能模式" />
+                                <TextBlock Classes="caption" Margin="0,0,0,12" TextWrapping="Wrap"
+                                           Text="适合配置较低的电脑（尤其是 Windows 7 老机器）。开启后会关闭云母材质、壁纸、页面切换与控件动效、卡片阴影和平滑滚动，并改用软件渲染。" />
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Classes="body" Text="开启性能模式" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="{Binding PerformanceModeHint}" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsChecked="{Binding PerformanceMode, Mode=TwoWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <!--  背景图  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
@@ -569,7 +588,7 @@
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Classes="body" Text="下载线程数" />
                                         <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="并发下载的文件数。带宽小就调低，能减少超时" />
+                                                   Text="每个文件的分块并发连接数（2~8）。调高更容易压满带宽；带宽小或镜像限流时调低" />
                                     </StackPanel>
                                     <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
                                               ItemsSource="{Binding DownloadThreadsOptions}"

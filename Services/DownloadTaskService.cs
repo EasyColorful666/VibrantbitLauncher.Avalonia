@@ -65,6 +65,21 @@ namespace VibrantbitLauncher.Services
             });
         }
 
+        /// <summary>
+        /// 用户主动取消。**不能复用 <see cref="FailTask"/>** ——「已取消」不是失败，
+        /// 任务列表里两者颜色与语义都不同，混在一起会让用户以为出了故障。
+        /// </summary>
+        public void CancelTask(DownloadTaskItem task, string message = "已取消")
+        {
+            if (task == null) return;
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                task.Status = DownloadTaskStatus.Canceled;
+                task.StatusText = message;
+                task.Speed = string.Empty;
+            });
+        }
+
         public void RemoveTask(DownloadTaskItem task)
         {
             if (task == null) return;

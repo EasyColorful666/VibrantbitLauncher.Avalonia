@@ -1,34 +1,29 @@
-<Window
+<UserControl
     x:Class="VibrantbitLauncher.Views.Windows.MicrosoftAuthWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="微软账户验证"
-    Width="440"
-    Height="320"
-    CanResize="False"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
     FontFamily="{StaticResource AppFont}"
     FontSize="{StaticResource FontSizeBody}"
-    WindowStartupLocation="CenterOwner"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Background="{DynamicResource ApplicationBackgroundBrush}"
+    Width="440"
+    Height="320">
 
     <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
         <!--  自绘标题栏（跟随 Fluent 主题）  -->
-        <Border
+        <ctrl:TitleBar
             Grid.Row="0"
             Height="36"
-            Background="Transparent"
-            WindowDecorationProperties.ElementRole="TitleBar">
-            <TextBlock
-                Margin="14,0,0,0"
-                VerticalAlignment="Center"
-                Classes="caption"
-                Text="微软账户验证" />
-        </Border>
+            Title="微软账户验证"
+            Icon="/Assets/icon.ico"
+            IsInline="True" />
 
         <Grid
             Grid.Row="1"
+
             Margin="24,4,24,24"
             RowDefinitions="Auto,Auto,Auto,*,Auto">
 
@@ -95,4 +90,4 @@
             </StackPanel>
         </Grid>
     </Grid>
-</Window>
+</UserControl>

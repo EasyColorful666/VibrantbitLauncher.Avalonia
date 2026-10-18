@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.Messaging;
+using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Pages;
 
@@ -33,7 +35,18 @@ public partial class DownloadResourcesPage : UserControl
 
         Loaded += OnLoaded;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+        // 程序运行后 1.3 秒的启动刷新（主窗口广播）。页面若还没被创建就收不到 ——
+        // 那种情况下由「切入页面」那次刷新兜底，见 DownloadHubPage。
+        WeakReferenceMessenger.Default.Register<RefreshDownloadDataMessage>(
+            this, (_, _) => RefreshData());
     }
+
+    /// <summary>
+    /// 重新拉取「Minecraft 版本列表 + 本分类的资源列表」。
+    /// 三个触发点：启动后 1.3 秒的广播、切入下载中心、以及在本页内部切回这个分类。
+    /// </summary>
+    public void RefreshData() => _ = _viewModel?.RefreshAllAsync();
 
     /// <summary>由下载中心在切换分类时调用，指定这个页面展示哪一类资源。</summary>
     public void SetProjectType(string projectType) => _viewModel?.SetProjectType(projectType);
@@ -55,7 +68,9 @@ public partial class DownloadResourcesPage : UserControl
     {
         if (e.PropertyName is nameof(DownloadResourcesViewModel.IsLoading)
             or nameof(DownloadResourcesViewModel.IsLoadingMore)
-            or nameof(DownloadResourcesViewModel.TotalHits))
+            or nameof(DownloadResourcesViewModel.TotalHits)
+            or nameof(DownloadResourcesViewModel.HasError)
+            or nameof(DownloadResourcesViewModel.ErrorText))
         {
             UpdateStates();
         }
@@ -68,7 +83,25 @@ public partial class DownloadResourcesPage : UserControl
 
         loadingText.IsVisible = _viewModel.IsLoading;
         loadMorePanel.IsVisible = _viewModel.IsLoadingMore;
-        emptyText.IsVisible = _viewModel.ModrinthMods.Count == 0 && !_viewModel.IsLoading;
+
+        // 只有在「没在加载、且一条都没有」时才显示空状态块。
+        // 有内容时即便上一次请求失败也不遮挡列表（失败信息已在别处提示）。
+        var showEmpty = _viewModel.ModrinthMods.Count == 0 && !_viewModel.IsLoading;
+        emptyPanel.IsVisible = showEmpty;
+
+        if (!showEmpty)
+            return;
+
+        // 区分「加载失败」与「真的没有匹配结果」——
+        // 前者要给原因 + 重试按钮，后者才是提示换筛选条件。
+        var failed = _viewModel.HasError;
+        emptyIcon.Symbol = failed
+            ? FluentAvalonia.UI.Controls.FASymbol.CloudOffline
+            : FluentAvalonia.UI.Controls.FASymbol.ZoomInFilled;
+        emptyText.Text = failed
+            ? _viewModel.ErrorText
+            : "没有匹配的资源，换个关键词或筛选条件试试";
+        emptyRetryButton.IsVisible = failed;
     }
 
     /// <summary>
@@ -124,7 +157,9 @@ public partial class DownloadResourcesPage : UserControl
             return;
         }
 
+        // 把当前分类（模组 / 资源包 / 光影 …）一并带过去：详情页据此决定「添加到实例」落到哪个子目录，
+        // 以及整合包 / 数据包这类不能直接拷进实例的类型要不要给出该入口。
         if (AppServices.Provider?.GetService(typeof(ModPage)) is ModPage modPage)
-            _ = modPage.LoadForProject(mod.ProjectId);
+            _ = modPage.LoadForProject(mod.ProjectId, _viewModel?.ProjectType);
     }
 }

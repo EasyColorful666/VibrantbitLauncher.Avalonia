@@ -10,8 +10,12 @@ namespace VibrantbitLauncher.Views.Windows
     /// <summary>
     /// 微软账户设备码登录窗口（Avalonia 版）。
     /// </summary>
-    public partial class MicrosoftAuthWindow : Window
+    public partial class MicrosoftAuthWindow : UserControl, Services.IInlinePage
     {
+
+    /// <summary>内嵌到主窗口时，顶栏显示的标题。</summary>
+    public string InlineTitle => "微软账户验证";
+
         /// <summary>用户是否点击了取消。</summary>
         public bool IsCancelled { get; private set; }
 
@@ -74,7 +78,7 @@ namespace VibrantbitLauncher.Views.Windows
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             IsCancelled = true;
-            Close();
+            Services.InlineHost.Close();
         }
     }
 }

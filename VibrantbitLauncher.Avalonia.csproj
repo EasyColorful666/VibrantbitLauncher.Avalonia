@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.5.20</Version>
+    <Version>1.0.8.2</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -101,16 +101,7 @@
   -->
   <Target Name="TrimPublishPayload" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
-      <ResolvedFileToPublish
-          Remove="@(ResolvedFileToPublish)"
-          Condition="
-            '%(Extension)' == '.pdb' or
-            $([System.String]::Copy('%(Filename)').StartsWith('xunit.')) or
-            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.TestPlatform')) or
-            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.TestPlatform')) or
-            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.CodeCoverage')) or
-            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.CodeCoverage')) or
-            '%(Filename)' == 'testhost'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="&#xA;            '%(Extension)' == '.pdb' or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('xunit.')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.CodeCoverage')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.CodeCoverage')) or&#xA;            '%(Filename)' == 'testhost'" />
     </ItemGroup>
   </Target>
 
@@ -132,63 +123,58 @@
       Avalonia.Remote.Protocol                     设计器专用，运行时零引用
       System.Diagnostics.EventLog.Messages         事件日志资源（只有 win 载荷里有）
 
-    每个平台实测能省 1.6 ~ 2.8 MB。
+    ⚠️⚠️ **`Avalonia.Metal` 在 Windows 上也是必需的，绝对不能在 win 分支里删！**（1.0.6.12 血案）
+    它的名字看着像「macOS 的 Metal 图形 API」，但 Avalonia 12 的 **Win32 渲染管线实际会用到它**。
+    实测（同一台机器、同一份 Release 产物，只差一个 dll）：
+
+      Release build（不裁剪）        → 窗口内容正常
+      Release publish（裁剪，删 Metal）→ 窗口建得出来但**内容一片空白、整窗透出桌面**
+      删 Avalonia.Native / X11 / FreeDesktop / DBus / Designer 组 → 均正常（这几个确实可以不删也删对了）
+
+    因为裁剪 Target 只在 **publish** 阶段生效，`dotnet build` 与 VS 调试跑不出来这个问题 ——
+    「调试正常、单文件发布透明」就是这个原因，别再往资源字典 / 主题 / Mica 上找。
+
+    每个平台实测能省 1.6 ~ 2.8 MB（**不含 Metal**）。
 
     ⚠️ 注意这段是「删掉别的平台、留下本平台」，删错会直接导致目标平台起不来。
     逃生阀：`-p:SkipPlatformTrim=true` 整体关闭（出问题就用它，别在这上面猜）。
   -->
-  <Target Name="TrimPlatformPayload"
-          AfterTargets="ComputeResolvedFilesToPublishList"
-          Condition="'$(SkipPlatformTrim)' != 'true'">
+  <Target Name="TrimPlatformPayload" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(SkipPlatformTrim)' != 'true'">
 
     <!-- ① 全平台都不需要：设计器相关 -->
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="'%(Filename)' == 'Avalonia.DesignerSupport' or
-                                        '%(Filename)' == 'Avalonia.Remote.Protocol'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.DesignerSupport' or&#xA;                                        '%(Filename)' == 'Avalonia.Remote.Protocol'" />
     </ItemGroup>
 
-    <!-- ② Windows（win-x64 / win-x86 / win-arm64）：不需要 Linux / macOS 后端 -->
+    <!-- ② Windows（win-x64 / win-x86 / win-arm64）：不需要 Linux / macOS 后端。
+         ⚠️ 这里**不删** Avalonia.Metal：win 的渲染管线依赖它（见上面的血案说明）。 -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win-'))">
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="'%(Filename)' == 'Avalonia.X11' or
-                                        '%(Filename)' == 'Avalonia.FreeDesktop' or
-                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or
-                                        '%(Filename)' == 'Tmds.DBus.Protocol' or
-                                        '%(Filename)' == 'Avalonia.Native' or
-                                        '%(Filename)' == 'Avalonia.Metal' or
-                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.X11' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or&#xA;                                        '%(Filename)' == 'Tmds.DBus.Protocol' or&#xA;                                        '%(Filename)' == 'Avalonia.Native' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
     </ItemGroup>
 
-    <!-- ③ Linux：不需要 Windows / macOS 后端 -->
+    <!-- ③ Linux：不需要 Windows / macOS 后端。
+         ⚠️ 同样保留 Avalonia.Metal（宁可多带 0.4MB，也不要赌）。 -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('linux-'))">
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="'%(Filename)' == 'Avalonia.Win32' or
-                                        '%(Filename)' == 'Avalonia.Win32.Automation' or
-                                        '%(Filename)' == 'Avalonia.Native' or
-                                        '%(Filename)' == 'Avalonia.Metal' or
-                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Win32' or&#xA;                                        '%(Filename)' == 'Avalonia.Win32.Automation' or&#xA;                                        '%(Filename)' == 'Avalonia.Native' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
     </ItemGroup>
 
     <!-- ④ macOS：不需要 Windows / Linux 后端（Native + Metal 是 macOS 自己的，保留） -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('osx-'))">
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="'%(Filename)' == 'Avalonia.Win32' or
-                                        '%(Filename)' == 'Avalonia.Win32.Automation' or
-                                        '%(Filename)' == 'Avalonia.X11' or
-                                        '%(Filename)' == 'Avalonia.FreeDesktop' or
-                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or
-                                        '%(Filename)' == 'Tmds.DBus.Protocol' or
-                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Win32' or&#xA;                                        '%(Filename)' == 'Avalonia.Win32.Automation' or&#xA;                                        '%(Filename)' == 'Avalonia.X11' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or&#xA;                                        '%(Filename)' == 'Tmds.DBus.Protocol' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
     </ItemGroup>
 
   </Target>
 
   <ItemGroup>
     <!-- Avalonia 核心 -->
-    <PackageReference Include="Avalonia" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <!-- 下载内核：分块多连接 + 断点续传 + 每块重试，1.0.7.15 起接管全部
+         Minecraft 资源 / 模组 / 加载器下载（见 Services/Download/）。
+         选它的理由：MIT、单 dll 约 1.3 MB、唯一依赖 Microsoft.Extensions.Logging.Abstractions，
+         而且原生支持「一个文件多块并行」。 -->
+    <PackageReference Include="Downloader" Version="5.10.1" />
     <!-- Avalonia.Fonts.Inter 已移除：界面字体是 Segoe UI Variable / 微软雅黑 /
          HarmonyOS Sans，内置的 Inter 字体（约 1.9MB）从未被任何 FontFamily 引用 -->
 
@@ -197,8 +183,8 @@
 
     <!-- MVVM -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
 
     <!-- Minecraft 启动内核（与原版保持同一版本） -->
     <PackageReference Include="MinecraftLaunch" Version="4.0.7" />
@@ -209,13 +195,13 @@
 
     <!-- 基础设施 -->
     <PackageReference Include="Serilog" Version="4.4.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <!-- System.Management 已移除：全项目没有任何 ManagementObject / WMI 调用 -->
 
     <!-- SkiaSharp：Avalonia 的渲染后端本来就依赖它，这里是**显式**声明，
          供 Helpers/RgbaBitmap.cs 做皮肤 PNG 的解码 / 编码。
          版本与 Avalonia 12.1.0 解析出的版本一致，不改变发布载荷。 -->
-    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
     <!-- SixLabors.ImageSharp 已移除（2 MB）：全项目仅皮肤裁剪用到，已由 SkiaSharp 顶替 -->
   </ItemGroup>
 

@@ -11,25 +11,41 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*">
 
         <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock Classes="display" Text="模组文件" />
-            <TextBlock Classes="caption" Margin="0,6,0,0"
-                       Text="选择游戏版本与加载器，查看可下载的模组文件" />
+            <TextBlock x:Name="headerTitle" Classes="display" Text="模组文件" />
+            <TextBlock x:Name="headerSubtitle" Classes="caption" Margin="0,6,0,0"
+                       Text="选择游戏版本与加载器，查看可下载的模组文件；只有加载器匹配的实例才能直接添加" />
         </StackPanel>
 
         <!--  筛选栏  -->
-        <StackPanel Grid.Row="1" Margin="0,0,0,12" Orientation="Horizontal">
-            <TextBlock Classes="body" VerticalAlignment="Center" Text="游戏版本" />
-            <ComboBox x:Name="comboBox" Width="160" Margin="8,0,24,0" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="1" Margin="0,0,0,12" Spacing="10">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Classes="body" VerticalAlignment="Center" Text="游戏版本" />
+                <ComboBox x:Name="comboBox" Width="160" Margin="8,0,24,0" VerticalAlignment="Center" />
 
-            <TextBlock Classes="body" VerticalAlignment="Center" Text="模组加载器" />
-            <ComboBox x:Name="comboBox1" Width="160" Margin="8,0,0,0" VerticalAlignment="Center"
-                      SelectionChanged="comboBox1_SelectionChanged">
-                <ComboBoxItem />
-                <ComboBoxItem Content="Fabric" />
-                <ComboBoxItem Content="Forge" />
-                <ComboBoxItem Content="NeoForge" />
-                <ComboBoxItem Content="Quilt" />
-            </ComboBox>
+                <TextBlock x:Name="loaderLabel" Classes="body" VerticalAlignment="Center" Text="模组加载器" />
+                <ComboBox x:Name="comboBox1" Width="160" Margin="8,0,0,0" VerticalAlignment="Center"
+                          SelectionChanged="comboBox1_SelectionChanged">
+                    <ComboBoxItem Content="全部" />
+                    <ComboBoxItem Content="Fabric" />
+                    <ComboBoxItem Content="Forge" />
+                    <ComboBoxItem Content="NeoForge" />
+                    <ComboBoxItem Content="Quilt" />
+                </ComboBox>
+            </StackPanel>
+
+            <!--
+                目标实例：只有本地装了至少一个可添加的实例时才显示。
+                一个实例都没有时整行隐藏，列表里也只剩「另存为」，不给出会落空的入口。
+                右侧提示文案会随所选实例的加载器、以及「版本隔离」设置实时变化：
+                例如「Fabric · 版本隔离：开 → .minecraft/versions/1.21.4_fabric_0.16.5/mods」。
+            -->
+            <StackPanel x:Name="instancePanel" Orientation="Horizontal" IsVisible="False">
+                <TextBlock Classes="body" VerticalAlignment="Center" Text="目标实例" />
+                <ComboBox x:Name="instanceComboBox" Width="220" Margin="8,0,16,0" VerticalAlignment="Center"
+                          SelectionChanged="instanceComboBox_SelectionChanged" />
+                <TextBlock x:Name="instanceHintText" Classes="caption" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
         </StackPanel>
 
         <Grid Grid.Row="2">
@@ -48,17 +64,47 @@
                     <DataTemplate>
                         <Border Classes="card" Margin="0,0,0,6" Padding="14,10">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Classes="subtitle" Margin="0,0,12,0"
-                                           VerticalAlignment="Center"
-                                           Text="{Binding Name}"
-                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                                <Button Grid.Column="1" VerticalAlignment="Center"
-                                        Click="OnSaveAsClick">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <ui:FASymbolIcon Symbol="Save" />
-                                        <TextBlock Text="另存为" />
-                                    </StackPanel>
-                                </Button>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <TextBlock Classes="subtitle"
+                                               Text="{Binding Name}"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <!--  模组才显示：这个文件需要哪个加载器（没有加载器的实例装不上）  -->
+                                    <TextBlock Classes="caption" Margin="0,3,0,0"
+                                               IsVisible="{Binding ShowLoaderHint}"
+                                               Text="{Binding LoaderHint}"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Center">
+                                    <!--
+                                        整合包专用：直接新建一个实例把包装进去（含基础版本 + 加载器 + 模组）。
+                                        整合包不能「添加到实例」（那是往已有实例塞东西），所以这里走独立入口。
+                                    -->
+                                    <Button Click="OnInstallModpackClick"
+                                            IsVisible="{Binding ShowInstallModpackButton}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Download" />
+                                            <TextBlock Text="安装整合包" />
+                                        </StackPanel>
+                                    </Button>
+                                    <!--
+                                        选中的实例加载器匹配时才出现；没有实例、或实例加载器对不上
+                                        （Forge 模组配 Fabric 实例、原版实例等）时只保留「另存为」
+                                    -->
+                                    <Button Click="OnAddToInstanceClick"
+                                            IsVisible="{Binding ShowInstanceButton}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Add" />
+                                            <TextBlock Text="添加到实例" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="OnSaveAsClick">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Save" />
+                                            <TextBlock Text="另存为" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </DataTemplate>

@@ -14,28 +14,58 @@ namespace VibrantbitLauncher.Helpers
     {
         private const string NewsUrl = "https://launchercontent.mojang.com/v2/news.json";
 
+        /// <summary>重试次数。新闻挂了不影响主功能，但一次抖动不该让首页空着。</summary>
+        private const int MaxAttempts = 3;
+
+        /// <summary>新闻 JSON 单次请求的超时（约 200 KB，20 秒足够；卡住就交给重试）。</summary>
+        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+
+        /// <summary>
+        /// 拉取启动器新闻。
+        ///
+        /// 以前是「裸 <c>GetStringAsync</c> + <c>Deserialize</c>」：没有重试、超时用的是
+        /// HttpClient 默认的 100 秒，而且 <c>root</c> 为 null 时会在 <c>root.Entries</c> 上直接空引用。
+        /// 现在补上重试与空数据保护；彻底失败时抛一句能看懂的话（调用方只做日志，不弹窗）。
+        /// </summary>
         public static async Task<List<NewsItem>> GetNewsListAsync()
         {
-            using HttpClient httpClient = new HttpClient();
-            string json = await httpClient.GetStringAsync(NewsUrl);     
-
-            // 配置解析选项
             var jsonOptions = new JsonSerializerOptions
             {
                 // 允许大小写宽松匹配（可选）
                 PropertyNameCaseInsensitive = true
             };
 
-            // 反序列化根对象
-            var root = JsonSerializer.Deserialize<NewsRoot>(json, jsonOptions);
+            Exception? last = null;
 
-            // 循环填充 ImagePath
-            foreach (var item in root.Entries)
+            for (var attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                item.ResolveImageUrl();
+                try
+                {
+                    var json = await Http.GetStringAsync(NewsUrl);
+                    var root = JsonSerializer.Deserialize<NewsRoot>(json, jsonOptions);
+
+                    if (root?.Entries is not { Count: > 0 })
+                        throw new InvalidOperationException("新闻数据为空或格式不符");
+
+                    // 循环填充 ImagePath
+                    foreach (var item in root.Entries)
+                        item.ResolveImageUrl();
+
+                    return root.Entries;
+                }
+                // 连 TaskCanceledException 一起重试：HttpClient 的超时也是「取消」，
+                // 而弱网下超时恰恰是最常见的瞬时失败。
+                catch (Exception ex)
+                {
+                    last = ex;
+                    Serilog.Log.Warning(ex, "获取新闻列表失败（第 {Attempt}/{Max} 次）", attempt, MaxAttempts);
+
+                    if (attempt < MaxAttempts)
+                        await Task.Delay(400 * attempt);
+                }
             }
 
-            return root.Entries;
+            throw new HttpRequestException($"获取新闻列表失败（{FriendlyError.Describe(last)}）", last);
         }
     }
     // 根对象

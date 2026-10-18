@@ -3,9 +3,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.Messaging;
 using System;
+using System.ComponentModel;
 using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Pages;
+using VibrantbitLauncher.Views.Windows;
 
 namespace VibrantbitLauncher.Views.Pages
 {
@@ -33,6 +35,15 @@ namespace VibrantbitLauncher.Views.Pages
             // 那次求值会报一条绑定告警；这里显式给源，既准确又安静。
             NewsHost.ItemsSource = _newsViewModel?.News;
 
+            // 版本列表是异步扫盘填进去的：页面 Loaded 那一刻集合必然还是空的，
+            // 只在那时判一次「有没有版本」，就会把空状态一直挂在有版本的页面上。
+            // 所以集合一变、扫描状态一变就重算一次。
+            if (_launchViewModel is not null)
+            {
+                _launchViewModel.MinecraftVersions.CollectionChanged += OnVersionListChanged;
+                _launchViewModel.PropertyChanged += OnLaunchViewModelPropertyChanged;
+            }
+
             Loaded += async (_, _) =>
             {
                 _launchViewModel?.LoadCommand.Execute(null);
@@ -43,9 +54,44 @@ namespace VibrantbitLauncher.Views.Pages
             };
         }
 
-        /// <summary>根据版本列表实际条数切换空状态提示的显隐。</summary>
+        private void OnVersionListChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+            => UpdateEmptyStates();
+
+        private void OnLaunchViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(RunPageViewModel.IsRefreshing) or nameof(RunPageViewModel.MinecraftVersions))
+                UpdateEmptyStates();
+        }
+
+        /// <summary>
+        /// 只在**真的一个版本都没有**时显示空状态；有版本就整块隐藏。
+        ///
+        /// <para>
+        /// 扫盘还没结束时不清空为「还没有可用的游戏版本」，而是显示「正在扫描…」——
+        /// 否则首次进入（磁盘慢、版本多）会先闪一下「没有版本」，看起来像 bug。
+        /// 底部工具栏上的「配装码」按钮不受这里影响，永远可见。
+        /// </para>
+        /// </summary>
         private void UpdateEmptyStates()
-            => versionEmptyState.IsVisible = (_launchViewModel?.MinecraftVersions.Count ?? 0) == 0;
+        {
+            if (_launchViewModel is null)
+            {
+                versionEmptyState.IsVisible = true;
+                return;
+            }
+
+            var count = _launchViewModel.MinecraftVersions.Count;
+            versionEmptyState.IsVisible = count == 0;
+
+            if (count > 0)
+                return;
+
+            var scanning = _launchViewModel.IsRefreshing;
+            emptyIcon.IsVisible = !scanning;
+            emptyTitle.Text = scanning ? "正在扫描本地版本…" : "还没有可用的游戏版本";
+            emptyHint.IsVisible = !scanning;
+            emptyLoadoutButton.IsVisible = !scanning;
+        }
 
         private void OnLaunchClick(object sender, RoutedEventArgs e)
         {
@@ -59,8 +105,10 @@ namespace VibrantbitLauncher.Views.Pages
         {
             if (listBox.SelectedItem is LocalVersion version)
             {
-                WeakReferenceMessenger.Default.Send<string, string>(version.Version, "McVersionForManage");
+                // 先导航再发版本号：版本管理页是懒加载单例，页面没创建时消息没人接收
+                // （详见 RunPageViewModel.Settings 的注释）
                 WeakReferenceMessenger.Default.Send<Type, string>(typeof(VersionManagePage), "NavigateTo");
+                WeakReferenceMessenger.Default.Send<string, string>(version.Version, "McVersionForManage");
             }
             else
             {
@@ -70,6 +118,33 @@ namespace VibrantbitLauncher.Views.Pages
 
         private void ShowHint(string message)
             => AppServices.Notifications?.Warning(message, "提示");
+
+        /// <summary>
+        /// 「配装码」：粘贴一串分享码，从零装出一个完整实例。
+        ///
+        /// <para>
+        /// 之所以单独给个入口而不是让用户去「工具箱 → 配装分享」：
+        /// 那条路径要先有实例才能进（窗口顶部是实例下拉框），而**刚拿到新电脑、一个版本都没装**
+        /// 恰恰是最需要「一键装好」的时候。所以这个入口不依赖任何已有实例。
+        /// </para>
+        /// </summary>
+        private async void OnLoadoutCodeClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var window = new LoadoutImportWindow();
+                await AppLifetime.ShowDialogAsync(window);
+
+                // 只有真装出了实例才刷新列表 —— 打开看一眼就关掉时不该无谓地重扫磁盘
+                if (window.Installed)
+                    _launchViewModel?.LoadCommand.Execute(null);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "打开配装码窗口失败");
+                AppServices.Notifications?.Error("无法打开配装码窗口：" + FriendlyError.Describe(ex));
+            }
+        }
 
         //  ==================== 新闻  ====================
 

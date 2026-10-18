@@ -119,7 +119,7 @@
 
                                     <!--  描述  -->
                                     <TextBlock Classes="secondary" MaxHeight="36" Margin="0,4,0,0"
-                                               Text="{Binding Description}"
+                                               Text="{Binding DisplayDescription}"
                                                TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
 
                                     <!--  标签行 + 下载量 + 时间  -->
@@ -168,13 +168,32 @@
                 <TextBlock Classes="caption" Margin="8,0,0,0" Text="正在加载更多…" />
             </StackPanel>
 
-            <!--  空状态  -->
-            <TextBlock x:Name="emptyText"
-                       Classes="secondary"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                       IsHitTestVisible="False"
-                       IsVisible="False"
-                       Text="没有匹配的资源，换个关键词或筛选条件试试" />
+            <!--  空状态 / 加载失败：同一块区域，按 VM 状态切换内容  -->
+            <StackPanel x:Name="emptyPanel"
+                        MaxWidth="420"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsVisible="False"
+                        Spacing="10">
+                <ui:FASymbolIcon x:Name="emptyIcon"
+                                 HorizontalAlignment="Center"
+                                 FontSize="28"
+                                 Symbol="ZoomInFilled" />
+                <TextBlock x:Name="emptyText"
+                           Classes="secondary"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Text="没有匹配的资源，换个关键词或筛选条件试试" />
+                <Button x:Name="emptyRetryButton"
+                        HorizontalAlignment="Center"
+                        IsVisible="False"
+                        Command="{Binding RefreshCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ui:FASymbolIcon Symbol="Refresh" />
+                        <TextBlock Text="重试" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
     </Grid>
 </UserControl>

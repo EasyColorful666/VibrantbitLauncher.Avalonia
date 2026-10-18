@@ -81,5 +81,12 @@ namespace VibrantbitLauncher.Services
             else
                 dialog.Show();
         }
+
+        /// <summary>
+        /// 显示一个子页。1.0.8.0 起子页一律内嵌到主窗口内容区（学 PCL2），不再弹新窗口。
+        /// 保留这个入口名称是为了让调用点改动最小。
+        /// </summary>
+        public static Task ShowDialogAsync(Control page, string? title = null)
+            => InlineHost.ShowAsync(page, title);
     }
 }

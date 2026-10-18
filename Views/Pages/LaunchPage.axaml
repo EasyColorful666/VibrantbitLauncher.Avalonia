@@ -44,7 +44,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="14,10" Classes="card">
-                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                     <Image
                                         Grid.Column="0"
                                         Width="48"
@@ -62,6 +62,15 @@
 
                                     <Button
                                         Grid.Column="2"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding ToolsCommand}"
+                                        CommandParameter="{Binding Version}"
+                                        Content="工具箱" />
+
+                                    <Button
+                                        Grid.Column="3"
+                                        Margin="8,0,0,0"
                                         VerticalAlignment="Center"
                                         Command="{Binding SettingsCommand}"
                                         CommandParameter="{Binding Version}"
@@ -72,27 +81,38 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <!--  空状态：游戏目录里还没有版本  -->
+                <!--  空状态：游戏目录里还没有版本（有版本时由 code-behind 整体隐藏）  -->
                 <StackPanel
                     x:Name="versionEmptyState"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">
                     <TextBlock
+                        x:Name="emptyIcon"
                         HorizontalAlignment="Center"
                         FontFamily="{StaticResource AppDisplayFont}"
                         FontSize="44"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="&#xE7B8;" />
                     <TextBlock
+                        x:Name="emptyTitle"
                         Margin="0,16,0,0"
                         HorizontalAlignment="Center"
                         Classes="subtitle"
                         Text="还没有可用的游戏版本" />
                     <TextBlock
+                        x:Name="emptyHint"
                         Margin="0,6,0,0"
                         HorizontalAlignment="Center"
                         Classes="caption"
-                        Text="到「下载中心」安装一个版本后就能启动了" />
+                        Text="到「下载中心」安装一个版本，或用配装码一键添加" />
+                    <Button
+                        x:Name="emptyLoadoutButton"
+                        Margin="0,18,0,0"
+                        Padding="24,10"
+                        HorizontalAlignment="Center"
+                        Classes="accent"
+                        Click="OnLoadoutCodeClick"
+                        Content="用配装码添加游戏" />
                 </StackPanel>
             </Grid>
 
@@ -110,6 +130,10 @@
                     Padding="20,12"
                     Click="OnVersionSettingsClick"
                     Content="版本设置" />
+                <Button
+                    Padding="20,12"
+                    Click="OnLoadoutCodeClick"
+                    Content="配装码" />
                 <Button
                     Padding="20,12"
                     Command="{Binding RefreshCommand}"

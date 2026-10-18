@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
     xmlns:ui="using:FluentAvalonia.UI.Controls"
     Title="Vibrantbit Launcher"
     Width="960"
@@ -12,13 +13,22 @@
     WindowStartupLocation="CenterScreen"
     FontFamily="{StaticResource AppFont}"
     FontSize="{StaticResource FontSizeBody}"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
 
     <!--
-        底色画在自己的元素上并用 DynamicResource 引用主题画刷：
-        放到窗口自身会在切主题后被写成固定色刷，暗色下变成浅底白字。
+        底色用本工程自己的 ApplicationBackgroundBrush（AppTheme.axaml 定义 + ApplyTheme 按主题覆写），
+        窗口层与根 Grid 层都写一遍：窗口层负责窗口自身，根 Grid 层保证切主题后立刻重绘。
+        注意别用 FluentAvalonia 的 SolidBackgroundFillColorBase —— 那是 Color 资源，
+        赋给 IBrush 类型的 Background 会静默失效，等于没有背景。
     -->
-    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
-        <ContentControl x:Name="PageHost" />
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ctrl:TitleBar Grid.Row="0"
+                       Height="36"
+                       Title="Vibrantbit Launcher"
+                       Subtitle="首次使用向导"
+                       Icon="/Assets/icon.ico" />
+
+        <ContentControl x:Name="PageHost" Grid.Row="1" />
     </Grid>
 </Window>

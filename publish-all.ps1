@@ -13,8 +13,8 @@
     产物结构：
 
         publish/<rid>/              原始发布目录（单文件可执行 + 运行时附属文件）
-        dist/<名字>-<rid>.tar.gz    Linux / macOS 用（跨平台，能带权限位）
-        dist/<名字>-<rid>.zip       Windows 用（双击解压友好，仅 win-* 出）
+        dist/<名字>-<rid>.zip       Windows 用（仅 win-*，只出 zip，双击解压友好）
+        dist/<名字>-<rid>.tar.gz    Linux / macOS 用（仅 linux-* / osx-*，能带权限位）
         dist/<名字>-<rid>.app       macOS 的 .app 包（仅 osx-*，另附同名 tar.gz）
         dist/SHA256SUMS.txt         全部包的校验和
 
@@ -533,29 +533,22 @@ foreach ($rawRid in $Rids) {
                           -Entries @("$appName.app", 'install.command', 'README-macOS.txt')
                 [void]$packages.Add($tarName)
             }
+            elseif ($isWin) {
+                # Windows 只出 zip：目标是双击解压，zip 更顺手，也不再重复打一份 tar.gz。
+                # 必须先清掉旧包：Compress-Archive 覆盖同名文件时内部要删一次，
+                # 而在某些环境里「删除」被改写成回收站操作、会直接把整个平台搞失败。
+                $zipName = "$appName-$rid.zip"
+                $zipPath = Join-Path $DistDir $zipName
+                Remove-FileSafe -Path $zipPath -What '旧 zip 包'
+                Compress-Archive -Path (Join-Path $outDir '*') -DestinationPath $zipPath -Force
+                [void]$packages.Add($zipName)
+            }
             else {
+                # Linux：只出 tar.gz
                 $tarName = "$appName-$rid.tar.gz"
                 $tarPath = Join-Path $DistDir $tarName
                 New-TarGz -Out $tarPath -SourceDir $outDir -Entries @('.')
                 [void]$packages.Add($tarName)
-
-                if ($isWin) {
-                    # Windows 额外出一份 zip：双击解压比 tar.gz 顺手。
-                    # 必须先清掉旧包：Compress-Archive 覆盖同名文件时内部要删一次，
-                    # 而在某些环境里「删除」被改写成回收站操作、会直接把整个平台搞失败。
-                    $zipName = "$appName-$rid.zip"
-                    $zipPath = Join-Path $DistDir $zipName
-                    Remove-FileSafe -Path $zipPath -What '旧 zip 包'
-                    try {
-                        Compress-Archive -Path (Join-Path $outDir '*') -DestinationPath $zipPath -Force
-                        [void]$packages.Add($zipName)
-                    }
-                    catch {
-                        # zip 只是附带的便利格式，tar.gz 已经在上面出好了，
-                        # 这里失败不该让整个平台算失败。
-                        Write-Warning ("[{0}] zip 生成失败（tar.gz 不受影响）：{1}" -f $rid, $_.Exception.Message)
-                    }
-                }
             }
         }
 

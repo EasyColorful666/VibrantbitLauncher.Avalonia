@@ -27,6 +27,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         ObservableCollection<string> userNames = new();
         ObservableCollection<Account> accounts = new();
         Account selectedAccount;
+        User? currentUser;
         string selectedSkinPath = string.Empty;
         string selectedAccountName = "未选择账户";
         string selectedAccountType = string.Empty;
@@ -68,10 +69,61 @@ namespace VibrantbitLauncher.ViewModels.Pages
             SelectedSkinPath = user?.FullSkinPath ?? string.Empty;
             SelectedAccountName = account?.Name ?? "未选择账户";
             SelectedAccountType = user?.AccountType ?? string.Empty;
+            UpdateSelectionFlags(account);
+        }
+
+        /// <summary>
+        /// 当前启动身份（Hero 卡直接绑这个对象）。
+        ///
+        /// 与 <see cref="UpdateSelectionFlags"/> 同源，避免「卡片亮着 A、顶部却写着 B」。
+        /// 允许为 null —— 有账户但一个都没选时，Hero 位置显示「尚未选择启动身份」的占位。
+        /// </summary>
+        public User? CurrentUser
+        {
+            get => currentUser;
+            private set
+            {
+                if (SetProperty(ref currentUser, value))
+                    OnPropertyChanged(nameof(HasCurrentUser));
+            }
+        }
+
+        public bool HasCurrentUser => currentUser is not null;
+
+        /// <summary>是否已有账户。空 / 非空决定整页显示空状态还是身份墙。</summary>
+        public bool HasUsers => users.Count > 0;
+
+        /// <summary>「3 个账户」这类计数文案。集合变化时重新算一次，界面不用自己拼字符串。</summary>
+        public string AccountCountText => users.Count == 0 ? string.Empty : $"{users.Count} 个账户";
+
+        /// <summary>
+        /// 刷新所有卡片的「当前使用」标记。
+        ///
+        /// 卡片上的高亮、徽章都只认这一个标志 —— 不再依赖 RadioButton 的 GroupName，
+        /// 否则会出现「VM 认为选了 A，界面上却亮着 B」这种双数据源不同步的问题。
+        /// </summary>
+        private void UpdateSelectionFlags(Account? account)
+        {
+            foreach (var u in users)
+                u.IsSelected = account is not null && ReferenceEquals(u.Account, account);
+
+            CurrentUser = account is null
+                ? null
+                : users.FirstOrDefault(u => ReferenceEquals(u.Account, account));
         }
         public AccountPageViewModel()
         {
             IsLoaded = false;
+
+            // 账户增删后刷新空状态 / 计数文案。
+            // 以前由 AccountPage 的 code-behind 逐个 x:Name 去开关 IsVisible，
+            // 页面只剩绑定时，这一层通知就必须由 VM 自己发出。
+            users.CollectionChanged += (_, _) =>
+            {
+                OnPropertyChanged(nameof(HasUsers));
+                OnPropertyChanged(nameof(AccountCountText));
+            };
+
             WeakReferenceMessenger.Default.Register<YggdrasilAccountProfile, string>(this, "YggdrasilAccountProfile", (_, m) => NewYggdrasilAccountProfile(m));
             WeakReferenceMessenger.Default.Register<string, string>(this, "OfflineAccountProfile", (_, m) => NewOfflineAccountProfile(m));
             AuthenticateMicrosoftCommand = new RelayCommand(AuthenticateMicrosoftAsync);
@@ -159,6 +211,43 @@ namespace VibrantbitLauncher.ViewModels.Pages
         }
 
         /// <summary>
+        /// 该账户是不是「换过自定义皮肤」。靠 <c>res/&lt;uuid&gt;.custom</c> 这个零字节标记文件判断 ——
+        /// 光看头像文件是否存在不行：默认的史蒂夫皮肤也会写进同一个路径。
+        /// </summary>
+        private static bool HasCustomSkin(Account account)
+        {
+            try
+            {
+                var uuid = GetAccountUuid(account);
+                if (string.IsNullOrEmpty(uuid))
+                    return false;
+
+                return File.Exists(Path.Combine(AppContext.BaseDirectory, "res", $"{uuid}.custom"));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void MarkCustomSkin(string uuid)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(uuid))
+                    return;
+
+                var dir = Path.Combine(AppContext.BaseDirectory, "res");
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, $"{uuid}.custom"), string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "记录自定义皮肤标记失败（不影响换肤结果）");
+            }
+        }
+
+        /// <summary>
         /// 解析头像路径：优先使用按 UUID 保存的皮肤文件，不存在则回退到默认头像。
         /// </summary>
         private static string ResolveAvatarPath(string? uuid)
@@ -199,7 +288,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 DeleteCommand = new RelayCommand<Account>(DeleteAccount),
                 SkinCommand = new RelayCommand<Account>(OpenSkinManager),
                 ImagePath = imagePath,
-                FullSkinPath = fullSkinPath
+                FullSkinPath = fullSkinPath,
+                IsPlaceholderAvatar = type == "Offline" && !HasCustomSkin(account)
             });
         }
 
@@ -224,6 +314,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
             // 必须显式通知，界面才会重新读文件、把新头像显示出来。
             if (user != null)
             {
+                // 用户真的换过皮肤了：写一个 sidecar 标记，下次启动就知道
+                // 这个离线账户不该再显示默认人形图标了。
+                MarkCustomSkin(uuid);
+
+                user.IsPlaceholderAvatar = false;
                 user.ImagePath = ResolveAvatarPath(uuid);
                 user.FullSkinPath = ResolveFullSkinPath(uuid);
                 user.NotifyAvatarChanged();
@@ -321,7 +416,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Invoke(() => authWindow.SetCode(dc.UserCode, dc.VerificationUrl));
                     });
-                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() => authWindow.Close());
+                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() => Services.InlineHost.Close());
                     return token;
                 });
 
@@ -366,11 +461,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
             catch (TaskCanceledException)
             {
-                authWindow.Close();
+                Services.InlineHost.Close();
             }
             catch (Exception ex)
             {
-                authWindow.Close();
+                Services.InlineHost.Close();
                 await (AppServices.Dialogs?.ShowErrorAsync("错误", $"微软登录失败：{ex.Message}") ?? Task.CompletedTask);
             }
         }
@@ -516,6 +611,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 MainWindowViewModel.MainModel.Account = null;
                 MainWindowViewModel.MainModel.IsMicrosoftAccount = false;
                 SettingsService.SetSelectedAccount(string.Empty);
+                UpdateSelectionFlags(null);
             }
         }
     }
@@ -532,6 +628,51 @@ namespace VibrantbitLauncher.ViewModels.Pages
         public string Name { get; set; }
         public Account Account { get; set; }
         public string AccountType { get; set; }
+
+        /// <summary>
+        /// 账户类型的中文名。卡片上直接显示这个，而不是原始枚举串
+        /// （「Microsoft」对普通玩家不如「微软账户」直观）。
+        /// </summary>
+        public string TypeDisplay => AccountType switch
+        {
+            "Microsoft" => "微软账户",
+            "Yggdrasil" => "外置账户",
+            "Offline" => "离线账户",
+            _ => AccountType
+        };
+
+        private bool isSelected;
+        /// <summary>
+        /// 是否是「当前使用」的那个账户。
+        ///
+        /// 只由 <see cref="AccountPageViewModel"/> 统一刷新：卡片的高亮边框与右上角徽章
+        /// 都绑这一个值。以前靠 RadioButton 的 GroupName 表达选中，但它和 VM 里的
+        /// <c>selectedAccount</c> 是两份状态，自动恢复上次账户时两边会对不上。
+        /// </summary>
+        public bool IsSelected
+        {
+            get => isSelected;
+            set => SetProperty(ref isSelected, value);
+        }
+
+        private bool isPlaceholderAvatar;
+
+        /// <summary>
+        /// 是否用 Win11（太阳谷）风格的默认账户图标代替头像。
+        ///
+        /// <para>
+        /// 离线账户本来会生成一份史蒂夫皮肤当头像，但在「账户」这个界面里，
+        /// 一排史蒂夫脸既分不清谁是谁，也和 Win11 的系统账户观感不搭。
+        /// 这里改成：<b>没换过自定义皮肤的离线账户</b>显示太阳谷账户图标，
+        /// 一旦用户真的换过皮肤（有 <c>res/&lt;uuid&gt;.custom</c> 标记）就显示真实头像。
+        /// </para>
+        /// </summary>
+        public bool IsPlaceholderAvatar
+        {
+            get => isPlaceholderAvatar;
+            set => SetProperty(ref isPlaceholderAvatar, value);
+        }
+
         public RelayCommand<Account> SelectedCommand { get; set; }
         public RelayCommand<Account> DeleteCommand { get; set; }
         public RelayCommand<Account> SkinCommand { get; set; }

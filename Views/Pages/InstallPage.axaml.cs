@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Messaging;
@@ -26,21 +27,29 @@ public partial class InstallPage : UserControl
         InitializeComponent();
 
         // Avalonia 的 ToggleButton 没有 XAML 的 Checked/Unchecked 事件属性。
-        // 四个框共用一个处理器：勾选状态一变就整体重算可用性，
-        // 比原来「勾谁就手工关谁」的分散写法更好维护。
-        checkBox1.IsCheckedChanged += (_, _) => OnLoaderToggled();
-        checkBox2.IsCheckedChanged += (_, _) => OnLoaderToggled();
-        checkBox3.IsCheckedChanged += (_, _) => OnLoaderToggled();
-        checkBox4.IsCheckedChanged += (_, _) => OnLoaderToggled();
+        // 四个框共用一个处理器：勾选状态一变就整体重算可用性。
+        // 入参把「是哪一个框变了」传进去 —— 单选语义需要知道「刚被勾上的是谁」。
+        checkBox1.IsCheckedChanged += (s, _) => OnLoaderToggled(s as CheckBox);
+        checkBox2.IsCheckedChanged += (s, _) => OnLoaderToggled(s as CheckBox);
+        checkBox3.IsCheckedChanged += (s, _) => OnLoaderToggled(s as CheckBox);
+        checkBox4.IsCheckedChanged += (s, _) => OnLoaderToggled(s as CheckBox);
 
         WeakReferenceMessenger.Default.Register<string, string>(this, "McVersion", (_, m) => SetMcVersion(m));
     }
 
     /// <summary>
-    /// 任一勾选框状态变化后的统一处理：清掉没勾选的加载器已选版本、
-    /// 重算四个框的可用性、点亮卡片边框。
+    /// 任一勾选框状态变化后的统一处理。**单选语义**：
+    /// 勾上哪个加载器，其余三个立刻取消勾选并禁用（同一个实例里只可能装一个加载器）。
+    ///
+    /// <para>
+    /// 为什么不再让四个框「部分共存」：安装逻辑
+    /// （<see cref="InstallPageViewModel"/> 的 Install 分支）本身就是按
+    /// Forge → Fabric → Quilt → NeoForge 的顺序取**第一个非空**的版本号，
+    /// 同时勾两个只会静默只装其中一个，用户却以为两个都装了。
+    /// 现在 UI 层直接约束成「只能选一个」，与安装逻辑口径一致。
+    /// </para>
     /// </summary>
-    private void OnLoaderToggled()
+    private void OnLoaderToggled(CheckBox? source)
     {
         if (_recalculating)
             return;
@@ -48,11 +57,31 @@ public partial class InstallPage : UserControl
         if (_viewModel is not InstallPageViewModel vm)
             return;
 
-        // 取消勾选 → 同步清空已选版本，避免「框没勾却还带着版本号」被当成要装加载器
-        if (checkBox1.IsChecked != true) vm.SelectForgeVersion = string.Empty;
-        if (checkBox2.IsChecked != true) vm.SelectFabricVersion = string.Empty;
-        if (checkBox3.IsChecked != true) vm.SelectNeoforgeVersion = string.Empty;
-        if (checkBox4.IsChecked != true) vm.SelectQuiltVersion = string.Empty;
+        _recalculating = true;
+        try
+        {
+            // 勾上某个 → 其余三个全部取消勾选（不再按 WPF 那套「谁能和谁共存」的规则）。
+            // 取消勾选时不动别人：用户只是取消了当前这个，四个框应重新都可选。
+            if (source?.IsChecked == true)
+            {
+                foreach (var box in new[] { checkBox1, checkBox2, checkBox3, checkBox4 })
+                {
+                    if (!ReferenceEquals(box, source) && box.IsChecked == true)
+                        box.IsChecked = false;
+                }
+            }
+
+            // 未勾选的加载器一律清掉已选版本，避免「框没勾却还带着版本号」
+            // 被 Install 当成要装（那是「勾了 Forge 却装了 Fabric」这类怪现象的来源）。
+            if (checkBox1.IsChecked != true) vm.SelectForgeVersion = string.Empty;
+            if (checkBox2.IsChecked != true) vm.SelectFabricVersion = string.Empty;
+            if (checkBox3.IsChecked != true) vm.SelectNeoforgeVersion = string.Empty;
+            if (checkBox4.IsChecked != true) vm.SelectQuiltVersion = string.Empty;
+        }
+        finally
+        {
+            _recalculating = false;
+        }
 
         UpdateLoaderAvailability();
         UpdateCardStates();
@@ -60,6 +89,18 @@ public partial class InstallPage : UserControl
 
     private async void SetMcVersion(string msg)
     {
+        // 已经是这个版本的页面（例如从「下载任务」点「查看详情」跳回来想看进度）：
+        // 直接返回，**不要**重建 VM —— 那会把正在跑的那次安装的进度条整个重置掉，
+        // 用户会以为「跳到详情页 = 安装没了」。只有真正换了版本才重建。
+        if (_viewModel is InstallPageViewModel current
+            && string.Equals(current.McVersion, msg, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateLoaderAvailability();
+            UpdateCardStates();
+            UpdateEmptyHints();
+            return;
+        }
+
         // 记下「这是第几次切换」。await 期间用户可能又点了别的版本，
         // 回来时若令牌已变，就不要再拿旧结果去改界面。
         var token = ++_loadToken;
@@ -124,9 +165,8 @@ public partial class InstallPage : UserControl
     /// <list type="number">
     /// <item>版本列表还没拉完 → 四个框全部禁用（加载好之前不给勾）；</item>
     /// <item>该加载器在这个版本下没有可选版本（404 / 列表为空）→ 禁用；</item>
-    /// <item>共存互斥规则（沿用原 WPF 版语义）：
-    /// Forge 挡住 Fabric、Quilt；Fabric 挡住其余全部；NeoForge 挡住 Fabric、Quilt；
-    /// Quilt 挡住其余全部。已被勾中的框始终保持可用，否则没法取消。</item>
+    /// <item><b>单选互斥</b>：只要已勾中任意一个，其余三个一律禁用；
+    /// 已勾中的那个始终保持可用，否则没法取消勾选换别的。</item>
     /// </list>
     /// </summary>
     private void UpdateLoaderAvailability()
@@ -160,10 +200,13 @@ public partial class InstallPage : UserControl
         bool neoOn = checkBox3.IsChecked == true;
         bool quiltOn = checkBox4.IsChecked == true;
 
-        checkBox1.IsEnabled = forgeOn || (forgeUsable && !fabricOn && !quiltOn);
-        checkBox2.IsEnabled = fabricOn || (fabricUsable && !forgeOn && !neoOn && !quiltOn);
-        checkBox3.IsEnabled = neoOn || (neoUsable && !fabricOn && !quiltOn);
-        checkBox4.IsEnabled = quiltOn || (quiltUsable && !forgeOn && !fabricOn && !neoOn);
+        // 单选：有任何一个是勾着的，另外三个就都点不动（想换加载器先取消当前这个）。
+        var anyOn = forgeOn || fabricOn || neoOn || quiltOn;
+
+        checkBox1.IsEnabled = forgeOn || (forgeUsable && !anyOn);
+        checkBox2.IsEnabled = fabricOn || (fabricUsable && !anyOn);
+        checkBox3.IsEnabled = neoOn || (neoUsable && !anyOn);
+        checkBox4.IsEnabled = quiltOn || (quiltUsable && !anyOn);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ui="using:FluentAvalonia.UI.Controls"
+        xmlns:ctrl="using:VibrantbitLauncher.Controls"
         xmlns:pages="using:VibrantbitLauncher.Views.Pages"
         xmlns:vm="using:VibrantbitLauncher.ViewModels.Windows"
         mc:Ignorable="d"
@@ -22,7 +23,8 @@
 
     <Grid>
         <!--  背景层：设置里选了壁纸才有内容，未设置时保持纯 Mica 底  -->
-        <Image IsHitTestVisible="False"
+        <Image x:Name="BackgroundImageLayer"
+               IsHitTestVisible="False"
                Opacity="{Binding BackgroundImageOpacity}"
                RenderOptions.BitmapInterpolationMode="HighQuality"
                Source="{Binding BackgroundImage}"
@@ -34,28 +36,12 @@
                 IsVisible="{Binding HasBackgroundImage}" />
 
         <Grid x:Name="AppRoot" RowDefinitions="Auto,*">
-            <!--  自定义标题栏（Avalonia 12 用 WindowDecorationProperties 标记拖拽区）  -->
-            <Grid Grid.Row="0"
-                  Height="40"
-                  ColumnDefinitions="Auto,*"
-                  Background="Transparent"
-                  WindowDecorationProperties.ElementRole="TitleBar">
-                <Image Grid.Column="0"
-                       Width="18"
-                       Height="18"
-                       Margin="14,0,8,0"
-                       VerticalAlignment="Center"
-                       IsHitTestVisible="False"
-                       Source="/Assets/icon.ico"
-                       RenderOptions.BitmapInterpolationMode="HighQuality" />
-
-                <TextBlock Grid.Column="1"
-                           Margin="4,0"
-                           VerticalAlignment="Center"
-                           FontSize="{StaticResource FontSizeBodyLarge}"
-                           IsHitTestVisible="False"
-                           Text="VibrantbitLauncher" />
-            </Grid>
+            <!--  自定义标题栏（控件自带最小化 / 最大化 / 关闭，见 Controls/TitleBar.cs）  -->
+            <ctrl:TitleBar x:Name="AppTitleBar"
+                           Grid.Row="0"
+                           Height="40"
+                           Title="VibrantbitLauncher"
+                           Icon="/Assets/icon.ico" />
 
             <!--  导航容器  -->
             <ui:FANavigationView x:Name="RootNavigation"
@@ -110,6 +96,68 @@
                    VerticalAlignment="Bottom"
                    HorizontalAlignment="Right"
                    ZIndex="100" />
+
+            <!--
+                内嵌子页宿主（1.0.8.2 起：窗口原样嵌进来，不做任何改装）。
+
+                这里**不做标题栏、不做换页**：子页自己带着原来那个窗口的标题栏、边框和关闭按钮，
+                我们只负责给它一块半透明遮罩 + 居中位置 + 投影，看起来就是
+                「那个窗口浮在主界面上」，与 PCL2 一致。
+
+                子页内部 TitleBar 通过 IsInline="True" 知道自己被内嵌了：
+                不 Hook 主窗口（否则点 × 会关掉整个启动器）、隐藏最小化/最大化、× 走 InlineHost.Close()。
+            -->
+            <Panel x:Name="InlineHostLayer" Grid.Row="1" IsVisible="False" ZIndex="150">
+                <Border Background="{DynamicResource AppBackgroundScrimBrush}" />
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Margin="16">
+                    <Border HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            BoxShadow="0 16 44 0 #55000000"
+                            ClipToBounds="True"
+                            CornerRadius="8">
+                        <ContentControl x:Name="InlineContentHost" />
+                    </Border>
+                </ScrollViewer>
+            </Panel>
+
         </Grid>
+
+        <!--  拖入整合包时的整窗提示层：平时完全隐藏且不挡鼠标  -->
+        <Border x:Name="DropOverlay"
+                Background="{DynamicResource AppDropOverlayBrush}"
+                IsHitTestVisible="False"
+                IsVisible="False"
+                ZIndex="200">
+            <Border Margin="28"
+                    Padding="40"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Background="{DynamicResource AppDropPanelBrush}"
+                    BorderBrush="{DynamicResource AppAccentBrush}"
+                    BorderThickness="2"
+                    CornerRadius="12">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                    <ui:FASymbolIcon HorizontalAlignment="Center"
+                                     FontSize="40"
+                                     Symbol="Download" />
+                    <TextBlock x:Name="DropOverlayTitle"
+                               HorizontalAlignment="Center"
+                               FontSize="{StaticResource FontSizeBodyLarge}"
+                               FontWeight="SemiBold"
+                               Text="松开即可安装整合包" />
+                    <TextBlock x:Name="DropOverlayHint"
+                               HorizontalAlignment="Center"
+                               Classes="secondary"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Text="支持 Modrinth (.mrpack) 与 CurseForge (.zip) 整合包" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </Window>

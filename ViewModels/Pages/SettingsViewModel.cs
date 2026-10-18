@@ -245,6 +245,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 BackgroundImagePath = SettingsService.Current.BackgroundImagePath ?? string.Empty;
                 BackgroundImageOpacity = SettingsService.Current.BackgroundImageOpacity;
 
+                _performanceMode = SettingsService.Current.PerformanceMode;
+                OnPropertyChanged(nameof(PerformanceMode));
+                OnPropertyChanged(nameof(PerformanceModeHint));
+
                 // 启动 / 网络两组设置：回填控件状态时同样只写字段 + 通知，不走 setter
                 // （走 setter 会逐个落盘，还会在初始化阶段就把下载设置重刷一遍）
                 _suppressSettingApply = true;
@@ -747,6 +751,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private bool _suppressAppearanceApply;
         private string _backgroundImagePath = string.Empty;
         private double _backgroundImageOpacity = 0.85;
+        private bool _performanceMode;
 
         /// <summary>可选主题色。</summary>
         public ObservableCollection<AccentPreset> AccentPresets => _accentPresets;
@@ -816,6 +821,35 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
             }
         }
+
+        /// <summary>
+        /// 性能模式开关：关闭云母材质 / 壁纸 / 动效 / 阴影，并改用软件渲染。
+        ///
+        /// 立即生效的部分（动效、壁纸、Mica 判定）走 <see cref="SettingsService.ApplyPerformanceMode"/>；
+        /// 渲染后端与窗口类名这类只在启动时决定的东西需要重启，界面上有明确提示。
+        /// </summary>
+        public bool PerformanceMode
+        {
+            get => _performanceMode;
+            set
+            {
+                if (!SetProperty(ref _performanceMode, value) || _suppressAppearanceApply)
+                    return;
+
+                SettingsService.Current.PerformanceMode = value;
+                SettingsService.ApplyPerformanceMode();
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+
+                OnPropertyChanged(nameof(PerformanceModeHint));
+            }
+        }
+
+        /// <summary>性能模式的状态说明（渲染方式要重启才切换，这里如实告诉用户）。</summary>
+        public string PerformanceModeHint
+            => _performanceMode
+                ? "已开启：动效 / 阴影 / 壁纸已关闭。重启启动器后渲染方式也会切到软件渲染。"
+                : "为低配电脑（尤其 Windows 7 老机器）关闭动效、阴影与壁纸，并改用软件渲染。";
 
         public RelayCommand<WallpaperOption> PickWallpaperCommand { get; }
         public RelayCommand ClearBackgroundCommand { get; }

@@ -1,0 +1,188 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="using:VibrantbitLauncher.Controls">
+
+    <!--
+        ============================================================
+        自定义标题栏 TitleBar（仿 WPF-UI 的 ui:TitleBar）
+        ============================================================
+
+        这里用「应用级 Style + Template」而不是 ControlTheme：
+        本工程没有为自定义控件建 ControlTheme 的先例，
+        而且应用级样式里可以用普通的后代选择器直接命中模板里的命名部件，
+        省掉 ControlTheme 作用域下 `^ /template/` 的层级坑（踩过）。
+
+        配色全部走 FluentAvalonia 的语义键，明暗主题自动适配；
+        只有「关闭按钮悬停红」是国内 Windows 约定的固定色，直接写死。
+    -->
+
+    <Style Selector="ctrl|TitleBar">
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <!--
+                    PART_Root 标了 ElementRole="TitleBar"：平台把它当非客户区，
+                    拖窗 / 双击最大化 / 右键系统菜单 / Aero Snap 全由系统接管。
+                    里面的按钮与内容区反过来标成 "User"，
+                    否则会被非客户区命中测试吞掉（按钮点不动）。
+                -->
+                <Border Name="PART_Root"
+                        Background="{TemplateBinding Background}"
+                        WindowDecorationProperties.ElementRole="TitleBar">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+
+                        <!--  应用图标：没设 Icon 时整块隐藏（不占位）  -->
+                        <Image Name="PART_Icon"
+                               Grid.Column="0"
+                               Width="16"
+                               Height="16"
+                               Margin="14,0,10,0"
+                               VerticalAlignment="Center"
+                               IsVisible="False"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="12">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Name="PART_Title" Text="{TemplateBinding Title}" />
+                                <TextBlock Name="PART_Subtitle" Text="{TemplateBinding Subtitle}" IsVisible="False" />
+                            </StackPanel>
+
+                            <!--  自定义内容区（搜索框 / 面包屑之类），默认空  -->
+                            <ContentPresenter Name="PART_ContentPresenter"
+                                              VerticalAlignment="Center"
+                                              VerticalContentAlignment="Center"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              WindowDecorationProperties.ElementRole="User" />
+                        </StackPanel>
+
+                        <!--  空白拖拽区：把标题推到左边、按钮推到右边  -->
+                        <Border Grid.Column="2" Background="Transparent" />
+
+                        <!--  系统按钮：与原生一致，通栏高度、悬停整块高亮  -->
+                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                            <Button Name="PART_MinimizeButton"
+                                    Classes="captionButton"
+                                    ToolTip.Tip="最小化"
+                                    WindowDecorationProperties.ElementRole="User">
+                                <Path Classes="captionGlyph" Data="M 0.5,4.5 H 9.5" />
+                            </Button>
+
+                            <Button Name="PART_MaximizeButton"
+                                    Classes="captionButton"
+                                    ToolTip.Tip="最大化"
+                                    WindowDecorationProperties.ElementRole="User">
+                                <Panel>
+                                    <Path Name="PART_MaximizeGlyph"
+                                          Classes="captionGlyph"
+                                          Data="M 0.5,0.5 H 9.5 V 9.5 H 0.5 Z" />
+                                    <Path Name="PART_RestoreGlyph"
+                                          Classes="captionGlyph"
+                                          Data="M 2.5,0.5 H 9.5 V 7.5 M 0.5,2.5 H 7.5 V 9.5 H 0.5 Z"
+                                          IsVisible="False" />
+                                </Panel>
+                            </Button>
+
+                            <Button Name="PART_CloseButton"
+                                    Classes="captionButton captionClose"
+                                    ToolTip.Tip="关闭"
+                                    WindowDecorationProperties.ElementRole="User">
+                                <Path Classes="captionGlyph" Data="M 0.5,0.5 L 9.5,9.5 M 9.5,0.5 L 0.5,9.5" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <Style Selector="ctrl|TitleBar TextBlock">
+        <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
+    <!--  标题：主文字色，常规字重（对齐 WPF-UI / Windows 11 标题栏）  -->
+    <Style Selector="ctrl|TitleBar TextBlock#PART_Title">
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!--  副标题：小一号 + 次要色，默认隐藏（没设 Subtitle 时不占位）  -->
+    <Style Selector="ctrl|TitleBar TextBlock#PART_Subtitle">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Image#PART_Icon">
+        <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
+    <!--  ==================== 系统按钮  ====================  -->
+
+    <Style Selector="ctrl|TitleBar Button.captionButton">
+        <Setter Property="Width" Value="46" />
+        <Setter Property="Height" Value="46" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionButton /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+    </Style>
+
+    <!--  关闭按钮：悬停 / 按下用 Windows 约定的红底白字  -->
+    <Style Selector="ctrl|TitleBar Button.captionClose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="#C42B1C" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionClose:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="#B0241A" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionClose:pointerover Path.captionGlyph">
+        <Setter Property="Stroke" Value="#FFFFFFFF" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionClose:pressed Path.captionGlyph">
+        <Setter Property="Stroke" Value="#B0FFFFFF" />
+    </Style>
+
+    <!--  按钮字形：1px 描边几何，不依赖任何系统图标字体（跨平台一致）  -->
+    <Style Selector="ctrl|TitleBar Path.captionGlyph">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Height" Value="10" />
+        <Setter Property="Stretch" Value="None" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeLineCap" Value="Square" />
+        <Setter Property="Stroke" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="ctrl|TitleBar Button.captionButton:disabled Path.captionGlyph">
+        <Setter Property="Stroke" Value="{DynamicResource TextFillColorDisabledBrush}" />
+    </Style>
+
+</Styles>

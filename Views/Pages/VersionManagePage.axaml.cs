@@ -24,6 +24,10 @@ public partial class VersionManagePage : UserControl
         }
 
         ShowMods();
+
+        // 页面是单例，切走再切回来不会重建。每次重新进入都重读一次目录与列表，
+        // 否则「启动页 → 设置」第二次进来看到的还是上次的内容（用户感知即「不刷新」）。
+        Loaded += (_, _) => _viewModel?.LoadCommand.Execute(null);
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateEmptyHint();

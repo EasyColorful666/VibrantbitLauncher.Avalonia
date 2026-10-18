@@ -1,0 +1,266 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Windows.InstanceToolsWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
+    FontFamily="{StaticResource AppFont}"
+    FontSize="{StaticResource FontSizeBody}"
+    mc:Ignorable="d"
+    Background="{DynamicResource ApplicationBackgroundBrush}"
+    Width="860"
+    Height="700">
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ctrl:TitleBar
+            Grid.Row="0"
+            Height="36"
+            Title="实例工具箱"
+            Icon="/Assets/icon.ico"
+            IsInline="True" />
+
+        <Grid
+            Grid.Row="1"
+            Margin="24,4,24,20"
+            RowDefinitions="Auto,*,Auto">
+
+            <!--  顶部：实例选择  -->
+            <StackPanel Grid.Row="0" Spacing="8">
+                <TextBlock Classes="title" Text="实例工具箱" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock
+                        Classes="body"
+                        Text="目标实例"
+                        VerticalAlignment="Center" />
+                    <ComboBox
+                        x:Name="InstanceCombo"
+                        Width="280"
+                        SelectionChanged="InstanceCombo_SelectionChanged"
+                        VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="InstanceHint"
+                        Classes="caption"
+                        TextTrimming="CharacterEllipsis"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+
+            <TabControl Grid.Row="1" Margin="0,14,0,0">
+
+                <!--  ==================== 依赖体检  ====================  -->
+                <TabItem Header="依赖体检">
+                    <Grid Margin="0,14,0,0" RowDefinitions="Auto,*">
+
+                        <StackPanel Grid.Row="0" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button
+                                    x:Name="AnalyzeButton"
+                                    Click="Analyze_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ui:FASymbolIcon Symbol="Repair" />
+                                        <TextBlock Text="开始体检" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="ResolveButton"
+                                    Classes="accent"
+                                    Click="Resolve_Click"
+                                    IsEnabled="False">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ui:FASymbolIcon Symbol="Download" />
+                                        <TextBlock Text="一键补齐依赖" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock
+                                    x:Name="HealthSummary"
+                                    Classes="body"
+                                    TextWrapping="Wrap"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock
+                                x:Name="AnalyzeStatus"
+                                Classes="caption"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <ScrollViewer
+                            Grid.Row="1"
+                            Margin="0,12,0,0"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="16">
+
+                                <!--  缺失依赖  -->
+                                <StackPanel x:Name="MissingSection" Spacing="8">
+                                    <TextBlock Classes="sectionTitle" Text="缺失的依赖" />
+                                    <TextBlock
+                                        x:Name="MissingEmptyText"
+                                        Classes="caption"
+                                        Text="没有缺失依赖。"
+                                        TextWrapping="Wrap" />
+                                    <ItemsControl x:Name="MissingList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,0,0,6"
+                                                    Padding="14,10"
+                                                    Classes="card">
+                                                    <StackPanel Spacing="4">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock
+                                                                Classes="subtitle"
+                                                                Text="{Binding ModId}"
+                                                                TextWrapping="Wrap" />
+                                                            <TextBlock
+                                                                Classes="caption"
+                                                                Text="{Binding StatusText}"
+                                                                TextWrapping="Wrap"
+                                                                VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <TextBlock
+                                                            Classes="caption"
+                                                            Text="{Binding Detail}"
+                                                            TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <!--  重复 / 冲突  -->
+                                <StackPanel x:Name="ConflictSection" Spacing="8">
+                                    <TextBlock Classes="sectionTitle" Text="重复 / 冲突" />
+                                    <ItemsControl x:Name="ConflictList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,0,0,6"
+                                                    Padding="14,10"
+                                                    Background="{DynamicResource AppCautionSurfaceBrush}"
+                                                    BorderBrush="{DynamicResource AppCautionBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource RadiusM}">
+                                                    <TextBlock
+                                                        Classes="body"
+                                                        Text="{Binding}"
+                                                        TextWrapping="Wrap" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <!--  已安装模组  -->
+                                <StackPanel x:Name="InstalledSection" Spacing="8">
+                                    <TextBlock Classes="sectionTitle" Text="已安装模组" />
+                                    <TextBlock
+                                        x:Name="InstalledSummary"
+                                        Classes="caption"
+                                        TextWrapping="Wrap" />
+                                    <ItemsControl x:Name="InstalledList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock
+                                                    Margin="0,1"
+                                                    Classes="caption"
+                                                    Text="{Binding}"
+                                                    TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <!--  ==================== 配装分享  ====================  -->
+                <TabItem Header="配装分享">
+                    <ScrollViewer
+                        Margin="0,14,0,0"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="12">
+
+                            <TextBlock
+                                Classes="body"
+                                Text="把当前实例的模组清单压成一段分享码。对方粘贴后可以一键复原同样的配装（模组会从 Modrinth 重新下载）。"
+                                TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button
+                                    x:Name="ExportButton"
+                                    Classes="accent"
+                                    Click="Export_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ui:FASymbolIcon Symbol="Share" />
+                                        <TextBlock Text="生成分享码" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="CopyButton"
+                                    Click="Copy_Click"
+                                    IsEnabled="False"
+                                    Content="复制分享码" />
+                                <Button
+                                    x:Name="SaveCodeButton"
+                                    Click="SaveCode_Click"
+                                    IsEnabled="False"
+                                    Content="保存为文件" />
+                                <TextBlock
+                                    x:Name="ExportStatus"
+                                    Classes="caption"
+                                    TextWrapping="Wrap"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBox
+                                x:Name="CodeBox"
+                                Height="140"
+                                AcceptsReturn="True"
+                                TextWrapping="Wrap"
+                                Watermark="生成的分享码会显示在这里；也可以把别人的分享码粘贴进来，再点下面的按钮导入"
+                                VerticalContentAlignment="Top" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button
+                                    x:Name="ImportCheckButton"
+                                    Click="ImportCheck_Click"
+                                    Content="识别" />
+                                <Button
+                                    x:Name="ImportNewButton"
+                                    Click="ImportNew_Click"
+                                    IsEnabled="False"
+                                    Content="新建实例并导入" />
+                                <Button
+                                    x:Name="ImportIntoButton"
+                                    Click="ImportInto_Click"
+                                    IsEnabled="False"
+                                    Content="只补模组到选中实例" />
+                            </StackPanel>
+
+                            <TextBlock
+                                x:Name="ImportInfo"
+                                Classes="caption"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+
+            <StackPanel
+                Grid.Row="2"
+                Margin="0,14,0,0"
+                HorizontalAlignment="Right">
+                <Button
+                    Padding="20,8"
+                    Classes="accent"
+                    Click="Close_Click"
+                    Content="关闭" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

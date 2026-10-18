@@ -65,6 +65,18 @@ namespace VibrantbitLauncher.Services
         /// <summary>启动游戏后对启动器自身执行的动作：None / Minimize / Close。</summary>
         public string AfterLaunchAction { get; set; } = "None";
 
+        /// <summary>
+        /// 性能模式：为低配电脑（尤其是 Windows 7 x86 老机器）关闭一切「好看但费性能」的效果。
+        ///
+        /// 关闭项：Mica 云母材质、壁纸背景、页面切换过渡、控件悬停 / 按下动画、卡片阴影、
+        /// 平滑滚动、高质量位图缩放；同时把渲染后端限制为软件渲染，回避老显卡驱动上的
+        /// D3D 兼容问题（那类问题上表现为白屏 / 黑屏 / 严重卡顿）。
+        /// </summary>
+        public bool PerformanceMode { get; set; }
+
+        /// <summary>用户是否已被询问过「要不要开启性能模式」，避免每次启动都弹。</summary>
+        public bool PerformanceModeAsked { get; set; }
+
         // ===== 网络 · 下载 =====
         /// <summary>使用 BMCLAPI 镜像下载（国内加速）。</summary>
         public bool UseBmclMirror { get; set; }
@@ -307,35 +319,126 @@ namespace VibrantbitLauncher.Services
         private static ThemeVariant CurrentThemeVariant =>
             IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
 
+        /// <summary>
+        /// 按用户设置「应该」用的主题变体。
+        ///
+        /// 供外部做一致性校验：只要 <c>Application.ActualThemeVariant</c> 和它不一致，
+        /// 说明有东西把主题改走了（第三方主题、系统事件…），需要重新 ApplyTheme。
+        /// </summary>
+        public static ThemeVariant DesiredThemeVariant => CurrentThemeVariant;
+
         /// <summary>一次性应用「明暗主题 + 主题色/渐变 + 背景图」，启动时调用。</summary>
         public static void ApplyAppearance()
         {
             ApplyTheme();
+            ApplyPerformanceMode();
             ApplyBackground();
         }
 
+        // ===== 性能模式 =====
+
         /// <summary>
-        /// 刷新主题：先写入当前主题色 / 渐变，再切换明暗主题，最后按明暗主题重算背景遮罩。
-        /// 切换明暗主题、切换主题色 / 渐变都走这里。
+        /// 应用「性能模式」开关：往应用资源里写一个全局标志，
+        /// 样式系统据此关掉过渡动画 / 阴影 / 平滑滚动（见 Styles/Animations.axaml 的 PerformanceMode 相关样式）。
+        ///
+        /// 这里不动 <see cref="Application.Current"/> 以外的东西：渲染后端、Mica 这些
+        /// 必须在窗口 / AppBuilder 层面处理的开关由各自的所有者读取 <see cref="AppSettings.PerformanceMode"/> 决定。
+        /// </summary>
+        public static void ApplyPerformanceMode()
+        {
+            if (Application.Current?.Resources is { } resources)
+                resources["PerformanceMode"] = Current.PerformanceMode;
+
+            Serilog.Log.Information("性能模式：{State}", Current.PerformanceMode ? "已开启" : "已关闭");
+        }
+
+        /// <summary>
+        /// 刷新主题：先关掉 FluentAvalonia 的「跟随系统」，再写入主题色 / 手写色资源，
+        /// **最后**才切明暗主题变体。切换明暗主题、切换主题色 / 渐变都走这里。
+        ///
+        /// 顺序不能反（1.0.7.14 血案）：
+        /// 以前第一步就设 RequestedThemeVariant，而此刻 FluentAvaloniaTheme.PreferSystemTheme
+        /// 还是 True —— 它会在自己的变体变更处理里把变体**改回操作系统的主题**。
+        /// 结果变体是系统值（比如暗色），而下面第 ③ 步写进去的窗口底色是按应用设置算的（亮色），
+        /// 于是出现「浅色底 + 浅色字」：二级窗口整片发白、正文几乎看不见，
+        /// 主窗口因为有 Mica 材质垫底才看着正常。
         /// </summary>
         public static void ApplyTheme()
         {
             if (Application.Current is null)
                 return;
 
-            // ① 先切明暗主题
-            Application.Current.RequestedThemeVariant = CurrentThemeVariant;
+            // ⓪ 先掐掉 FluentAvalonia 的两个「自作主张」开关：主题与强调色由应用自己管
+            if (Application.Current.Styles.OfType<FluentAvaloniaTheme>().FirstOrDefault() is { } fa)
+            {
+                fa.PreferSystemTheme = false;
+                fa.PreferUserAccentColor = false;
+            }
 
-            // ② 再把主题色写进资源（SystemAccentColor / SystemAccentColorBrush / AppAccentGradientBrush …）
+            // ① 再把主题色写进资源（SystemAccentColor / SystemAccentColorBrush / AppAccentGradientBrush …）
             ApplyAccentCore(ResolvePrimary(), ResolveEnd(), Current.UseAccentGradient, IsDarkTheme);
 
-            // ③ 背景图遮罩要随明暗主题换色，否则亮色主题下深色图片会让文字糊成一片
+            // ② 背景图遮罩要随明暗主题换色，否则亮色主题下深色图片会让文字糊成一片
             if (Application.Current.Resources is { } resources)
             {
                 resources["AppBackgroundScrimBrush"] = new SolidColorBrush(
                     IsDarkTheme
                         ? Color.FromArgb(0x8C, 0x00, 0x00, 0x00)
                         : Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+
+                // 窗口底色兜底为**不透明纯色**。
+                //
+                // XAML 里写的是 #26FFFFFF（15% 白 + 透明），它只在两大前提同时成立时才好看：
+                //   · 系统支持窗口合成（Windows 11 的 Mica），且它真的启用了；
+                //   · 下层还有什么东西可以透出来。
+                // 在 Windows 7 这类没有免合成能力的系统上，半透明背景没有可合成的底，
+                // 结果就是整窗接近纯白 —— 内容还没画完时看上去就是「白屏」。
+                //
+                // 所以这里恒提供一份不透明兜底色；Mica 生效时 MainWindow 会把
+                // Background 设成 Transparent（局部值优先级高于这里的资源），两者互不干扰。
+                resources["AppWindowBackgroundBrush"] = new SolidColorBrush(
+                    IsDarkTheme
+                        ? Color.FromRgb(0x20, 0x20, 0x20)
+                        : Color.FromRgb(0xF3, 0xF3, 0xF3));
+
+                // 二级窗口（登录 / 皮肤管理 / 欢迎向导 / 崩溃分析 …）的整窗底色。
+                //
+                // ⚠️ 这个键是 WPF 版迁移遗留：Avalonia / FluentAvalonia 都**没有**它，
+                // 之前 9 个二级窗口的根 Grid 全是 `{DynamicResource ApplicationBackgroundBrush}`
+                // → 解析成 null → 无背景 → 透出窗口默认底色 = **整窗白屏**（用户实测：别的电脑上所有窗口白屏）。
+                // 这里跟 AppWindowBackgroundBrush 一起按明暗主题写，保证任何主题下都是不透明色。
+                resources["ApplicationBackgroundBrush"] = new SolidColorBrush(
+                    IsDarkTheme
+                        ? Color.FromRgb(0x20, 0x20, 0x20)
+                        : Color.FromRgb(0xF3, 0xF3, 0xF3));
+
+                // 拖入整合包的提示层同样要随主题换色：暗色主题下用深底 + 亮面板，
+                // 否则「黑底上盖白面板」会刺眼、也会盖住标题栏。
+                resources["AppDropOverlayBrush"] = new SolidColorBrush(
+                    IsDarkTheme
+                        ? Color.FromArgb(0x99, 0x00, 0x00, 0x00)
+                        : Color.FromArgb(0x66, 0x00, 0x00, 0x00));
+
+                resources["AppDropPanelBrush"] = new SolidColorBrush(
+                    IsDarkTheme
+                        ? Color.FromArgb(0xF2, 0x2B, 0x2B, 0x2B)
+                        : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
+            }
+
+            // ③ 资源全部就位后，最后切主题变体 —— 此时没有任何东西会把它改回去了
+            Application.Current.RequestedThemeVariant = CurrentThemeVariant;
+
+            // ④ 记一笔「设置 vs 实际」，以后再有明暗不对的问题能一眼看出是谁没生效
+            var actual = Application.Current.ActualThemeVariant;
+            if (actual != CurrentThemeVariant)
+            {
+                Serilog.Log.Warning("主题变体未生效：期望 {Expected}，实际 {Actual}",
+                    CurrentThemeVariant, actual);
+            }
+            else
+            {
+                Serilog.Log.Information("主题已应用：{Variant}（强调色 {Primary}，渐变 {Gradient}）",
+                    actual, ResolvePrimary(), Current.UseAccentGradient);
             }
         }
 
@@ -400,6 +503,11 @@ namespace VibrantbitLauncher.Services
 
             // 页面里的渐变强调条、渐变预览统一读这个键
             resources["AppAccentGradientBrush"] = BuildAccentBrush(primary, end, useGradient);
+
+            // 强调色浅底：图标块、计数徽标、选中卡片的底板。
+            // 用固定透明度的主色而不是硬编码 #1F0078D4 —— 换主题色时这些浅底要跟着变。
+            resources["AppAccentSurfaceBrush"] = new SolidColorBrush(primary) { Opacity = 0.12 };
+            resources["AppAccentSurfaceStrongBrush"] = new SolidColorBrush(primary) { Opacity = 0.20 };
 
             // 侧边栏（FANavigationView）的选中态用的是 NavigationView 专属资源键。
             // CustomAccentColor 已经会重算它们，这里再显式写一遍作为兜底（版本差异 / 未覆盖到的键）。

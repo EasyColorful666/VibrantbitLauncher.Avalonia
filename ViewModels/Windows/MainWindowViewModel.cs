@@ -69,9 +69,19 @@ namespace VibrantbitLauncher.ViewModels.Windows
 
         /// <summary>
         /// 响应背景图变更：安全加载图片（失败则退回 Mica），并同步不透明度。
+        ///
+        /// 性能模式下**不加载任何壁纸**：全屏大图（往往还是 4K 壁纸）在软件渲染路径下
+        /// 每帧都要做一次全窗口缩放 + 混合，是低配机器上最贵的一笔开销，
+        /// 而它纯粹是装饰性的，关掉不影响任何功能。
         /// </summary>
         private void ApplyBackground(BackgroundChangedMessage message)
         {
+            if (SettingsService.Current.PerformanceMode)
+            {
+                BackgroundImage = null;
+                return;
+            }
+
             BackgroundImage = LoadBackgroundImage(message.ImagePath);
             BackgroundImageOpacity = Math.Clamp(message.Opacity, 0.05, 1.0);
         }

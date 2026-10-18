@@ -1,9 +1,11 @@
 using System.Reflection;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -34,6 +36,9 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // ⓪ 环境探测（Program.Main 已跑过一次，这里幂等调用，保证设计器 / 测试路径也拿到数据）
+            AppEnvironment.Probe();
+
             // ① 先把日志系统立起来：关键是让后面每一步失败都留得下证据
             LogService.Initialize(
                 SettingsService.Current.LogLevel,
@@ -46,6 +51,20 @@ public partial class App : Application
             // ③ 按用户配置重建日志
             LogService.Reinitialize();
             LogService.WriteStartupBanner(GetDisplayVersion());
+            Log.Information("运行环境：{Env}", AppEnvironment.Summary);
+            Log.Information("性能模式：{State}（来源：设置）",
+                SettingsService.Current.PerformanceMode ? "开启" : "关闭");
+            Log.Information("渲染后端：{Backend}",
+                Program.ForceSoftwareRendering
+                    ? "软件渲染（性能模式 / 低配环境 / 启动参数）"
+                    : "默认（GPU 优先，自动回退）");
+
+            // ③.5 明暗主题必须**在第一个窗口出现之前**定下来。
+            //
+            // 否则主窗口会先按系统主题建出来（App.axaml 里 RequestedThemeVariant="Default"），
+            // 等 ApplyAppearance 再改一次 —— 那一瞬间各窗口的底色 / 文字色可能出现
+            // 「一个按系统、一个按设置」的错配。后面的 ApplyAppearance 仍会完整再应用一次。
+            SettingsService.ApplyTheme();
 
             // ④ 构建依赖注入容器
             _host = BuildHost();
@@ -63,21 +82,43 @@ public partial class App : Application
             // ⑥ 外观必须在窗口建好之后再应用
             SettingsService.ApplyAppearance();
 
+            // ⑥.5 兜底守卫：主题变体一旦被第三方改走，立刻按用户设置纠正回来。
+            //
+            // FluentAvaloniaTheme.PreferSystemTheme=True 时它会把变体改成系统主题，
+            // 而本工程的窗口底色 / 遮罩是按**用户设置**手写进资源的 —— 两边一错位，
+            // 就出现「浅色底 + 浅色字」的整窗发白（1.0.7.14 血案）。App.axaml 里已经把它关掉，
+            // 这里再加一道运行时守卫，防止别的地方（主题包 / 系统事件）把它改回去。
+            Application.Current.ActualThemeVariantChanged += (_, _) =>
+            {
+                var actual = ActualThemeVariant;
+                if (actual != SettingsService.DesiredThemeVariant)
+                {
+                    Log.Warning("主题变体被外部改为 {Actual}，按设置纠正回 {Desired}",
+                        actual, SettingsService.DesiredThemeVariant);
+                    SettingsService.ApplyTheme();
+                }
+            };
+
             Log.Information("配置：Theme={Theme} IsFirstRun={First} MinecraftFolder={Folder} JavaPath={Java}",
                 SettingsService.Current.Theme,
                 SettingsService.Current.IsFirstRun,
                 SettingsService.Current.MinecraftFolder,
                 string.IsNullOrEmpty(SettingsService.Current.JavaPath) ? "(未设置)" : SettingsService.Current.JavaPath);
 
-            // ⑦ 下载参数（下载源 / 重试次数来自用户设置，设置页改动后同一入口重新应用）
-            SettingsService.ApplyDownloadSettings();
+            // ⑦⑧⑨ 统统推迟到主窗口「真的显示出来」之后。
+            //
+            // 原因：<c>desktop.MainWindow = mainWindow</c> 之后，窗口要到
+            // <c>OnFrameworkInitializationCompleted</c> 返回时才由平台真正显示。
+            // 在此之前做的任何磁盘 / 网络准备工作，都会原样变成用户眼前的一段白屏。
+            // 这三步都不影响首帧（页面导航在 MainWindow.OnOpened 里才发生），
+            // 放在 Opened 之后跑，用户看到的是「界面先出来、内容随后填充」。
+            void OnMainWindowOpened(object? sender, EventArgs e)
+            {
+                mainWindow.Opened -= OnMainWindowOpened;
+                RunPostShowStartupWork();
+            }
 
-            // ⑧ 后台预热版本清单，避免首次进入「下载中心」要等几秒
-            MinecraftVersionCache.Preload();
-
-            // ⑨ 规范化已装版本的 JSON：修时区格式 + 给 1.13 以前的版本补 arguments
-            //   （几十次文件读写，放后台）
-            _ = Task.Run(() => NormalizeVersionJsons(SettingsService.Current.MinecraftFolder));
+            mainWindow.Opened += OnMainWindowOpened;
 
             desktop.Exit += (_, _) =>
             {
@@ -99,10 +140,153 @@ public partial class App : Application
 
                 mainWindow.Opened += OnMainWindowOpenedOnce;
             }
-        }
+            else if (ShouldOfferPerformanceMode())
+            {
+                // 非首次运行 + 机器看起来吃力 + 还没问过 → 问一次要不要开性能模式
+                void OnMainWindowOpenedForPerf(object? sender, EventArgs e)
+                {
+                    mainWindow.Opened -= OnMainWindowOpenedForPerf;
+                    _ = PromptPerformanceModeAsync(mainWindow);
+                }
 
-        base.OnFrameworkInitializationCompleted();
+                mainWindow.Opened += OnMainWindowOpenedForPerf;
+            }
+
+            base.OnFrameworkInitializationCompleted();
+        }
     }
+
+    /// <summary>
+    /// 是否需要询问用户开启性能模式：机器探测为低配、当前没开、且历史没问过。
+    /// </summary>
+    private static bool ShouldOfferPerformanceMode()
+        => AppEnvironment.IsLowEndHardware
+           && !SettingsService.Current.PerformanceMode
+           && !SettingsService.Current.PerformanceModeAsked;
+
+    /// <summary>
+    /// 低配机器上的一次性询问。
+    ///
+    /// 放在主窗口打开之后再弹：此时界面已经能用了，用户读完提示点一下就好，
+    /// 不会像启动前弹窗那样「窗口还没出来先卡一个对话框」，观感更稳。
+    /// 无论用户选什么都不再问第二次（写回 PerformanceModeAsked）。
+    /// </summary>
+    private static async Task PromptPerformanceModeAsync(MainWindow mainWindow)
+    {
+        try
+        {
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            // 让窗口先把首帧画出来再弹，避免和窗口入场动画撞在一起
+            await Task.Delay(600);
+
+            var opened = await dialogs.ConfirmAsync(
+                "检测到性能优化建议",
+                $"检测到你的电脑配置较低（{AppEnvironment.Summary}）。\n\n" +
+                "是否开启「性能模式」？开启后将会关闭云母材质、壁纸、动效与阴影，" +
+                "并改用软件渲染，界面会明显更流畅（观感会朴素一些）。\n\n" +
+                "之后随时可以在「设置 → 个性化」里改回来。",
+                "开启性能模式",
+                "暂不开启");
+
+            SettingsService.Current.PerformanceModeAsked = true;
+            SettingsService.Current.PerformanceMode = opened;
+            SettingsService.Save();
+
+            Log.Information("性能模式询问结果：{Result}", opened ? "已开启" : "用户拒绝");
+
+            if (opened)
+            {
+                SettingsService.ApplyPerformanceMode();
+                SettingsService.ApplyBackground();
+
+                // 提示用户重启才能真正切换到软件渲染（渲染后端在 AppBuilder 阶段就定了）
+                await dialogs.ShowInfoAsync(
+                    "已开启性能模式",
+                    "性能模式已生效，「设置 → 个性化」里可以随时关闭。\n\n" +
+                    "如果希望连渲染方式也一起切换（老显卡上效果更明显），请重启一次启动器。");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "性能模式提示失败");
+        }
+    }
+
+    /// <summary>
+    /// 主窗口显示之后才做的启动准备工作（原第 ⑦⑧⑨ 步）。
+    ///
+    /// 这里全是磁盘 / 网络开销，用户不需要等它们就能开始操作界面；
+    /// 唯一要求是必须在页面导航之前完成 —— 而页面导航就在 MainWindow.OnOpened 里，
+    /// 与本方法是同一个事件的相邻两步，因此顺序成立。
+    /// </summary>
+    private static void RunPostShowStartupWork()
+    {
+        // ⑦ 下载参数（下载源 / 重试次数来自用户设置，设置页改动后同一入口重新应用）
+        SettingsService.ApplyDownloadSettings();
+
+        // ⑧ 后台预热版本清单，避免首次进入「下载中心」要等几秒。
+        //    性能模式下跳过：这一步要起线程 + 拉 HTTPS + 反序列化上万个条目，
+        //    在单核 / 32 位进程仅有 2GB 用户态地址空间的机器上代价明显。
+        if (SettingsService.Current.PerformanceMode)
+            Log.Information("性能模式：跳过版本清单预热");
+        else
+            MinecraftVersionCache.Preload();
+
+        // ⑨ 规范化已装版本的 JSON：修时区格式 + 给 1.13 以前的版本补 arguments。
+        //    几十次文件读写，放后台；性能模式下再延后 3 秒，避开窗口首帧的资源竞争。
+        var normalizeDelay = SettingsService.Current.PerformanceMode ? 3000 : 0;
+        _ = Task.Run(async () =>
+        {
+            if (normalizeDelay > 0)
+                await Task.Delay(normalizeDelay);
+
+            NormalizeVersionJsons(SettingsService.Current.MinecraftFolder);
+        });
+
+        // ⑩ 启动 1.3 秒后自动刷新一次下载页数据（社区资源列表 + Minecraft 版本列表）。
+        //
+        //    为什么延后 1.3 秒：启动瞬间要抢的是首帧、配置加载和版本清单预热，
+        //    这时候再压一批 HTTPS 请求只会让界面更迟钝。等 1.3 秒后再发，
+        //    用户从启动页走到下载中心时数据往往已经就绪。
+        //    已经创建出来的下载页会收到广播并各自刷新；页面还没创建也没关系 ——
+        //    每次进入下载中心时还有一次刷新兜底（见 DownloadHubPage）。
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(StartupRefreshDelayMs);
+
+                // ⚠️ 顺序很重要：**先广播、再做版本清单预热**。
+                // 反过来写的话，弱网下 EnumerableMinecraftAsync 要重试好几轮（实测能把这一句
+                // 拖到十几秒之后），页面刷新就跟着一起被拖住了。刷新要的是「到点就发」。
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default
+                        .Send<Models.RefreshDownloadDataMessage, string>(
+                            new Models.RefreshDownloadDataMessage(), "RefreshDownloadData");
+
+                    Log.Information("启动自动刷新（延迟 {Delay}ms）：已请求刷新下载页数据（社区资源 + 版本列表）",
+                        StartupRefreshDelayMs);
+                });
+
+                // 顺手把版本清单催熟一次：即便广播没人接收（下载中心还没打开），
+                // 之后第一次进入下载中心时也能命中缓存、秒出版本列表。
+                // 放广播之后、不 await 在前，避免它拖慢刷新。
+                try { await MinecraftVersionCache.GetAsync(); }
+                catch (Exception ex) { Log.Debug(ex, "启动刷新：版本清单预热失败（不影响后续重试）"); }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "启动自动刷新下载页数据失败");
+            }
+        });
+    }
+
+    /// <summary>启动后自动刷新下载页数据的延迟（毫秒）。</summary>
+    private const int StartupRefreshDelayMs = 1300;
 
     /// <summary>
     /// 首次启动时弹出开机向导。

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using VibrantbitLauncher.Services;
@@ -57,6 +58,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// </summary>
         private bool _projectTypeChangedDuringInit;
 
+        /// <summary>正在拉 Minecraft 版本列表（防止初始化与自动刷新同时发起）。</summary>
+        private bool _versionsLoading;
+
+        /// <summary>
+        /// 最近一次「发起数据加载」的时刻，用于自动刷新的节流。
+        ///
+        /// 页面刚建好时会立刻完成一次初始化加载，紧接着「切入页面」的刷新请求就到了 ——
+        /// 靠这个时间戳把那次重复请求挡掉，只在距上次加载超过 <see cref="RefreshThrottleMs"/>
+        /// 时才真的重新拉。**在加载开始时打戳**（而不是结束时），因为请求是异步的，
+        /// 用开始时刻才能挡住加载期间冒出来的重复请求。
+        /// </summary>
+        private DateTime _lastDataLoadUtc = DateTime.MinValue;
+
+        /// <summary>
+        /// 自动刷新的最小间隔（毫秒）。
+        /// 取 800ms：既能挡住「初始化刚结束 / 刚改完筛选」这类紧随其后的重复请求，
+        /// 又不会把「启动后 1.3 秒的刷新」误伤掉（那时距最初的初始化已超过 800ms）。
+        /// </summary>
+        private const int RefreshThrottleMs = 800;
+
         // ── 下拉候选项（文案对齐参考界面） ──
 
         public const string SourceModrinth = "Modrinth";
@@ -86,6 +107,29 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         /// <summary>当前分类对应的 Modrinth 项目类型（mod / modpack / resourcepack / shader / datapack）。</summary>
         public string ProjectType => _projectType;
+
+        private bool _hasError;
+        private string _errorText = string.Empty;
+
+        /// <summary>
+        /// 上一次加载是否失败。
+        ///
+        /// 页面据此把空状态文案从「没有匹配的资源」换成「加载失败 + 重试」——
+        /// 这两种情况此前共用一句「没有匹配的资源」，用户在网络不通时会被误导成
+        /// 「筛选条件太严」而反复改筛选，永远试不出来。
+        /// </summary>
+        public bool HasError
+        {
+            get => _hasError;
+            private set => SetProperty(ref _hasError, value);
+        }
+
+        /// <summary>加载失败的原因（已本地化，可直接显示）。</summary>
+        public string ErrorText
+        {
+            get => _errorText;
+            private set => SetProperty(ref _errorText, value);
+        }
 
         public string SearchText
         {
@@ -289,6 +333,30 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>异步初始化：后台获取 Minecraft 版本列表，然后加载资源。</summary>
         private async Task InitializeAsync()
         {
+            await LoadMinecraftVersionsAsync();
+
+            _isInitialized = true;
+            RebuildTags();
+
+            // 初始化期间若被 SetProjectType 改过类型，这里不要覆盖
+            if (_projectTypeChangedDuringInit)
+                _projectTypeChangedDuringInit = false;
+
+            await ApplyFilterAsync();
+        }
+
+        /// <summary>
+        /// 拉取（或补齐）Minecraft 版本列表。
+        /// 抽成独立方法是为了让「自动刷新」也能复用 —— 原来这段只跑在构造时的初始化里，
+        /// 页面开着的时候用户永远看不到新发布的版本。
+        /// </summary>
+        private async Task LoadMinecraftVersionsAsync()
+        {
+            // 初始化与自动刷新可能撞在一起（页面刚建好就被要求刷新），同一次拉取共用
+            if (_versionsLoading)
+                return;
+
+            _versionsLoading = true;
             try
             {
                 var versions = await Task.Run(async () =>
@@ -303,27 +371,68 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         MinecraftVersions.Add(v);
                 }
             }
-            catch
+            catch (OperationCanceledException ex)
             {
-                // 版本加载失败不影响主功能
+                // 取消 = 请求超时或程序正在退出（用户关窗口时在飞的 HTTPS 会被掐断，
+                // 表现为 SocketException 995 / TaskCanceledException）。这是正常收尾，
+                // 记 Warning 只会在日志里留下一段看着像崩溃的堆栈，降为 Debug。
+                Serilog.Log.Debug(ex, "下载中心：Minecraft 版本列表加载被取消（超时或程序退出）");
             }
+            catch (Exception ex)
+            {
+                // 版本清单拉不到**不影响资源搜索**（搜索不依赖它，版本筛选默认是「任意」），
+                // 所以这里只记日志、不打断流程。原先是静默 catch，出问题时完全无线索。
+                Serilog.Log.Warning(ex, "下载中心：Minecraft 版本列表加载失败（不影响资源搜索）");
+            }
+            finally
+            {
+                _versionsLoading = false;
+            }
+        }
 
-            _isInitialized = true;
-            RebuildTags();
+        /// <summary>
+        /// 刷新「Minecraft 版本列表 + 当前分类的资源列表」。
+        ///
+        /// <para>
+        /// 两个调用时机：① 程序运行后 1.3 秒的启动预热（主窗口广播消息）；
+        /// ② 每次切入本页（从别的页面进来、或在下载中心里切回这一分类）。
+        /// </para>
+        ///
+        /// <para>
+        /// 带 1 秒节流：这两个时机可能几乎同时发生（比如启动后立刻点开下载中心），
+        /// 合并成一次就不会同一秒里发两遍请求。
+        /// </para>
+        /// </summary>
+        public async Task RefreshAllAsync()
+        {
+            if ((DateTime.UtcNow - _lastDataLoadUtc).TotalMilliseconds < RefreshThrottleMs)
+                return;
 
-            // 初始化期间若被 SetProjectType 改过类型，这里不要覆盖
-            if (_projectTypeChangedDuringInit)
-                _projectTypeChangedDuringInit = false;
+            // 记一条：刷新是低频事件（启动一次 + 每次进页面 / 切分类一次），
+            // 出问题时这一条能直接证明「刷新到底有没有发生」。
+            Serilog.Log.Information("下载页刷新：分类={Type}", _projectType);
 
-            await ApplyFilterAsync();
+            // 版本列表与资源列表互不依赖，**并行**拉 ——
+            // 版本清单是一条可能重试好几轮的 HTTPS（弱网下十几秒），串行会把资源列表一起拖住。
+            var versionsTask = LoadMinecraftVersionsAsync();
+
+            // 首次初始化还在跑时不要插手：它自己会把资源列表拉好
+            if (_isInitialized)
+                await ApplyFilterAsync();
+
+            await versionsTask;
         }
 
         /// <summary>按当前搜索词与筛选条件重新拉取第一页（会清空列表）。</summary>
         private async Task ApplyFilterAsync()
         {
+            // 在开头打戳：这次加载「刚发生过」，紧随其后的自动刷新请求应当被跳过。
+            _lastDataLoadUtc = DateTime.UtcNow;
+
             // 只有 CurseForge 作为"来源"时 Modrinth 接口无能为力，直接给出空列表 + 提示
             if (SelectedSource == SourceCurseForge)
             {
+                HasError = false;
                 modrinthMods.Clear();
                 TotalHits = 0;
                 _nextOffset = 0;
@@ -349,6 +458,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 modrinthMods.Clear();
                 AppendHits(result.Hits);
                 _nextOffset = modrinthMods.Count;
+                HasError = false;
             }
             catch (OperationCanceledException)
             {
@@ -359,10 +469,20 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 if (cts.IsCancellationRequested)
                     return;
 
-                modrinthMods.Clear();
-                TotalHits = 0;
-                _nextOffset = 0;
-                await (AppServices.Dialogs?.ShowErrorAsync("错误", $"加载资源失败：{ex.Message}") ?? Task.CompletedTask);
+                // ⚠️ 这里**不清空**已有列表。
+                //
+                // 原实现失败时 `modrinthMods.Clear()`，于是「本来能看到内容，网络抖一下整页变空」，
+                // 而且空状态文案还是「没有匹配的资源」——用户会以为是筛选条件的问题。
+                // 现在保留旧内容，只把「加载失败 + 原因」透出来（见 HasError / ErrorText）。
+                HasError = true;
+                ErrorText = DescribeLoadError(ex);
+                Serilog.Log.Warning(ex, "加载社区资源失败：分类={Type} 关键词={Query}", _projectType, _lastSearchText);
+
+                if (modrinthMods.Count == 0)
+                {
+                    TotalHits = 0;
+                    _nextOffset = 0;
+                }
             }
             finally
             {
@@ -373,6 +493,28 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     OnPropertyChanged(nameof(CanLoadMore));
                 }
             }
+        }
+
+        /// <summary>把加载异常翻成一句能直接显示、且带下一步动作的话。</summary>
+        private static string DescribeLoadError(Exception ex)
+        {
+            // ModrinthException 的文案里已经写好了原因与做法
+            if (ex is ModrinthException)
+                return ex.Message;
+
+            if (ex is AggregateException agg && agg.InnerException is not null)
+                return DescribeLoadError(agg.InnerException);
+
+            if (ex is OperationCanceledException or TimeoutException)
+                return "连接 Modrinth 超时。Modrinth 服务器在境外，国内网络通常需要开启代理后重试。";
+
+            if (ex is System.Net.Http.HttpRequestException)
+                return "无法连接 Modrinth。请检查网络或开启代理后重试。";
+
+            if (ex is JsonException)
+                return "Modrinth 返回的数据不完整（响应被中途截断），通常是网络不稳，请重试。";
+
+            return $"加载资源失败：{ex.Message}";
         }
 
         /// <summary>
@@ -439,9 +581,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>把一页搜索结果追加到列表末尾。</summary>
         private void AppendHits(IEnumerable<ModrinthSearchService.Hit> hits)
         {
+            var added = new List<ModrinthMod>();
+
             foreach (var hit in hits)
             {
-                modrinthMods.Add(new ModrinthMod
+                var item = new ModrinthMod
                 {
                     Name = hit.Title,
                     Author = hit.Author,
@@ -452,7 +596,43 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     UpdatedText = FormatRelativeTime(hit.DateModified),
                     Tags = string.Join(" · ", BuildTags(hit)),
                     Source = SourceModrinth
-                });
+                };
+
+                modrinthMods.Add(item);
+                added.Add(item);
+            }
+
+            // 后台逐条翻译英文简介：不 await，列表立刻可见，译文回来后自动替换。
+            if (added.Count > 0)
+                _ = TranslateDescriptionsAsync(added);
+        }
+
+        /// <summary>
+        /// 把一批卡片的英文简介翻成中文并回填。
+        ///
+        /// <para>
+        /// 串行是刻意的：免费翻译端点对并发很敏感，一次打二十个请求只会换来一片 429。
+        /// 串行的另一个好处是译文会「从上往下」陆续出现，看起来像在逐条加载，而不是某一刻整屏跳变。
+        /// </para>
+        /// </summary>
+        private static async Task TranslateDescriptionsAsync(IReadOnlyList<ModrinthMod> items)
+        {
+            foreach (var item in items)
+            {
+                if (!TranslateService.LooksEnglish(item.Description))
+                    continue;
+
+                try
+                {
+                    var translated = await TranslateService.TranslateAsync(item.Description).ConfigureAwait(true);
+                    if (!string.IsNullOrWhiteSpace(translated))
+                        item.SetTranslatedDescription(translated);
+                }
+                catch (Exception ex)
+                {
+                    // 翻译是锦上添花，任何异常都不该冒到界面上
+                    Serilog.Log.Debug(ex, "翻译资源简介失败：{Name}", item.Name);
+                }
             }
         }
 
@@ -547,7 +727,28 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         public string Name { get; set; } = string.Empty;
         public string Author { get; set; } = string.Empty;
+
+        /// <summary>Modrinth 给的原始简介（英文居多）。</summary>
         public string Description { get; set; } = string.Empty;
+
+        private string? _translatedDescription;
+
+        /// <summary>
+        /// 卡片上真正显示的简介：翻好了显示中文，没翻好就是原文。
+        /// 翻译在列表加载后后台跑，不阻塞首屏。
+        /// </summary>
+        public string DisplayDescription => _translatedDescription ?? Description;
+
+        /// <summary>是否已经翻译过（界面据此显示「已翻译」小标记）。</summary>
+        public bool IsTranslated => _translatedDescription is not null;
+
+        /// <summary>回填译文（只在后台翻译成功后调用）。</summary>
+        public void SetTranslatedDescription(string translated)
+        {
+            _translatedDescription = translated;
+            OnPropertyChanged(nameof(DisplayDescription));
+            OnPropertyChanged(nameof(IsTranslated));
+        }
 
         /// <summary>项目图标的远程 URL（来自 Modrinth 搜索结果）。</summary>
         public string ImagePath

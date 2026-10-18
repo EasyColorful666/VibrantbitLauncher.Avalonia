@@ -32,10 +32,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private readonly INotificationService _notification = AppServices.Notifications!;
         string selectedVersion = "";
         private string accountName;
+        private bool isRefreshing;
 
         public bool IsLoaded { get; set; }
         public RelayCommand LoadCommand { get; set; }
         public RelayCommand RefreshCommand { get; set; }
+
+        /// <summary>
+        /// 是否正在扫描本地版本。
+        ///
+        /// <para>
+        /// 启动页要靠它区分「还在扫盘」与「真的一个版本都没有」：
+        /// <see cref="Refresh"/> 是 fire-and-forget 的，页面 Loaded 时集合必然还是空的，
+        /// 若只看 <c>MinecraftVersions.Count</c> 就会先闪一下「还没有可用的游戏版本」。
+        /// </para>
+        /// </summary>
+        public bool IsRefreshing
+        {
+            get => isRefreshing;
+            private set => SetProperty(ref isRefreshing, value);
+        }
 
         public ObservableCollection<LocalVersion> MinecraftVersions
         {
@@ -129,7 +145,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         minecraftVersions.Clear();
                         foreach (var id in versionIds)
                         {
-                            minecraftVersions.Add(new LocalVersion { Version = id, RunCommand = new(RunMinecraft), SettingsCommand = new(Settings) });
+                            minecraftVersions.Add(new LocalVersion { Version = id, RunCommand = new(RunMinecraft), ToolsCommand = new(OpenTools), SettingsCommand = new(Settings) });
                         }
                     });
 
@@ -160,6 +176,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
             if (Interlocked.CompareExchange(ref refreshing, 1, 0) != 0)
                 return;
 
+            // 扫描期间置位，页面据此显示「正在扫描」而不是「还没有可用的游戏版本」。
+            // 已在跑时上面就 return 了，所以这里可以放心地把标志拉起来。
+            IsRefreshing = true;
+
             Task.Run(async () =>
             {
                 try
@@ -170,7 +190,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         minecraftVersions.Clear();
                         foreach (var id in versionIds)
                         {
-                            minecraftVersions.Add(new LocalVersion { Version = id, RunCommand = new(RunMinecraft), SettingsCommand = new(Settings) });
+                            minecraftVersions.Add(new LocalVersion { Version = id, RunCommand = new(RunMinecraft), ToolsCommand = new(OpenTools), SettingsCommand = new(Settings) });
                         }
                     });
                 }
@@ -181,6 +201,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 finally
                 {
                     Interlocked.Exchange(ref refreshing, 0);
+                    // 注意要在 UI 线程复位：集合的 Clear/Add 也在 UI 线程，
+                    // 顺序上先填完列表、再落下「扫描结束」，页面就不会看到中间态。
+                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() => IsRefreshing = false);
                 }
             });
         }
@@ -192,15 +215,47 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         void Settings(string McVersion)
         {
-            if (!string.IsNullOrEmpty(McVersion))
-            {
-                WeakReferenceMessenger.Default.Send<string, string>(McVersion, "McVersionForManage");
-                WeakReferenceMessenger.Default.Send<Type, string>(typeof(VersionManagePage), "NavigateTo");
-            }
-            else
+            if (string.IsNullOrEmpty(McVersion))
             {
                 _notification.Error("请选择一个版本");
+                return;
             }
+
+            // ⚠️ 顺序必须是「先导航、再发版本号」：
+            // VersionManagePage / VersionManageViewModel 在 DI 里是懒加载的单例，
+            // 第一次点「设置」时它们还没被创建，也就没有注册 McVersionForManage 的接收方 ——
+            // 先发消息会把版本号丢进空气里，页面随后打开时只有空目录、也不刷新。
+            // 导航是同步的（MainWindow 收到 NavigateTo 立刻解析并创建页面），
+            // 所以先把页面拉起来，再发版本号，接收方一定已经在。
+            WeakReferenceMessenger.Default.Send<Type, string>(typeof(VersionManagePage), "NavigateTo");
+            WeakReferenceMessenger.Default.Send<string, string>(McVersion, "McVersionForManage");
+        }
+
+        /// <summary>
+        /// 打开实例工具箱（依赖体检 / 配装分享码）。
+        /// 窗口自己会枚举实例并在下拉框里选中传入的版本，所以这里只需要把版本号带过去。
+        /// </summary>
+        void OpenTools(string McVersion)
+        {
+            if (string.IsNullOrEmpty(McVersion))
+            {
+                _notification.Error("请选择一个版本");
+                return;
+            }
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+            {
+                try
+                {
+                    var window = new InstanceToolsWindow(McVersion);
+                    await AppLifetime.ShowDialogAsync(window);
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Error(ex, "打开实例工具箱失败");
+                    _notification.Error($"无法打开工具箱：{ex.Message}");
+                }
+            });
         }
 
         private static readonly HashSet<string> launchingVersions = new();
@@ -336,6 +391,42 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         lock (launchingVersions) { launchingVersions.Remove(McVersion); }
                         return;
                     }
+                }
+
+                // 启动前完整性体检：client.jar / 资源索引 / 依赖库 / 资源对象。
+                // 缺东西时**不再抛异常**（原来是弹一句「缺少资源索引文件…请到下载中心重新安装该版本」），
+                // 改成打开「补全资源」窗口 —— 只补缺的那部分，并显示进度。
+                // 检查本身是几百上千次 File.Exists，丢线程池。
+                IntegrityReport? integrity = null;
+                try
+                {
+                    // 先给一句反馈：体检要查上千个文件，机械硬盘上能感觉到一两百毫秒，
+                    // 什么都不显示会让用户以为「点了启动没反应」。
+                    ShowInfo("正在检查游戏文件完整性…");
+                    integrity = await Task.Run(() => InstanceIntegrityChecker.Check(mcFolder, McVersion));
+                }
+                catch (Exception ex)
+                {
+                    Diag($"Integrity check failed: {ex.GetType().Name}: {ex.Message}");
+                }
+
+                if (integrity is { IsHealthy: false })
+                {
+                    Diag($"Integrity issues: {string.Join(" | ", integrity.Issues.Select(i => i.Title + " x" + i.Count))}");
+                    lock (launchingVersions) { launchingVersions.Remove(McVersion); }
+
+                    ShowInfo($"{integrity.Summary()}，已打开「补全资源」窗口");
+                    try
+                    {
+                        await AppLifetime.ShowDialogAsync(new AssetRepairWindow(integrity));
+                    }
+                    catch (Exception ex)
+                    {
+                        Diag($"Show repair window failed: {ex.Message}");
+                        ShowError($"无法打开补全资源窗口：{ex.Message}");
+                    }
+
+                    return;
                 }
 
                 Diag("Launching manually (bypassing MinecraftLaunch runner)...");
@@ -518,18 +609,53 @@ namespace VibrantbitLauncher.ViewModels.Pages
             if (!File.Exists(clientJar) && parentId != null)
                 clientJar = Path.Combine(mcFolder, "versions", parentId, parentId + ".jar");
             if (File.Exists(clientJar))
+            {
+                // 0 字节 / HTML 错误页也照「存在」算，但那会让游戏一启动就报 ClassNotFound ——
+                // 官方源被限速或代理拦下时恰好会出现这种「文件在、内容不对」的情况。
+                var size = new FileInfo(clientJar).Length;
+                if (size < 512 * 1024 || !IsZipFile(clientJar))
+                {
+                    throw new InvalidDataException(
+                        $"客户端文件损坏或未下载完整：{clientJar}（{size} 字节）。"
+                        + "请在「下载中心」重新安装该版本，或把下载源切换为 BMCLAPI 镜像后重试。");
+                }
+
                 libraries.Add(clientJar);
+            }
             else
+            {
                 diag($"WARNING: client.jar not found at {clientJar}");
+                throw new FileNotFoundException(
+                    $"缺少客户端文件：{clientJar}。"
+                    + "该版本没有下载完整，请在「下载中心」重新安装（或切换下载源后重试）。");
+            }
 
             // 检查缺失的库
             var missing = libraries.Where(l => !File.Exists(l)).ToList();
             if (missing.Count > 0)
+            {
+                // 提到 Warning 级：默认日志级别就能看到，排查「游戏起不来」时是关键线索
+                Serilog.Log.Warning("[启动] {Version} 有 {Count} 个依赖库文件缺失：{Files}",
+                    versionId, missing.Count, string.Join(", ", missing.Take(10)));
                 diag($"WARNING: {missing.Count} missing libraries: {string.Join(", ", missing.Take(5))}");
+            }
             libraries = libraries.Where(l => File.Exists(l)).ToList();
 
             var classpath = string.Join(";", libraries);
             diag($"Libraries: {libraries.Count}, MainClass: {mainClass}, Assets: {assetsIndex}");
+
+            // 资源索引缺失时游戏会在加载资源阶段直接失败（1.7.3+ 必须有 assets/indexes/<id>.json）。
+            // 官方源被限速 / 代理拦截时最容易只下到一半，这里提前给出可操作的提示，
+            // 而不是让用户对着一个闪退的窗口猜。
+            var needsAssetIndex = gameArgs.Any(a => a == "--assetIndex");
+            var assetIndexPath = Path.Combine(mcFolder, "assets", "indexes", (assetsIndex ?? "latest") + ".json");
+            if (needsAssetIndex && !File.Exists(assetIndexPath))
+            {
+                throw new FileNotFoundException(
+                    $"缺少资源索引文件：{assetIndexPath}。"
+                    + "说明该版本的资源没下载完整，请在「下载中心」重新安装该版本，"
+                    + "或把下载源切换为 BMCLAPI 镜像后重试。");
+            }
             diag($"JVM args: {string.Join(" ", jvmArgs)}");
             diag($"Game args count: {gameArgs.Count}");
             // 确认 fabric-loader 在 classpath 里
@@ -745,6 +871,23 @@ namespace VibrantbitLauncher.ViewModels.Pages
             return proc;
         }
 
+        /// <summary>
+        /// 粗略判断一个文件是不是 zip/jar：只看前两个字节是不是 "PK"。
+        /// 用来识别「下载到的是 HTML 错误页 / 空壳」——这类文件同样"存在"，但游戏一定起不来。
+        /// </summary>
+        private static bool IsZipFile(string path)
+        {
+            try
+            {
+                using var fs = File.OpenRead(path);
+                return fs.ReadByte() == 'P' && fs.ReadByte() == 'K';
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static string GetLibraryPath(JsonElement lib, string mcFolder)
         {
             if (lib.TryGetProperty("downloads", out var dl) && dl.TryGetProperty("artifact", out var art))
@@ -824,6 +967,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         public RelayCommand<string> RunCommand { get; set; }
         public RelayCommand<string> SettingsCommand { get; set; }
+
+        /// <summary>打开实例工具箱（依赖体检 / 配装分享）。</summary>
+        public RelayCommand<string> ToolsCommand { get; set; }
 
     }
 }

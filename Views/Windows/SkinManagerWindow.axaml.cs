@@ -22,8 +22,12 @@ namespace VibrantbitLauncher.Views.Windows
     /// 离线账户：微软接口用不上，改为写入本地皮肤文件，启动时由 RunPageViewModel 追加启动参数指定。
     /// 外置（Yggdrasil）账户：仅支持本地预览与保存，不做服务端上传。
     /// </summary>
-    public partial class SkinManagerWindow : Window
+    public partial class SkinManagerWindow : UserControl, Services.IInlinePage
     {
+
+    /// <summary>内嵌到主窗口时，顶栏显示的标题。</summary>
+    public string InlineTitle => "皮肤管理";
+
         private readonly string uuid;
         private readonly string accountName;
         private readonly string accountType;
@@ -53,9 +57,10 @@ namespace VibrantbitLauncher.Views.Windows
 
             accountNameText.Text = accountName;
             accountTypeText.Text = accountType;
-            Title = $"皮肤管理 - {accountName}";
+            // 内嵌页没有 Title 属性：把标题交给宿主顶栏
+            Services.InlineHost.SetTitle($"皮肤管理 - {accountName}");
 
-            Opened += (_, _) =>
+            Loaded += (_, _) =>
             {
                 LoadCurrentPreview();
                 UpdateSkinState();
@@ -165,7 +170,9 @@ namespace VibrantbitLauncher.Views.Windows
 
         private async void OnChooseFileClick(object sender, RoutedEventArgs e)
         {
-            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var files = await (Avalonia.Controls.TopLevel.GetTopLevel(this)?.StorageProvider
+                ?? throw new InvalidOperationException("当前没有可用的窗口"))
+                .OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = "选择皮肤文件",
                 AllowMultiple = false,
@@ -198,9 +205,8 @@ namespace VibrantbitLauncher.Views.Windows
         private async void OnChooseUrlClick(object sender, RoutedEventArgs e)
         {
             var input = new SkinUrlInputWindow();
-            var ok = await input.ShowDialog<bool>(this);
-            if (!ok)
-                return;
+            // 内嵌页不能再 ShowDialog：显示到主窗口内容区，用户操作后读它的属性
+            await Services.InlineHost.ShowAsync(input, "从网址加载皮肤");
 
             var url = input.SkinUrl;
             if (string.IsNullOrWhiteSpace(url)) return;
@@ -249,7 +255,9 @@ namespace VibrantbitLauncher.Views.Windows
                 DefaultButton = FAContentDialogButton.Primary
             };
 
-            var result = await confirm.ShowAsync(this);
+            // 内嵌页不是 Window：FAContentDialog 需要一个 owner 窗口
+            var dialogOwner = Avalonia.Controls.TopLevel.GetTopLevel(this) as Window ?? AppLifetime.DialogOwner;
+            var result = dialogOwner is null ? FAContentDialogResult.None : await confirm.ShowAsync(dialogOwner);
             if (result != FAContentDialogResult.Primary) return;
 
             resetRequested = true;
@@ -302,7 +310,7 @@ namespace VibrantbitLauncher.Views.Windows
             // 未选择新皮肤、也没点重置 —— 无改动
             if (pendingSkinFile == null && !resetRequested)
             {
-                Close();
+                Services.InlineHost.Close();
                 return;
             }
 
@@ -332,7 +340,7 @@ namespace VibrantbitLauncher.Views.Windows
 
                 SkinChanged = true;
                 ShowStatus("皮肤已保存", isError: false);
-                Close();
+                Services.InlineHost.Close();
             }
             catch (Exception ex)
             {

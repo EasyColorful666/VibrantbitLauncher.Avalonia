@@ -9,11 +9,13 @@ using MinecraftLaunch.Utilities;
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
+using VibrantbitLauncher.Services.Download;
 using VibrantbitLauncher.ViewModels.Windows;
 using VibrantbitLauncher.Views.Windows;
 
@@ -21,6 +23,21 @@ namespace VibrantbitLauncher.ViewModels.Pages
 {
     public class InstallPageViewModel : ObservableObject
     {
+
+        /// <summary>
+        /// 走自实现安装器的加载器种类。
+        ///
+        /// 这三种加载器原来都交给 MinecraftLaunch 的 <c>ForgeInstaller</c> / <c>QuiltInstaller</c>：
+        /// 那条路径直连 maven.minecraftforge.net / maven.neoforged.net（国内基本连不上），
+        /// 没有镜像改写、没有空闲超时，进度只报「0/1 + N/A」—— 用户看到的就是「卡在这一步」。
+        /// </summary>
+        private enum LoaderKind
+        {
+            Forge,
+            NeoForge,
+            Quilt,
+        }
+
         private string mcVersion = string.Empty;
         private string mcFolder = "./.minecraft";
         private List<string> forgeVersions = new();
@@ -204,27 +221,41 @@ namespace VibrantbitLauncher.ViewModels.Pages
             try
             {
                 ForgeAvailable = FabricAvailable = NeoforgeAvailable = QuiltAvailable = true;
-                var errors = new List<string>();
+                var errors = new ConcurrentBag<string>();
 
-                ForgeVersions = await LoadLoaderAsync(
+                // 四家加载器**并行**查询。原来是顺序 await，只要其中一家（都是境外站点）
+                // 卡住，后面三家就得排队干等 —— 低配机 / 弱网下表现为「安装页一直转圈」。
+                var forgeTask = LoadLoaderAsync(
                     async () => (await ForgeInstaller.EnumerableForgeAsync(mcVersion))
-                        .Where(x => !((dynamic)x).IsNeoforge)
+                        .Select(x => (ForgeInstallEntry)x)
+                        .Where(x => !x.IsNeoforge)
                         .Select(x => x.DisplayVersion).ToList(),
                     () => ForgeAvailable = false, errors, "Forge");
 
-                FabricVersions = await LoadLoaderAsync(
-                    async () => (await FabricInstaller.EnumerableFabricAsync(mcVersion)).Select(x => x.DisplayVersion).ToList(),
+                var fabricTask = LoadLoaderAsync(
+                    // 走自实现版本：自带镜像兜底 / 精确超时 / 重试，
+                    // 库自带的 EnumerableFabricAsync 是直连 meta.fabricmc.net 的裸请求。
+                    async () => (await FabricDownloader.EnumerableFabricAsync(mcVersion))
+                        .Select(x => x.DisplayVersion).ToList(),
                     () => FabricAvailable = false, errors, "Fabric");
 
-                NeoforgeVersions = await LoadLoaderAsync(
-                    async () => (await ForgeInstaller.EnumerableForgeAsync(mcVersion))
-                        .Where(x => ((dynamic)x).IsNeoforge)
+                var neoforgeTask = LoadLoaderAsync(
+                    async () => (await ForgeInstaller.EnumerableForgeAsync(mcVersion, true))
+                        .Select(x => (ForgeInstallEntry)x)
+                        .Where(x => x.IsNeoforge)
                         .Select(x => x.DisplayVersion).ToList(),
                     () => NeoforgeAvailable = false, errors, "NeoForge");
 
-                QuiltVersions = await LoadLoaderAsync(
+                var quiltTask = LoadLoaderAsync(
                     async () => (await QuiltInstaller.EnumerableQuiltAsync(mcVersion)).Select(x => x.DisplayVersion).ToList(),
                     () => QuiltAvailable = false, errors, "Quilt");
+
+                await Task.WhenAll(forgeTask, fabricTask, neoforgeTask, quiltTask);
+
+                ForgeVersions = forgeTask.Result;
+                FabricVersions = fabricTask.Result;
+                NeoforgeVersions = neoforgeTask.Result;
+                QuiltVersions = quiltTask.Result;
 
                 if (errors.Count > 0)
                 {
@@ -241,15 +272,34 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
         }
 
+        /// <summary>单家加载器查询的最长等待。境外站点在部分线路上会长时间无响应。</summary>
+        private static readonly TimeSpan LoaderQueryTimeout = TimeSpan.FromSeconds(25);
+
         private async Task<List<string>> LoadLoaderAsync(
             Func<Task<List<string>>> loadFunc,
             Action disableAction,
-            List<string> errors,
+            ConcurrentBag<string> errors,
             string loaderName)
         {
             try
             {
-                return await Task.Run(loadFunc);
+                var work = Task.Run(loadFunc);
+
+                // 没有这层保护的话，「加载版本列表」可以一直转下去：
+                // 库内部的重试 + 100 秒默认超时叠起来，最坏能拖好几分钟。
+                if (await Task.WhenAny(work, Task.Delay(LoaderQueryTimeout)) != work)
+                {
+                    // 放弃等待，但要让这个任务自己的异常有人接手，否则会变成未观测异常
+                    _ = work.ContinueWith(
+                        t => Serilog.Log.Warning(t.Exception, "{Loader} 查询超时后才返回", loaderName),
+                        TaskContinuationOptions.OnlyOnFaulted);
+
+                    Serilog.Log.Warning("{Loader} 版本列表查询超过 {Sec}s，已放弃", loaderName, LoaderQueryTimeout.TotalSeconds);
+                    errors.Add($"{loaderName}(查询超时)");
+                    return new List<string>();
+                }
+
+                return await work;
             }
             catch (Exception ex) when (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase)
                 || ex.Message.Contains("deserialization", StringComparison.OrdinalIgnoreCase)
@@ -287,7 +337,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
             catch (Exception ex)
             {
                 Serilog.Log.Error(ex, "安装流程异常");
-                _notification.Error(ex.Message, "安装失败");
+                // 不再直接弹 ex.Message：超时抛的是 TaskCanceledException，原文是英文
+                // “The operation was canceled.”，用户看不出是网络问题。
+                _notification.Error(FriendlyError.Describe(ex), "安装失败");
             }
             finally
             {
@@ -317,6 +369,21 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 || !string.IsNullOrEmpty(SelectQuiltVersion)
                 || !string.IsNullOrEmpty(SelectNeoforgeVersion);
 
+            // 兜底守卫：UI 现在是单选（勾一个就禁用并清掉其余三个），
+            // 但下面按 Forge → Fabric → Quilt → NeoForge 的顺序只取**第一个**非空版本号，
+            // 万一将来又多了一个入口没守住单选，就会「勾了两个却只装一个」且不报错。
+            // 这里显式拦下来，让问题当场暴露而不是变成玩家的困惑。
+            var loaderCount = new[]
+            {
+                SelectForgeVersion, SelectFabricVersion, SelectQuiltVersion, SelectNeoforgeVersion
+            }.Count(v => !string.IsNullOrEmpty(v));
+
+            if (loaderCount > 1)
+            {
+                _notification.Error("同一个实例只能安装一个模组加载器，请只勾选其中一个", "提示");
+                return;
+            }
+
             if (hasLoader)
             {
                 var vanillaJsonPath = Path.Combine(mcFolder, "versions", mcVersion, mcVersion + ".json");
@@ -332,6 +399,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         return;
                     }
                     var vanillaTask = taskService?.CreateTask($"安装原版 {mcVersion}", DownloadTaskType.GameInstall);
+                    // 记下目标版本：任务中心点「查看详情」时靠它跳回本版本的安装进度页
+                    if (vanillaTask is not null)
+                        vanillaTask.TargetMcVersion = mcVersion;
                     await VanillaDownloader.InstallAsync(mcFolder, (VersionManifestEntry)vanillaEntry, (p, s, sp) =>
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(new Action(() =>
@@ -369,46 +439,49 @@ namespace VibrantbitLauncher.ViewModels.Pages
             InstallerBase installer = null;
             // 非空表示走自实现的原版安装器（库的 VanillaInstaller 装不了 1.13 以前的版本）
             VersionManifestEntry plainVanilla = null;
+            // Fabric 也走自实现安装器（见 FabricDownloader 注释）。用一个标记代替
+            // 「造一个 FabricInstaller 实例当路标」的写法 —— 后者为了拿到 entry，
+            // 必须再联网查一次加载器列表，那正是超时的高发点。
+            bool isFabric = false;
+            // 非空表示走自实现的加载器安装器（Forge / NeoForge / Quilt）。
+            // 这些加载器原来交给 MinecraftLaunch 的 ForgeInstaller / QuiltInstaller，
+            // 那条路径没有镜像改写也没有超时，是「卡住装不上」的主要来源。
+            (LoaderKind Kind, string Version)? loaderInstall = null;
             IInstallEntry entry;
             string taskName;
 
             if (!string.IsNullOrEmpty(SelectForgeVersion))
             {
-                var forges = await ForgeInstaller.EnumerableForgeAsync(mcVersion);
-                entry = forges.FirstOrDefault(x => string.Equals(x.DisplayVersion, SelectForgeVersion, StringComparison.OrdinalIgnoreCase));
-                if (entry == null) { _notification.Error($"未找到 Forge 版本: {SelectForgeVersion}", "错误"); return; }
-                installer = ForgeInstaller.Create(mcFolder, installerJavaPath!, (ForgeInstallEntry)entry, $"{mcVersion}_forge_{SelectForgeVersion}");
+                // 不再走 MinecraftLaunch 的 ForgeInstaller：它直连 maven.minecraftforge.net，
+                // 国内几乎必卡（没有镜像改写、没有空闲超时、进度只报「0/1 + N/A」，
+                // 用户看到的就是「卡在这一步装不上」）。改走自实现的 LoaderInstaller，
+                // 它有 BMCLAPI 镜像兜底、空闲超时、以及 1.0.7.15 的多线程下载内核。
+                loaderInstall = (LoaderKind.Forge, SelectForgeVersion!);
                 taskName = $"安装 Forge {SelectForgeVersion}";
             }
             else if (!string.IsNullOrEmpty(SelectFabricVersion))
             {
-                var fabrics = await FabricInstaller.EnumerableFabricAsync(mcVersion);
-                var fabricEntry = fabrics.FirstOrDefault(x => string.Equals(x.DisplayVersion, SelectFabricVersion, StringComparison.OrdinalIgnoreCase));
-                if (fabricEntry == null)
-                {
-                    _notification.Error($"未找到 Fabric 版本: {SelectFabricVersion}", "错误");
-                    return;
-                }
-                // McVersion 是计算属性，返回 Intermediary.Version；直接修正 Intermediary
-                fabricEntry.Intermediary.Version = mcVersion;
-                fabricEntry.Intermediary.Maven = $"net.fabricmc:intermediary:{mcVersion}";
-                installer = FabricInstaller.Create(mcFolder, fabricEntry, $"{mcVersion}_fabric_{SelectFabricVersion}");
-                taskName = $"安装 Fabric {fabricEntry.DisplayVersion}";
+                // 走自实现的 FabricDownloader（镜像兜底 / 精确超时 / 重试 / 并行下载）。
+                //
+                // 这里**不再**联网查一次加载器列表：安装只需要版本号字符串，
+                // 原来的 FabricInstaller.EnumerableFabricAsync + FabricInstaller.Create
+                // 纯属重复请求，而且那次请求没有镜像、没有重试、超时还是 100 秒 ——
+                // 用户看到的那条 HTTP 超时就是从这条路径上来的（见 FabricDownloader 注释）。
+                isFabric = true;
+                taskName = $"安装 Fabric {SelectFabricVersion}";
             }
             else if (!string.IsNullOrEmpty(SelectQuiltVersion))
             {
-                var quilts = await QuiltInstaller.EnumerableQuiltAsync(mcVersion);
-                entry = quilts.FirstOrDefault(x => string.Equals(x.DisplayVersion, SelectQuiltVersion, StringComparison.OrdinalIgnoreCase));
-                if (entry == null) { _notification.Error($"未找到 Quilt 版本: {SelectQuiltVersion}", "错误"); return; }
-                installer = QuiltInstaller.Create(mcFolder, (QuiltInstallEntry)entry, $"{mcVersion}_quilt_{SelectQuiltVersion}");
+                // 同理：库的 QuiltInstaller 会踩 MinecraftLibrary.ParseJsonNode 的
+                // Nullable.Value 崩溃（见 LoaderInstaller.InstallQuiltAsync 的注释）。
+                loaderInstall = (LoaderKind.Quilt, SelectQuiltVersion!);
                 taskName = $"安装 Quilt {SelectQuiltVersion}";
             }
             else if (!string.IsNullOrEmpty(SelectNeoforgeVersion))
             {
-                var neoforges = (await ForgeInstaller.EnumerableForgeAsync(mcVersion,true)).ToList();
-                entry = neoforges.FirstOrDefault(x => string.Equals(x.DisplayVersion, SelectNeoforgeVersion, StringComparison.OrdinalIgnoreCase));
-                if (entry == null) { _notification.Error($"未找到 NeoForge 版本: {SelectNeoforgeVersion}", "错误"); return; }
-                installer = ForgeInstaller.Create(mcFolder, installerJavaPath!, (ForgeInstallEntry)entry, $"{mcVersion}_neoforge_{SelectNeoforgeVersion}");
+                // NeoForge 的制品在 maven.neoforged.net，国内基本连不上（实测直连失败），
+                // 只能走 BMCLAPI 的 /maven/ 镜像 —— 库的 ForgeInstaller 不知道这件事。
+                loaderInstall = (LoaderKind.NeoForge, SelectNeoforgeVersion!);
                 taskName = $"安装 NeoForge {SelectNeoforgeVersion}";
             }
             else
@@ -437,6 +510,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
 
             var task = taskService?.CreateTask(taskName, DownloadTaskType.GameInstall);
+            // 记下目标版本：任务中心点「查看详情」时靠它跳回本版本的安装进度页
+            if (task is not null)
+                task.TargetMcVersion = mcVersion;
 
             // 捕获安装器内部吞掉的真实异常
             Exception installException = null;
@@ -494,7 +570,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         taskService?.UpdateProgress(task, p, sp, s);
                     });
                 }
-                else if (installer is FabricInstaller)
+                else if (isFabric)
                 {
                     // 使用自实现的 FabricDownloader，绕过库的 bug
                     var customId = $"{mcVersion}_fabric_{SelectFabricVersion}";
@@ -502,10 +578,79 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         mcFolder, mcVersion, SelectFabricVersion, customId,
                         (p, s) =>
                         {
-                            InstallProgress = p;
-                            InstallStep = s;
-                            taskService?.UpdateProgress(task, p, "", s);
+                            // 库文件是并行下载的，这个回调会从工作线程进来，
+                            // 必须显式切回 UI 线程再改绑定属性（原实现是串行下载，
+                            // 靠「await 之后回到 UI 上下文」侥幸成立，并行后就不成立了）。
+                            //
+                            // 速度统一取全局速度表：这一阶段同时在跑多个库，任何一个的
+                            // 局部速度都不能代表整体，只有总速度才是用户看到的「下载速度」。
+                            var speedText = DownloadSpeedometer.FormatSpeed();
+                            Avalonia.Threading.Dispatcher.UIThread.Post(new Action(() =>
+                            {
+                                InstallProgress = p;
+                                InstallStep = s;
+                                Speed = speedText;
+                            }));
+                            taskService?.UpdateProgress(task, p, speedText, s);
                         });
+                }
+                else if (loaderInstall is { } planned)
+                {
+                    // 自实现的加载器安装：安装器 / 依赖库 / Forge 制品全部带 BMCLAPI 镜像兜底，
+                    // 下载走 1.0.7.15 的多线程内核（分块并行 + 全局速度反馈）。
+                    var instanceId = planned.Kind switch
+                    {
+                        LoaderKind.NeoForge => $"{mcVersion}_neoforge_{planned.Version}",
+                        LoaderKind.Quilt => $"{mcVersion}_quilt_{planned.Version}",
+                        _ => $"{mcVersion}_forge_{planned.Version}",
+                    };
+
+                    void Report(int percent, string text)
+                    {
+                        // 这一阶段同时在并行下多个库，速度只能取全局速度表 ——
+                        // 任何一个文件的局部速度都不能代表进度条的整体感受。
+                        var speedText = DownloadSpeedometer.FormatSpeed();
+                        Avalonia.Threading.Dispatcher.UIThread.Post(new Action(() =>
+                        {
+                            InstallProgress = percent;
+                            InstallStep = text;
+                            Speed = speedText;
+                        }));
+                        taskService?.UpdateProgress(task, percent, speedText, text);
+                    }
+
+                    // Forge / NeoForge 的 processor 要读写原版 client.jar（占位符 {MINECRAFT_JAR}）。
+                    // 只有版本 JSON、没有 jar 的实例（别家启动器留下的、上次装到一半中断的）
+                    // 在这里先补齐 —— 否则会崩在 processor 阶段，用户只看到一段 Java 堆栈输出。
+                    var clientJar = Path.Combine(mcFolder, "versions", mcVersion, mcVersion + ".jar");
+                    if (planned.Kind != LoaderKind.Quilt && !File.Exists(clientJar))
+                    {
+                        Report(2, $"补全原版 {mcVersion} 文件");
+                        var manifest = await MinecraftVersionCache.GetAsync();
+                        var vanilla = manifest.FirstOrDefault(x => x.McVersion == mcVersion);
+                        if (vanilla is not null)
+                        {
+                            await VanillaDownloader.InstallAsync(
+                                mcFolder, (VersionManifestEntry)vanilla,
+                                (p2, step, sp) => Report(p2, step));
+                        }
+                    }
+
+                    if (planned.Kind == LoaderKind.Quilt)
+                    {
+                        await LoaderInstaller.InstallQuiltAsync(
+                            mcFolder, mcVersion, planned.Version, instanceId, Report);
+                    }
+                    else
+                    {
+                        await LoaderInstaller.InstallForgeLikeAsync(
+                            mcFolder, mcVersion, planned.Version, instanceId,
+                            planned.Kind == LoaderKind.NeoForge, installerJavaPath!, Report);
+                    }
+
+                    minecraft = new MinecraftParser(mcFolder).GetMinecraft(instanceId)
+                        ?? throw new InvalidOperationException(
+                            $"{(planned.Kind == LoaderKind.Quilt ? "Quilt" : "Forge")} 安装完成但解析版本失败：{instanceId}");
                 }
                 else
                 {
@@ -520,7 +665,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
             catch (Exception ex)
             {
-                var realMsg = installException?.Message ?? ex.Message;
+                var realMsg = installException != null ? DescribeError(installException) : DescribeError(ex);
                 Serilog.Log.Error(installException ?? ex, "安装失败：{Message}", realMsg);
                 taskService?.FailTask(task, realMsg);
                 App.Current.Dispatcher.Invoke((Action)(() =>
@@ -528,6 +673,40 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     _notification.Error(realMsg, "安装失败");
                 }));
             }
+        }
+
+        /// <summary>
+        /// 把异常翻成人看得懂、且知道下一步该做什么的话。
+        ///
+        /// 之前用户看到的原文是
+        /// <c>The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.</c>
+        /// —— 既没有中文，也没告诉他可以开镜像。
+        /// </summary>
+        private static string DescribeError(Exception ex)
+        {
+            if (ex is AggregateException agg && agg.InnerException != null)
+                ex = agg.InnerException;
+
+            // 自实现下载器已经把原因和做法写好了，直接用
+            if (ex is DownloadFailedException)
+                return ex.Message;
+
+            if (ex is OperationCanceledException || ex is TimeoutException
+                || ex.InnerException is TimeoutException
+                || ex.Message.Contains("HttpClient.Timeout", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("Timeout", StringComparison.Ordinal))
+            {
+                return "网络连接超时：与 Minecraft / 加载器服务器通信失败。\n" +
+                       "可在「设置 → 下载」把下载源切换为 BMCLAPI 镜像，或检查网络与代理后重试。";
+            }
+
+            if (ex is HttpRequestException)
+            {
+                return $"网络错误：{ex.Message}\n请检查网络连接或代理设置后重试。";
+            }
+
+            return ex.Message;
         }
     }
 }
