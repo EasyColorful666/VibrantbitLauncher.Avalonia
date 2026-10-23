@@ -6,6 +6,98 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
+## [1.0.10.6] - 2026-10-23
+
+### 更改
+
+- **下载页搜索改为「点按钮 / 按回车」触发，去掉输入即搜**
+
+  原来输入框挂了 `TextChanged` + 260ms `DispatcherTimer` 防抖，边打边筛。
+  版本清单有 900+ 条，打字过程中列表会被反复重建，既抖又看不清结果；
+  而版本号本身是短词（`1.21`、`25w45a`），一次输完再搜几乎没有成本。
+
+  - 新增「搜索」按钮（与输入框同为 36 高，上下边严格对齐），点它或按回车才发起搜索。
+  - 按 `Esc` 清空关键词并恢复当前筛选范围。
+  - 新增 `_appliedKeyword` 字段：**输入框里的文字**与**正在生效的关键词**彻底分开。
+    否则「打了字但没提交」时切换版本类型筛选，会把半截关键词一起带进查询。
+
+- **搜索匹配精度提高**（`Helpers/VersionSearchMatcher.cs`）
+
+  1. **数字段边界判定**：命中结束处若紧跟数字，说明数字段被拦腰截断，只给降级分。
+     搜 `21` 时 `1.21.4`（638）现在稳定排在 `1.210`（558）之前；改之前两者同档。
+  2. **段对齐优先**：搜 `1.2` 时 `1.2.5`（848）排在 `1.21.4`（717）之前 ——
+     前缀命中但数字段未对齐的降一档，避免 `1.2` 被 `1.21.x` 淹没。
+  3. **多关键词 AND**：空格分隔，全部命中才算命中，分数取平均。
+     `1.21 pre` 现在只出 `1.21.4-pre2` 这类结果，不再因为整串比对而一个都搜不到。
+  4. **连接符归一**扩展到段边界识别：`pre-2`/`pre2`、`rc-1`/`rc1`、`snapshot-10`/`snapshot10` 互通。
+
+  18 条用例（精确命中、段对齐排序、连接符互通、多词 AND、快照 / 远古版、负例）
+  全部通过。
+
+### 修复
+
+- **首次使用向导：标题栏只显示「首次使用向导」**
+
+  原先把「Vibrantbit Launcher」放在 `Title`、「首次使用向导」放在 `Subtitle`，
+  模板会把两者上下叠印。现只保留 `Title="首次使用向导"`。
+
+- **首次使用向导：登录账户板块居中**
+
+  外层容器原本是 `MaxWidth="660" HorizontalAlignment="Left"`，宽度被最宽的
+  按钮行（约 330）撑出来，于是图标和文案在那 330 里居中、按钮却从最左边起排，
+  整块贴在窗口左侧、右边留出一大片空白。
+  改为外层 `Stretch`（列表仍 `MaxWidth=660` 靠左），空状态与登录按钮各自居中。
+  有账户后按钮自动拉回左对齐，与列表共用左边界。
+
+- **登录账户三个按钮的高度与下拉框不统一**
+
+  `Padding="20,10"` 把按钮顶到 40 高，而 ComboBox / TextBox 是 32。
+  改为 `MinHeight="32" Padding="18,0"`，与「快速设置」页贴在下拉框右侧的按钮一致。
+
+- **模组下载页全部报「无法访问 Modrinth」（剪裁版专有，1.0.10.2 起潜伏）**
+
+  真实异常不是网络问题，而是：
+
+  ```
+  InvalidOperationException: Reflection-based serialization has been disabled
+  for this application. Either use the source generator APIs or explicitly
+  configure the 'JsonSerializerOptions.TypeInfoResolver' property.
+  ```
+
+  `PublishTrimmed=true` 时 SDK 会把功能开关
+  `System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault` 置为 false，
+  于是**任何**没有 `TypeInfoResolver` 的 `JsonSerializer.Serialize/Deserialize`
+  在运行期直接抛。本项目所有 JSON 都走反射（SettingsService、SkinService、
+  MojangNewsHelper、ModrinthSearchService……），所以剪裁版一开局域网请求就炸；
+  同一个 exe 的非剪裁版完全正常 —— 这也是当初「标准档一切正常」的原因。
+
+  已在 csproj 的剪裁段显式写 `<JsonSerializerIsReflectionEnabledByDefault>true</…>`。
+  实测发布的 `runtimeconfig.json` 里已出现该开关，代价约 1MB。
+  类型元数据能否存活仍由 `TrimmerRootAssembly` 负责，本项目程序集已整份 root。
+
+  ⚠️ 顺带给所有使用剪裁档的人一条判据：日志里出现
+  `Reflection-based serialization has been disabled` 就是这个问题，与代理无关。
+
+- **通知重影（两条提示文字叠在一起）**
+
+  `SnackbarHost` 原来是 `Panel`，而 **Panel 会把所有子元素摆在同一位置** ——
+  两条通知同时在场时必然重影（用户截图里「提示」和正文都被画了两遍）。
+  已改为 `StackPanel`，真正纵向堆叠。
+
+- **通知没有入场 / 出场动画**
+
+  - 入场：淡入 + 从右侧 28px 滑入，190ms。
+  - 出场：淡出 + 向右 28px 滑走，150ms，动画结束才从宿主移除。
+  - 同一条提示重复到达时不再叠一条，只把已有那条的倒计时重新拉满
+    （否则连续两次启动失败会排四条一模一样的通知）。
+  - 点 × 立即移除，不播出场动画 —— 用户点关闭就是要它马上消失。
+  - 性能模式（= 减动效）下全部跳过动画，直接出现 / 消失。
+
+- **安装页缺少返回按钮**
+
+  标题行改为 `Auto,*,Auto` 三列，左侧新增「返回」按钮：优先走导航栈
+  `GoBack()`，栈为空时退回「原版游戏」下载页，保证任何进入路径下都有反应。
+
 ## [1.0.10.5] - 2026-10-23
 
 ### 修复

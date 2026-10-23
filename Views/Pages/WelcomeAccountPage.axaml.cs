@@ -36,9 +36,23 @@ public partial class WelcomeAccountPage : UserControl
     private void OnUsersChanged(object? sender, NotifyCollectionChangedEventArgs e)
         => UpdateEmptyState();
 
-    /// <summary>没有账户时显示引导文案。</summary>
+    /// <summary>
+    /// 没有账户时显示引导文案，并把整块内容居中。
+    ///
+    /// <para>
+    /// 有账户之后内容变成「账户列表」，列表类内容居中会显得散，所以这时候
+    /// 把登录入口拉回左对齐，与列表共用左边界。
+    /// </para>
+    /// </summary>
     private void UpdateEmptyState()
-        => emptyState.IsVisible = _viewModel.Users.Count == 0;
+    {
+        var empty = _viewModel.Users.Count == 0;
+
+        emptyState.IsVisible = empty;
+        actionsRow.HorizontalAlignment = empty
+            ? Avalonia.Layout.HorizontalAlignment.Center
+            : Avalonia.Layout.HorizontalAlignment.Left;
+    }
 
     private void OnBack(object? sender, RoutedEventArgs e)
         => AppNavigation.Navigate(typeof(WelcomeSetupPage));

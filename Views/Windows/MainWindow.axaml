@@ -89,13 +89,19 @@
                 </ui:FANavigationView.FooterMenuItems>
             </ui:FANavigationView>
 
-            <!--  轻提示宿主：右下角，位于导航内容之上  -->
-            <Panel x:Name="SnackbarHost"
-                   Grid.Row="1"
-                   Margin="0,0,0,24"
-                   VerticalAlignment="Bottom"
-                   HorizontalAlignment="Right"
-                   ZIndex="100" />
+            <!--
+                轻提示宿主：右下角，位于导航内容之上。
+
+                ⚠️ 必须是 StackPanel 而不是 Panel：Panel 会把所有子元素叠在**同一个位置**，
+                两条通知同时存在时文字直接重影（1.0.10.6 用户实测截图）。
+                StackPanel 才会真正纵向堆叠。
+            -->
+            <StackPanel x:Name="SnackbarHost"
+                        Grid.Row="1"
+                        Margin="0,0,0,24"
+                        VerticalAlignment="Bottom"
+                        HorizontalAlignment="Right"
+                        ZIndex="100" />
 
             <!--
                 内嵌子页宿主（1.0.8.2 起：窗口原样嵌进来，不做任何改装）。

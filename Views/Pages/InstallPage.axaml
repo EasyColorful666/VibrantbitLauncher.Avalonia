@@ -34,12 +34,30 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*,Auto">
 
         <!--  标题与操作按钮  -->
-        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Classes="display" Margin="0,0,12,0"
+        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="Auto,*,Auto">
+
+            <!--
+                返回：走导航栈回上一页（通常是从「原版游戏」列表点进来的）。
+                没有返回栈时（例如直接按 RID 之外的入口打开）退回下载页，
+                否则按钮点了没反应，比没有按钮更糟。
+            -->
+            <Button Grid.Column="0"
+                    Margin="0,0,12,0"
+                    Padding="16,10"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="返回上一页"
+                    Click="OnBack">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Back" />
+                    <TextBlock Text="返回" />
+                </StackPanel>
+            </Button>
+
+            <TextBlock Grid.Column="1" Classes="display" Margin="0,0,12,0"
                        VerticalAlignment="Center"
                        Text="{Binding McVersion, StringFormat='安装版本 - {0}'}"
                        TextWrapping="Wrap" />
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="10">
+            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="10">
                 <Button Padding="24,10" Classes="accent"
                         Command="{Binding InstallCommand}"
                         IsEnabled="{Binding CanInstall}">

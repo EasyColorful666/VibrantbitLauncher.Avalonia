@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.Messaging;
+using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Pages;
 
 namespace VibrantbitLauncher.Views.Pages;
@@ -35,6 +37,19 @@ public partial class InstallPage : UserControl
         checkBox4.IsCheckedChanged += (s, _) => OnLoaderToggled(s as CheckBox);
 
         WeakReferenceMessenger.Default.Register<string, string>(this, "McVersion", (_, m) => SetMcVersion(m));
+    }
+
+    /// <summary>
+    /// 返回上一页。
+    /// 优先走导航栈；栈是空的（例如被直接导航到本页）时退回「原版游戏」下载页，
+    /// 保证这个按钮在任何进入路径下都有反应。
+    /// </summary>
+    private void OnBack(object? sender, RoutedEventArgs e)
+    {
+        if (AppNavigation.Current?.GoBack() == true)
+            return;
+
+        AppNavigation.Navigate(typeof(DownloadPage));
     }
 
     /// <summary>

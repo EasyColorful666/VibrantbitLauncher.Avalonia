@@ -24,8 +24,18 @@ public partial class DownloadPage : UserControl
     private readonly ObservableCollection<McVersion> _shown = new();
     private readonly List<McVersion> _all = new();
 
-    private readonly DispatcherTimer _debounceTimer;
     private bool _loadedOnce;
+
+    /// <summary>
+    /// **已生效**的搜索关键词。
+    ///
+    /// <para>
+    /// 搜索框里的文字和「正在生效的关键词」是两件事：玩家打了一半还没点搜索时，
+    /// 列表不应该跟着变；此时如果他改了筛选勾选，也不该把没提交的半截关键词带上。
+    /// 所以视图永远只读这个字段，它只在「点搜索 / 按回车」时被写入。
+    /// </para>
+    /// </summary>
+    private string _appliedKeyword = string.Empty;
 
     /// <summary>最近一次发起版本列表加载的时刻，用于自动刷新的节流。</summary>
     private DateTime _lastVersionsLoadUtc = DateTime.MinValue;
@@ -53,13 +63,6 @@ public partial class DownloadPage : UserControl
         // 必须在订阅事件之前赋值，否则会被当成一次用户操作白刷一遍视图。
         chipRelease.IsChecked = true;
         AttachFilterHandlers();
-
-        _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
-        _debounceTimer.Tick += (_, _) =>
-        {
-            _debounceTimer.Stop();
-            RefreshView();
-        };
 
         Loaded += async (_, _) =>
         {
@@ -89,11 +92,10 @@ public partial class DownloadPage : UserControl
 
     /// <summary>
     /// 勾选 / 取消勾选后的即时重排。
-    /// 不走 260ms 防抖：勾选是一次明确的点击，压着不给反应会显得卡。
+    /// 筛选是开关式的显式操作，压着不给反应会显得卡，所以不走任何延时。
     /// </summary>
     private void OnFilterChipChanged(object? sender, RoutedEventArgs e)
     {
-        _debounceTimer.Stop();
         RefreshView();
     }
 
@@ -121,7 +123,7 @@ public partial class DownloadPage : UserControl
     private void RefreshView()
     {
         var kinds = SelectedKinds();
-        var keyword = textBox.Text;
+        var keyword = _appliedKeyword;
 
         // 一个类型都没勾 = 什么都不显示（这比「全显示」更符合勾选框的直觉：
         // 玩家把它当筛选器，不是当排除器）
@@ -206,10 +208,41 @@ public partial class DownloadPage : UserControl
         }
     }
 
-    private void TextBox_TextChanged(object? sender, TextChangedEventArgs e)
+    /// <summary>
+    /// 点「搜索」按钮发起搜索。
+    ///
+    /// <para>
+    /// 这里刻意**不做输入即搜**：版本清单有 900 多条，边打边筛会让列表在
+    /// 玩家打字过程中反复重建，既抖又难看清结果；而版本号是短词（<c>1.21</c>、
+    /// <c>25w45a</c>），一次输完再搜的成本几乎没有。
+    /// </para>
+    /// </summary>
+    private void OnSearchClick(object? sender, RoutedEventArgs e) => ApplySearch();
+
+    /// <summary>输入框里按回车 = 点搜索；按 Esc = 清空并恢复当前筛选范围。</summary>
+    private void TextBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        _debounceTimer.Stop();
-        _debounceTimer.Start();
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            ApplySearch();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            textBox.Text = string.Empty;
+            ApplySearch();
+        }
+    }
+
+    /// <summary>把输入框里的词提交为「生效关键词」，再重新排一次视图。</summary>
+    private void ApplySearch()
+    {
+        var keyword = textBox.Text?.Trim() ?? string.Empty;
+        _appliedKeyword = keyword;
+
+        Serilog.Log.Information("下载页搜索：{Keyword}", keyword.Length == 0 ? "(空，显示全部)" : keyword);
+        RefreshView();
     }
 
     /// <summary>
@@ -275,7 +308,7 @@ public partial class DownloadPage : UserControl
         emptyText.Text = noKindSelected
             ? "一个版本类型都没勾选\n点上面的多选框挑一种玩法吧"
             : searching
-                ? "没有匹配的版本，换个关键词试试"
+                ? "没有匹配的版本\n换个关键词，再点一次「搜索」"
                 : "当前筛选条件下没有版本";
     }
 

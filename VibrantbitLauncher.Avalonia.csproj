@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.10.5</Version>
+    <Version>1.0.10.6</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -127,6 +127,27 @@
     <TrimMode>partial</TrimMode>
     <!-- 剪裁警告照常输出，不要用 SuppressTrimAnalysisWarnings 捂掉 -->
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+
+    <!--
+      ★ 必须显式把 System.Text.Json 的反射序列化打开（1.0.10.6 踩过的坑）
+
+      PublishTrimmed=true 时，SDK 会把功能开关
+      System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault 置为 false
+      （目的是让 IL2026 警告不误报）。后果是**任何**没有 TypeInfoResolver 的
+      JsonSerializer.Deserialize / Serialize 在**运行期**直接抛：
+
+        InvalidOperationException: Reflection-based serialization has been
+        disabled for this application. ...
+
+      本项目所有 JSON 都走反射（SettingsService、SkinService、MojangNewsHelper、
+      ModrinthSearchService……），于是剪裁版一开局域网请求就炸 ——
+      模组下载页 100% 复现「无法访问 Modrinth」，而同一个 exe 的非剪裁版完全正常。
+
+      打开不等于不剪裁：类型元数据能不能活下来仍然取决于 TrimmerRootAssembly，
+      本项目自己那个程序集已整份 root 住，所以反射取属性是安全的。
+      代价约 1MB（System.Text.Json 的反射路径保留）。
+    -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <!--

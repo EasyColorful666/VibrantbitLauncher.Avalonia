@@ -28,8 +28,7 @@
           Background="{DynamicResource ApplicationBackgroundBrush}">
         <ctrl:TitleBar Grid.Row="0"
                        Height="36"
-                       Title="Vibrantbit Launcher"
-                       Subtitle="首次使用向导"
+                       Title="首次使用向导"
                        Icon="/Assets/icon.ico" />
 
         <ContentControl x:Name="PageHost" Grid.Row="1" />

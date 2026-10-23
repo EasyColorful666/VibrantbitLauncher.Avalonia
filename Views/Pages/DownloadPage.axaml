@@ -158,18 +158,35 @@
 
     <Grid Margin="0,16,0,8" RowDefinitions="Auto,Auto,*">
 
-        <!--  搜索框：与下载中心其它页面保持一致的现代化样式（图标 + 占位文案）  -->
-        <Grid Grid.Row="0" Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+        <!--
+            搜索行：输入框 + 显式「搜索」按钮。
+            搜索由按钮 / 回车触发，不做输入即搜 —— 版本清单 900+ 条，
+            边打边筛会让列表在打字过程中反复重建，既抖又看不清结果。
+        -->
+        <Grid Grid.Row="0" Margin="0,0,0,12" ColumnDefinitions="*,Auto,Auto">
             <TextBox x:Name="textBox"
                      Grid.Column="0"
                      Height="36"
                      VerticalContentAlignment="Center"
-                     PlaceholderText="搜索游戏版本"
-                     TextChanged="TextBox_TextChanged" />
+                     PlaceholderText="搜索游戏版本，输完按回车或点「搜索」"
+                     KeyDown="TextBox_KeyDown" />
+
+            <!--  高度与输入框一致（36），两者上下边严格对齐  -->
+            <Button Grid.Column="1"
+                    Height="36"
+                    Margin="8,0,0,0"
+                    Padding="16,0"
+                    Classes="accent"
+                    Click="OnSearchClick">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ui:FASymbolIcon Symbol="Find" FontSize="14" />
+                    <TextBlock Text="搜索" />
+                </StackPanel>
+            </Button>
 
             <!--  右侧计数 / 提示  -->
             <TextBlock x:Name="countText"
-                       Grid.Column="1"
+                       Grid.Column="2"
                        Classes="caption"
                        Margin="12,0,0,0"
                        VerticalAlignment="Center"

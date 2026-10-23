@@ -18,10 +18,17 @@
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="660" HorizontalAlignment="Left">
+            <!--
+                外层用 Stretch 而不是固定宽度：
+                空状态要能在整页宽度里真正居中，所以父容器必须先占满可用宽度，
+                再由子元素各自决定对齐方式（列表靠左、空状态居中）。
+            -->
+            <StackPanel HorizontalAlignment="Stretch">
 
-                <!--  已经登录的账户  -->
-                <ItemsControl ItemsSource="{Binding Users}">
+                <!--  已经登录的账户：列表类内容靠左，别居中  -->
+                <ItemsControl MaxWidth="660"
+                              HorizontalAlignment="Left"
+                              ItemsSource="{Binding Users}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Classes="card" Margin="0,0,0,8" Padding="12,10">
@@ -43,8 +50,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!--  还没有账户时的提示 + 登录入口  -->
-                <StackPanel x:Name="emptyState">
+                <!--  还没有账户时的提示：图标 / 标题 / 说明三者共用同一条中轴  -->
+                <StackPanel x:Name="emptyState"
+                            Margin="0,4,0,0"
+                            HorizontalAlignment="Center">
                     <ui:FASymbolIcon HorizontalAlignment="Center"
                                      FontSize="40"
                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -57,20 +66,29 @@
                                Text="选一种方式登录，正版账户可以联机" />
                 </StackPanel>
 
-                <StackPanel Margin="0,24,0,0" Orientation="Horizontal" Spacing="10">
-                    <Button Padding="20,10" Command="{Binding AuthenticateMicrosoftCommand}">
+                <!--
+                    登录入口。高度对齐 ComboBox / TextBox 的 32：只给横向 Padding，
+                    纵向靠 MinHeight 撑到 32 —— 原本写 Padding="20,10" 会顶到 40，
+                    和「快速设置」页里贴在下拉框右边的按钮对不齐。
+                -->
+                <StackPanel x:Name="actionsRow"
+                            Margin="0,24,0,0"
+                            HorizontalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="10">
+                    <Button MinHeight="32" Padding="18,0" Command="{Binding AuthenticateMicrosoftCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ui:FASymbolIcon Symbol="Contact" />
                             <TextBlock Text="微软账户" />
                         </StackPanel>
                     </Button>
-                    <Button Padding="20,10" Command="{Binding AuthenticateYggdrasilCommand}">
+                    <Button MinHeight="32" Padding="18,0" Command="{Binding AuthenticateYggdrasilCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ui:FASymbolIcon Symbol="Globe" />
                             <TextBlock Text="外置账户" />
                         </StackPanel>
                     </Button>
-                    <Button Padding="20,10" Command="{Binding AuthenticateOfflineCommand}">
+                    <Button MinHeight="32" Padding="18,0" Command="{Binding AuthenticateOfflineCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ui:FASymbolIcon Symbol="Add" />
                             <TextBlock Text="离线账户" />
