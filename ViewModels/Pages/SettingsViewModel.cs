@@ -213,9 +213,97 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 return; // InitializeViewModel 内部已经触发过一次 Java 检测
             }
 
-            // 每次重新进入：刷新日志 + 重新检测 Java
+            // 每次重新进入：先让「主页」概览与当前配置对齐，再刷新日志 + 重新检测 Java。
+            //
+            // 只做日志和 Java 是不够的。本页是 DI 单例，InitializeViewModel 只跑一次，
+            // 而配置会在别的地方被改：
+            //   · 启动页「快捷设置」可以直接换游戏目录 / Java / 明暗主题（LaunchPage.OnQuickMcFolderClick）；
+            //   · 下载中心可以换下载源；
+            //   · 用户还可能手工编辑 settings.json，或者换了账号 / 实例后目录被重置。
+            // 以前这些改动只有重启程序才会出现在这里，用户看到的就是
+            // 「设置主页的配置不重启就不跟着变」。
+            SyncOverviewFromSettings();
             RefreshLogs();
             await LoadJavaAsync();
+        }
+
+        /// <summary>
+        /// 把「主页」概览里的只读字段与当前配置对齐。
+        ///
+        /// <para>
+        /// 只写字段 + <see cref="ObservableObject.OnPropertyChanged(string?)"/>，<b>不走 setter</b>：
+        /// setter 会把值回写进配置并立即落盘，而这里只是「把配置里的现状显示出来」，
+        /// 不该产生任何写入，也不该触发 ApplyTheme / ApplyDownloadSettings 这类副作用。
+        /// </para>
+        /// </summary>
+        private void SyncOverviewFromSettings()
+        {
+            // 游戏目录：启动页换目录、不同玩家用不同 .minecraft，都会落到这里
+            var folder = SettingsService.ResolveMinecraftFolder();
+            if (!string.Equals(_minecraftFolder, folder, StringComparison.Ordinal))
+            {
+                _minecraftFolder = folder;
+                OnPropertyChanged(nameof(MinecraftFolder));
+            }
+
+            // 内存档位：概览里的 -Xmx / -Xms 由这两个字段算出来
+            var maxMemory = MemoryOptions.FirstOrDefault(o => o.Mb == SettingsService.Current.MaxMemoryMb)
+                ?? MemoryOptions[2];
+            if (!ReferenceEquals(maxMemory, _selectedMaxMemory))
+            {
+                _selectedMaxMemory = maxMemory;
+                OnPropertyChanged(nameof(SelectedMaxMemory));
+            }
+
+            var minMemory = MemoryOptions.FirstOrDefault(o => o.Mb == SettingsService.Current.MinMemoryMb)
+                ?? MemoryOptions[1];
+            if (!ReferenceEquals(minMemory, _selectedMinMemory))
+            {
+                _selectedMinMemory = minMemory;
+                OnPropertyChanged(nameof(SelectedMinMemory));
+            }
+
+            OnPropertyChanged(nameof(MemoryHint));
+
+            // Java 路径取的是配置值（见 JavaPathText）：启动页快捷设置能直接换 Java
+            OnPropertyChanged(nameof(JavaPathText));
+
+            // 下载源摘要 = 源 + 文件并发 + 单文件分块数，三项任一变了都要重算
+            var mirror = SettingsService.Current.UseBmclMirror;
+            var concurrency = DownloadConcurrencyOptions.Contains(SettingsService.Current.DownloadConcurrency)
+                ? SettingsService.Current.DownloadConcurrency
+                : 6;
+            var chunks = DownloadChunkOptions.Contains(SettingsService.Current.DownloadChunkCount)
+                ? SettingsService.Current.DownloadChunkCount
+                : 4;
+
+            if (mirror != _useBmclMirror
+                || concurrency != _downloadConcurrency
+                || chunks != _downloadChunkCount)
+            {
+                _useBmclMirror = mirror;
+                _downloadConcurrency = concurrency;
+                _downloadChunkCount = chunks;
+
+                OnPropertyChanged(nameof(UseBmclMirror));
+                OnPropertyChanged(nameof(DownloadSourceText));
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+                OnPropertyChanged(nameof(DownloadConcurrency));
+                OnPropertyChanged(nameof(DownloadChunkCount));
+            }
+
+            // 主题：启动页快捷设置里可以直接切明暗
+            var theme = SettingsService.Current.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+                ? AppThemeMode.Dark
+                : AppThemeMode.Light;
+            if (theme != _currentTheme)
+            {
+                _currentTheme = theme;
+                OnPropertyChanged(nameof(CurrentTheme));
+                OnPropertyChanged(nameof(CurrentThemeText));
+            }
+
+            OnPropertyChanged(nameof(MachineMemoryText));
         }
 
         Task INavigationAware.OnNavigatedFromAsync() => Task.CompletedTask;
@@ -446,8 +534,25 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     SettingsService.Current.JavaPath = value.JavaPath;
                     SettingsService.Save();
                 }
+
+                // 概览里的「Java 路径」优先显示配置值，选中项变化后要重算
+                OnPropertyChanged(nameof(JavaPathText));
             }
         }
+
+        /// <summary>
+        /// 「主页」概览里展示的 Java 路径。
+        ///
+        /// <para>
+        /// 优先用<b>配置里的值</b>，而不是下拉框选中项：检测列表里没有这个 JDK 时
+        /// （手动填的路径、目录被移走、刚升级把旧目录删了），选中项会退回到列表第一项，
+        /// 概览就会显示成另一个 JDK —— 用户会以为配置被自己改了。
+        /// </para>
+        /// </summary>
+        public string JavaPathText =>
+            !string.IsNullOrWhiteSpace(MainWindowViewModel.MainModel.JavaPath)
+                ? MainWindowViewModel.MainModel.JavaPath!
+                : _selectedJava?.JavaPath ?? "未设置";
 
         // ===== 启动：Java 虚拟机与内存 / 游戏目录 / 高级 =====
 

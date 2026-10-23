@@ -110,7 +110,7 @@
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="Java 路径" />
                                 <TextBlock Grid.Row="2" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding SelectedJava.JavaPath}" TextWrapping="Wrap" />
+                                           Text="{Binding JavaPathText}" TextWrapping="Wrap" />
 
                                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="内存" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
