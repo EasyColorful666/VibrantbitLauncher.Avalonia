@@ -24,9 +24,15 @@ namespace VibrantbitLauncher.Services.Download;
 /// </summary>
 internal static class DownloadEngine
 {
-    /// <summary>单个文件最多切成几块。太少浪费带宽，太多会被镜像端限流（实测 BMCLAPI 会 403）。</summary>
-    private const int MinChunks = 2;
-    private const int MaxChunks = 8;
+    /// <summary>
+    /// 单个文件最多切成几块。
+    ///
+    /// 上限从 8 放宽到 16（1.0.9.8）：设置页现在把「分块数」独立暴露出来，
+    /// 想给单个大文件提速的用户可以拉到 16。再高没有意义 ——
+    /// 家用带宽早就跑满了，多出来的连接只会让镜像端更容易 403。
+    /// </summary>
+    private const int MinChunks = 1;
+    private const int MaxChunks = 16;
 
     /// <summary>小于这个体积不分块 —— 分块握手（每个 range 一次请求）的开销会超过收益。</summary>
     private const long ChunkyThreshold = 1024 * 1024;
@@ -53,9 +59,13 @@ internal static class DownloadEngine
     /// 建一份针对单个文件的配置。
     /// </summary>
     /// <param name="chunks">
-    /// 分块数 / 并发连接数。由设置页的「下载线程数」决定，夹在 2~8 之间 ——
-    /// 原实现按线程数直接并发打镜像，10 路会被 BMCLAPI 瞬时限流（403），这里改成
-    /// 「少量连接、块内并行」，总连接数可控但单文件能吃满带宽。
+    /// 单个文件的分块数（= 内层并发连接数），由设置页的「单文件分块数」决定。
+    ///
+    /// <para>
+    /// 允许 1：表示不分块、单连接下载。分块握手本身要对同一 URL 发 N 次 range 请求，
+    /// 小文件或镜像端限流时，1 块反而更快、更不容易被 403。
+    /// 上限 16 —— 再多连接对家用带宽没有收益，只会增加被限流的概率。
+    /// </para>
     /// </param>
     internal static DownloadConfiguration CreateConfiguration(int chunks)
     {
@@ -64,7 +74,9 @@ internal static class DownloadEngine
         return new DownloadConfiguration
         {
             ChunkCount = count,
-            ParallelDownload = true,
+            // 只有 1 块时不能开并行：库会把它当成「单块 + 并行」去跑，
+            // 结果是把同一段字节反复请求，还不如老老实实单连接流式读。
+            ParallelDownload = count > 1,
             ParallelCount = count,
             EnableAutoResumeDownload = true,
             MaxTryAgainOnFailure = MaxTryAgainOnFailure,
@@ -79,7 +91,7 @@ internal static class DownloadEngine
             ClearPackageOnCompletionWithFailure = true,
             CheckDiskSizeBeforeDownload = false,
             // 交给自定义 handler：我们要自己控代理、连接池与解压策略
-            CustomHttpMessageHandlerFactory = CreateHandler,
+            CustomHttpMessageHandlerFactory = () => CreateHandler(count),
             RequestConfiguration =
             {
                 Accept = "*/*",
@@ -106,7 +118,7 @@ internal static class DownloadEngine
     /// 第一个文件下完就会把后面所有文件的连接池一起废掉。
     /// </para>
     /// </summary>
-    private static HttpMessageHandler CreateHandler()
+    private static HttpMessageHandler CreateHandler(int chunks)
     {
         return new SocketsHttpHandler
         {
@@ -114,8 +126,9 @@ internal static class DownloadEngine
             UseProxy = true,
             Proxy = BuildProxy(),
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            // 单文件 8 块并发，留足余量
-            MaxConnectionsPerServer = 16,
+            // 连接池要容得下「这个文件的所有分块」，否则多出来的块会排队等连接，
+            // 分块并行就退化成了串行。留一倍余量给同批次里别的文件。
+            MaxConnectionsPerServer = Math.Max(16, chunks * 2),
             // 不要开 AutomaticDecompression：开了之后库会退化成单块下载
             // （压缩流的字节偏移和分块 range 对不上），见库的 README。
             AutomaticDecompression = DecompressionMethods.None,

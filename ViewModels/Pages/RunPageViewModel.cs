@@ -69,6 +69,16 @@ namespace VibrantbitLauncher.ViewModels.Pages
             set => SetProperty(ref accountName, value);
         }
 
+        /// <summary>
+        /// 已检测到的 Java 列表（启动页「快捷设置」的 Java 下拉框用）。
+        ///
+        /// <para>
+        /// 由 <see cref="LoadAsync"/> 在后台扫描后填充。扫描完成会触发一次
+        /// <c>PropertyChanged</c>，页面据此刷新下拉框 —— 否则首次进入时列表还是空的。
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<JavaEntry> DetectedJavas => asyncJavas;
+
         public RunPageViewModel()
         {
             IsLoaded = false;
@@ -156,6 +166,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         {
                             javaVersions.Add(j.JavaVersion);
                         }
+
+                        // 启动页的「快捷设置 → Java」下拉框挂在这个属性上：
+                        // 扫描是异步的，不通知的话它永远显示「未检测到」
+                        OnPropertyChanged(nameof(DetectedJavas));
                     });
                 }
                 catch (Exception ex)

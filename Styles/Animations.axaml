@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:helpers="using:VibrantbitLauncher.Helpers">
 
     <!--
         VibrantbitLauncher 交互动效规范（Avalonia 版）
@@ -223,6 +224,22 @@
         <Setter Property="Transitions">
             <Transitions />
         </Setter>
+    </Style>
+
+    <!--  ==================== 列表框：逐项从左飞入  ====================
+
+        所有 ListBox 统一挂这个附加属性，页面不用写代码：
+        每次列表挂到可视树上（进入页面 / 切版本后重建），
+        会按视觉顺序从上到下、每项错开 45ms 从左滑入并淡入。
+
+        为什么用附加属性而不是样式里的 Transitions：
+        Transitions 只能表达「属性变化后补间」，没法表达「挂载时从偏移位滑入」，
+        也没法逐项错开延迟 —— 那需要每项一个独立的起始时刻。
+
+        性能模式下 ListMotion 内部会直接返回，这里不需要再写一遍关闭逻辑。
+    -->
+    <Style Selector="ListBox">
+        <Setter Property="helpers:ListMotion.EnableStaggeredFlyIn" Value="True" />
     </Style>
 
 </Styles>

@@ -35,7 +35,7 @@
                 IsHitTestVisible="False"
                 IsVisible="{Binding HasBackgroundImage}" />
 
-        <Grid x:Name="AppRoot" RowDefinitions="Auto,*">
+        <Grid x:Name="AppRoot" RowDefinitions="Auto,*" RenderTransformOrigin="50%,50%">
             <!--  自定义标题栏（控件自带最小化 / 最大化 / 关闭，见 Controls/TitleBar.cs）  -->
             <ctrl:TitleBar x:Name="AppTitleBar"
                            Grid.Row="0"
@@ -108,13 +108,21 @@
                 不 Hook 主窗口（否则点 × 会关掉整个启动器）、隐藏最小化/最大化、× 走 InlineHost.Close()。
             -->
             <Panel x:Name="InlineHostLayer" Grid.Row="1" IsVisible="False" ZIndex="150">
-                <Border Background="{DynamicResource AppBackgroundScrimBrush}" />
+                <!--  遮罩独立命名：飞入时它跟着从透明淡到不透明，飞出时反向  -->
+                <Border x:Name="InlineScrim" Background="{DynamicResource AppBackgroundScrimBrush}" />
 
                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
                               Margin="16">
-                    <Border HorizontalAlignment="Center"
+                    <!--
+                        卡片是飞入 / 飞出的作用对象（缩放 + 纵向位移 + 淡入淡出）。
+                        它的 MaxWidth / MaxHeight 由 MainWindow.ShowInlineAsync 按宿主
+                        实际尺寸动态设置，小屏上不会顶出可视区域。
+                    -->
+                    <Border x:Name="InlineCard"
+                            HorizontalAlignment="Center"
                             VerticalAlignment="Center"
+                            RenderTransformOrigin="50%,50%"
                             BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             BoxShadow="0 16 44 0 #55000000"

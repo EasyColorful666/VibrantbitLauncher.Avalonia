@@ -10,6 +10,28 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 零、启动轨迹（2026-10-21）。
+        //
+        // 必须在**第一行**：用户报「另一台 Win10 上只能运行一次，之后双击毫无反应」。
+        // 这种「毫无反应」有两种根因，且排查手段完全相反：
+        //   · 宿主层失败（单文件自解压的原生库被隔离 / 被清理）→ 托管代码一行都没跑；
+        //   · 托管层失败（渲染初始化崩溃）→ 跑了，但死在 UI 起来之前。
+        // 这一行写下 BEGIN：有它 = 托管起来了，没它 = 宿主层就挂了。
+        // 顺带把「上次连续失败几次」读出来，用于下面自动降级。
+        StartupTrace.BeginAndClassify();
+
+        // 兜底一：UI 线程之外的未处理异常（后台线程、终结器线程）。
+        // 没有这一层的话，这类异常只会让进程凭空消失，用户看到的就是「闪退」。
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                StartupTrace.MarkError("AppDomain: " + ex.GetType().Name + ": " + ex.Message);
+                StartupFailureReporter.Report(ex, "启动器遇到未处理的错误");
+                try { Log.Fatal(ex, "未处理异常（AppDomain）"); } catch { /* 日志可能还没起来 */ }
+            }
+        };
+
         try
         {
             // 最先探测运行环境：版本号探测结果会影响 AppBuilder 的渲染配置，
@@ -19,7 +41,14 @@ internal static class Program
             // 性能模式决定渲染后端，而渲染后端在 AppBuilder 阶段就要定下来 ——
             // 此时 SettingsService 还没 Load（它依赖日志系统等），所以这里轻量地
             // 从 settings.json 里单独读一个字段。
+            //
+            // ⭐ 自动降级（2026-10-21）：上一次启动没能走到「窗口已显示」就死了，
+            // 说明 GPU 那条路在这台机器上走不通（老驱动 ANGLE 崩溃、虚拟机没有 3D、
+            // Win10 上反复 TDR 后驱动拉黑本进程）。这时候**本次直接改用软件渲染**，
+            // 界面朴素但一定出得来。下一次成功启动后计数归零，又会自动回到 GPU ——
+            // 所以它既是兜底也是自愈，用户不需要去设置里找开关。
             ForceSoftwareRendering = AppEnvironment.IsLowEndHardware
+                                     || StartupTrace.LastFailures > 0
                                      || ReadPerformanceModeFromSettings()
                                      || HasFlag("--software-render")
                                      || string.Equals(
@@ -31,8 +60,20 @@ internal static class Program
         }
         catch (Exception ex)
         {
+            // 兜底二：启动链上的异常。
+            //
+            // 顺序很重要：**先**用不依赖日志/UI 的通道把信息落到磁盘并弹窗，**再**写 Serilog。
+            // 因为走到这里时 LogService 很可能还没初始化，Log.Fatal 打在一个静默 logger 上，
+            // 以前的表现就是「双击没反应、什么都没有」（2026-10-19 用户反馈）。
+            StartupTrace.MarkError("startup: " + ex.GetType().Name + ": " + ex.Message);
+            StartupFailureReporter.Report(ex, "启动器启动失败");
+
             Log.Fatal(ex, "应用启动失败");
-            throw;
+            Log.CloseAndFlush();
+
+            // 不再 rethrow：WinExe 下重新抛出只会触发 WER 对话框（很多机器上被关闭），
+            // 反而把我们自己的提示盖掉。这里设置退出码后正常走 finally。
+            Environment.ExitCode = 1;
         }
         finally
         {

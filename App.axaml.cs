@@ -122,8 +122,30 @@ public partial class App : Application
 
             desktop.Exit += (_, _) =>
             {
-                _host?.StopAsync().GetAwaiter().GetResult();
-                _host?.Dispose();
+                // 退出前记一笔：这是「上一次运行是正常结束的」的唯一凭据，
+                // 没有它，下次启动会把这次的正常退出误判成崩溃（见 StartupTrace）。
+                StartupTrace.MarkExit("lifetime");
+
+                // ⚠️ 这里的 StopAsync **必须带超时**。
+                //
+                // 这是 UI 线程上的同步等待：只要某个 hosted service 的 StopAsync
+                // 需要回到 UI 线程（或者干脆卡住），进程就再也不退出了。
+                // 进程不退 = 单文件自解压出来的 %TEMP%\.net\…\*.dll 一直被占用，
+                // 用户下次启动就会「双击毫无反应」—— 这正是 2026-10-21
+                // 「只能运行一次」的放大器。宁可少做一点收尾，也绝不能赖在后台。
+                try
+                {
+                    if (_host?.StopAsync(TimeSpan.FromSeconds(2)).Wait(TimeSpan.FromSeconds(3)) != true)
+                        Log.Warning("宿主停止超时（3s），强制继续退出");
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "宿主停止时出错，忽略并继续退出");
+                }
+
+                try { _host?.Dispose(); }
+                catch (Exception ex) { Log.Warning(ex, "宿主释放时出错，忽略"); }
+
                 Log.CloseAndFlush();
             };
 
@@ -224,6 +246,36 @@ public partial class App : Application
     /// </summary>
     private static void RunPostShowStartupWork()
     {
+        // ⑥.6 到这里才算「启动成功」：窗口已经真的显示出来了。
+        //     这条 SHOWN 是 StartupTrace 判定「上次是不是崩了」的依据，
+        //     也是自动降级（下次改用软件渲染）的复位点。
+        StartupTrace.MarkShown();
+
+        // 上一次启动死在 UI 出来之前 —— 本次已经自动切了软件渲染。
+        // 必须让用户知道，否则他会以为是「版本更新后画面变粗糙了」。
+        if (StartupTrace.LastFailures > 0)
+        {
+            Log.Warning("上一次启动未完成（连续 {Count} 次），本次已自动改用软件渲染", StartupTrace.LastFailures);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // 等入场动画和首屏内容稳定再提示，别和飞入动画抢注意力
+                    await Task.Delay(1600);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                        AppServices.Notifications?.Show(
+                            "上次启动没有成功，已自动切换为软件渲染。若显示正常可忽略；" +
+                            "如需恢复显卡加速，请在「设置 → 个性化」里关闭性能模式后重启。",
+                            "已启用兼容渲染"));
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug(ex, "自动降级提示发送失败（不影响启动）");
+                }
+            });
+        }
+
         // ⑦ 下载参数（下载源 / 重试次数来自用户设置，设置页改动后同一入口重新应用）
         SettingsService.ApplyDownloadSettings();
 

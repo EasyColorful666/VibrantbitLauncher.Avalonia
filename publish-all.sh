@@ -17,19 +17,23 @@
 # macOS 首次运行：解压后先双击 install.command（自动补可执行位 + 去下载隔离属性 +
 #                 ad-hoc 签名），再把 .app 拖进「应用程序」；详见包内 README-macOS.txt。
 #
-# 默认框架依赖（不含 .NET 运行时）。目标机器需自备：
+# 默认自包含（内含 .NET 运行时，目标机器双击即开）。1.0.9.6 起固化：
+# 框架依赖版在没装运行时的机器上双击没有任何反应、也不留日志，分发不能赌这个。
+# 想打小包（不含运行时，约 15MB）加 --framework-dependent，
+# 此时目标机器需自备：
 #     Windows → .NET 10 Desktop Runtime
 #     Linux   → .NET 10 Runtime
 #     macOS   → .NET 10 Runtime
-# 想免装运行时加 --self-contained。
 #
 # 用法：
 #     ./publish-all.sh                       # 发布全部 7 个平台
 #     ./publish-all.sh --rids win-x64        # 只发一个
 #     ./publish-all.sh -r win-x64,linux-x64  # 只发两个
-#     ./publish-all.sh --self-contained      # 自带运行时
+#     ./publish-all.sh --framework-dependent # 不含运行时（需自备 .NET 10）
+#     ./publish-all.sh --self-contained      # 自带运行时（默认，等同于不传）
 #     ./publish-all.sh --clean               # 先清空 publish/ 与 dist/
 #     ./publish-all.sh --no-package          # 只发布，不打包
+#     ./publish-all.sh --no-app-trim         # 关闭程序集剪裁（回到 ≈52MB 标准档）
 #     ./publish-all.sh --no-trim             # 关闭按平台剥离（排查用）
 #     ./publish-all.sh -h                    # 帮助
 # =============================================================================
@@ -46,13 +50,19 @@ RIDS=("${ALL_RIDS[@]}")
 CONFIGURATION="Release"
 OUTPUT_ROOT="$SCRIPT_DIR/publish"
 DIST_DIR="$SCRIPT_DIR/dist"
-SELF_CONTAINED=0
+# 1.0.9.6 起默认自包含（1 = 含运行时）；--framework-dependent 切回 0。
+SELF_CONTAINED=1
+# 1.0.10.2 起默认开启程序集剪裁（与 publish-all.ps1 的 -NoAppTrim 语义对齐）：
+# 不剪裁 52MB、剪裁 29MB，省掉的是运行时里本应用一行都不走的代码。
+# 1.0.10.3 补上本开关之前，sh 脚本产出的包和 ps1 产出的包体积不一致 —— CI
+# 一申请用 sh，别让两条路径再漂移。
+APP_TRIMMED=1
 NO_TRIM=0
 NO_PACKAGE=0
 CLEAN=0
 
 usage() {
-    sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -80,6 +90,9 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --self-contained) SELF_CONTAINED=1; shift ;;
+        --framework-dependent) SELF_CONTAINED=0; shift ;;
+        --trimmed)        APP_TRIMMED=1;    shift ;;
+        --no-app-trim)    APP_TRIMMED=0;    shift ;;
         --no-trim)        NO_TRIM=1;        shift ;;
         --no-package)     NO_PACKAGE=1;     shift ;;
         --clean)          CLEAN=1;          shift ;;
@@ -130,6 +143,7 @@ VERSION="$(sed -n 's|.*<Version>\([^<]*\)</Version>.*|\1|p' "$CSPROJ" | head -n1
 # ------------------------------- 打印表头 -----------------------------------
 DEPLOY_DESC=$([[ $SELF_CONTAINED -eq 1 ]] && echo "自包含（目标机器免装 .NET 运行时）" || echo "框架依赖（不含 .NET 运行时）")
 TRIM_DESC=$([[ $NO_TRIM -eq 1 ]] && echo "关闭" || echo "开启（按 RID 剥掉其它平台后端）")
+APPTRIM_DESC=$([[ $APP_TRIMMED -eq 1 ]] && echo "开启（单文件约 29MB，需逐页验收）" || echo "关闭（标准档，单文件约 52MB）")
 
 echo ""
 echo "================================================================"
@@ -140,6 +154,7 @@ printf '  dotnet SDK : %s\n' "$SDK_VERSION"
 printf '  配置       : %s\n' "$CONFIGURATION"
 printf '  部署方式   : %s\n' "$DEPLOY_DESC"
 printf '  平台剥离   : %s\n' "$TRIM_DESC"
+printf '  程序集剪裁 : %s\n' "$APPTRIM_DESC"
 printf '  目标 RID   : %s\n' "${RIDS[*]}"
 echo ""
 
@@ -164,9 +179,9 @@ echo "[OK] 已赋予可执行权限。"
 echo
 echo "运行方式： ./VibrantbitLauncher.Avalonia"
 echo
-echo "注意：这是「框架依赖」发布，需要机器上已安装 .NET 10 Runtime。"
-echo "      Debian/Ubuntu 可用微软官方源安装 dotnet-runtime-10.0；"
-echo "      或者改用带 --self-contained 发布的版本（已内置运行时，免装）。"
+echo "注意：默认发布已内置 .NET 10 运行时，直接运行 ./VibrantbitLauncher.Avalonia 即可。"
+echo "      若本包是「框架依赖」发布（--framework-dependent），需要机器上已安装 .NET 10 Runtime："
+echo "      Debian/Ubuntu 可用微软官方源安装 dotnet-runtime-10.0。"
 EOS
 
 # ------------------------ macOS 包内的修复脚本与说明 ------------------------
@@ -290,6 +305,12 @@ for rid in "${RIDS[@]}"; do
     pub_args=(publish "$CSPROJ" -c "$CONFIGURATION" -r "$rid" -o "$out_dir" --nologo -v quiet)
     if [[ $SELF_CONTAINED -eq 1 ]]; then pub_args+=(--self-contained); else pub_args+=(--no-self-contained); fi
     [[ $NO_TRIM -eq 1 ]] && pub_args+=("-p:SkipPlatformTrim=true")
+
+    # 程序集剪裁。属性与 TrimmerRootAssembly 全在 csproj 里，这里只传一个布尔开关 ——
+    # 千万**不要**在这里重复写 PublishTrimmed / TrimMode / TrimmerRootAssembly：
+    # 重复声明会让 ILLink 丢掉 Avalonia 的 !AvaloniaResources 索引，
+    # 产物一启动就 XamlLoadException（1.0.10.2 踩过一次）。
+    [[ $APP_TRIMMED -eq 1 ]] && pub_args+=("-p:EnableAppTrimming=true")
 
     if ! dotnet "${pub_args[@]}"; then
         end_ts=$(date +%s)

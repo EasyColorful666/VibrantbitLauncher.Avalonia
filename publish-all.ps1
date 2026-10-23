@@ -26,12 +26,12 @@
 
     设计要点：
 
-    1. 默认框架依赖（不含 .NET 运行时，包小约 20MB）。
-       目标机器需要自备运行时：
+    1. **默认自包含**（1.0.9.6 起固化，不必再手动加 -SelfContained）。
+       产物内含 .NET 10 运行时，目标机器双击即开，不用先装运行时。
+       但「框架依赖」仍然是可用的（包小约 15MB）：加 -FrameworkDependent。
          Windows  → .NET 10 Desktop Runtime
          Linux    → .NET 10 Runtime
          macOS    → .NET 10 Runtime
-       加 -SelfContained 可改成自带运行时（包变大，但目标机器免装）。
 
     2. 串行发布。多个 RID 并行 publish 会争抢同一个 obj/project.assets.json，
        反而更容易出错，所以按顺序来（7 个平台整轮约 3~5 分钟）。
@@ -51,7 +51,43 @@
     打包产物的目录，默认 <工程根>\dist。
 
 .PARAMETER SelfContained
-    自带 .NET 运行时。包会大很多，但目标机器免装运行时。
+    自带 .NET 运行时。**1.0.9.6 起已是默认值**，保留这个开关只为兼容旧命令行。
+
+.PARAMETER FrameworkDependent
+    切回「框架依赖」发布（不含运行时，包小约 15MB）。
+    ⚠️ 目标机器必须先装 .NET 10 运行时，否则双击毫无反应。
+
+.PARAMETER Portable    「便携目录」形态：不打包成单文件，产出 exe + dll 的普通文件夹。
+
+    单文件版每次启动都要把原生库释放到 %TEMP%\.net\…，一旦被安全软件
+    隔离或清理工具删掉，程序就再也打不开（双击无反应、无日志）。
+    便携形态完全不解压、不写 %TEMP%，是这类故障的根治办法。
+
+    产物目录 publish/<rid>-portable/，压缩包名带 -portable 后缀。
+    macOS 不支持这个开关（.app 打包逻辑假定了单文件布局）。
+
+.PARAMETER Trimmed
+    **1.0.10.2 起已是默认值**，保留这个开关只为兼容显式写法。
+
+    开启 .NET 程序集剪裁（PublishTrimmed），把 win-x64 单文件从 52MB 压到 29MB。
+
+    原理：自包含发布默认把整个 Microsoft.NETCore.App 运行时原样复制
+    （System.Private.Xml 7.4MB、System.Linq.Expressions 3.5MB、
+    System.Data.Common 2.6MB ……），剪裁按调用图只留真正走到的代码。
+
+    ⚠️ 剪裁有隐性失效风险：本项目 XAML 绑定走反射，剪裁器看不到 XAML 里的
+    字符串路径。已在 csproj 里 root 住 8 个程序集（含 Avalonia / MinecraftLaunch）
+    兜底，产物实测能正常启动到主界面，但**每个页面仍需人工点一遍**。
+
+.PARAMETER NoAppTrim
+    关闭程序集剪裁，回到 52MB 的标准档（零剪裁风险）。
+
+    只在「剪裁档出现某个页面空白 / 点击无反应」时用：
+        .\publish-all.ps1 -Rids win-x64 -NoAppTrim
+
+    ⚠️ 别和 -NoTrim 搞混：
+      -NoAppTrim → 关程序集剪裁（PublishTrimmed，影响体积与页面绑定）
+      -NoTrim    → 关平台后端剥离（SkipPlatformTrim，出问题时的逃生阀）
 
 .PARAMETER NoTrim
     关闭 csproj 里的 TrimPlatformPayload（按平台剥掉其它平台的后端程序集）。
@@ -75,6 +111,11 @@
     .\publish-all.ps1 -SelfContained -Clean
     发免装 .NET 运行时的自包含版本，并先清空旧产物。
 
+.EXAMPLE
+    .\publish-all.ps1 -Rids win-x64 -Portable
+    只发 Windows x64 的「便携目录」版（不打包成单文件、不写 %TEMP%）。
+    怀疑「只能运行一次 / 双击没反应」时优先发这个。
+
 .NOTES
     如果 PowerShell 阻止脚本执行：
         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -90,6 +131,10 @@ param(
     [string] $DistDir,
 
     [switch] $SelfContained,
+    [switch] $FrameworkDependent,
+    [switch] $Portable,
+    [switch] $Trimmed,
+    [switch] $NoAppTrim,
     [switch] $NoTrim,
     [switch] $NoPackage,
     [switch] $Clean
@@ -106,6 +151,35 @@ trap {
     Write-Host ('  出错位置：' + $_.InvocationInfo.PositionMessage) -ForegroundColor Red
     exit 1
 }
+
+# ---------------------------------------------------------------------------
+# 发布模式（1.0.9.6 固化）
+# ---------------------------------------------------------------------------
+if ($SelfContained -and $FrameworkDependent) {
+    throw '不能同时指定 -SelfContained 和 -FrameworkDependent：自包含与框架依赖只能二选一。'
+}
+
+# 默认自包含。理由见 csproj 的 Release 段：框架依赖版在没装 .NET 10 的机器上
+# 双击没有任何反应、也不留日志，分发出去的包不能赌对方装没装运行时。
+$deploySelfContained = -not $FrameworkDependent
+
+# ---------------------------------------------------------------------------
+# 便携目录形态（-Portable，1.0.10.1）
+#
+# 关掉「单文件」，产出 exe + 一堆 dll 的普通文件夹。
+#
+# 为什么要这么一个形态：单文件版每次启动都要把 3 个原生库
+# （libSkiaSharp / libHarfBuzzSharp / av_libglesv2，共约 19.6MB）
+# 释放到 %TEMP%\.net\<应用名>\<hash>\，再从那里加载。
+# 这些 dll 一旦被安全软件隔离、或被 Temp 清理工具删掉，
+# 运行时就在**托管代码之前**退出 —— 用户看到的是「双击毫无反应」，
+# 而且磁盘上不会留下任何日志（StartupFailureReporter 根本没机会运行）。
+#
+# 便携目录形态完全不解压、不写 %TEMP%，原生库就在 exe 旁边 →
+# 这一类「只能运行一次」的故障从根上消失。体积代价：文件夹约 130MB，
+# 但 zip 压完约 50MB，和加密单文件差不多。
+# ---------------------------------------------------------------------------
+$portableSuffix = if ($Portable) { '-portable' } else { '' }
 
 # ---------------------------------------------------------------------------
 # 常量与前置检查
@@ -159,6 +233,89 @@ $version = $versionMatch.Matches[0].Groups[1].Value.Trim()
 # 运行期辅助
 # ---------------------------------------------------------------------------
 
+# Windows 包内的「打不开自助修复」脚本（1.0.10.1）。
+#
+# 为什么必须随包发：单文件版的自解压缓存被隔离 / 被清理之后，程序会在
+# 窗口出现之前退出，用户手上没有任何自救手段。这个脚本是现场唯一能把
+# 人从「双击毫无反应」里捞出来的东西，也是我们拿不到日志时的取证入口
+# （COREHOST_TRACE 会把宿主层的真实错误写进 host-trace.log）。
+$winRepairCmd = @'
+@echo off
+chcp 65001 >nul
+setlocal EnableExtensions
+
+rem =====================================================================
+rem  VibrantbitLauncher 打不开 / 只能运行一次 —— 自助修复
+rem
+rem  用法：放到 VibrantbitLauncher.Avalonia.exe 的同一目录，双击运行。
+rem
+rem  它做什么：
+rem    1) 结束还残留着的启动器进程（残留进程会锁住解压出来的 dll）；
+rem    2) 删掉单文件版的自解压缓存 %TEMP%\.net\VibrantbitLauncher.Avalonia；
+rem    3) 用「宿主跟踪」模式重新启动，把宿主层的报错写进 host-trace.log。
+rem
+rem  为什么需要第 2 步：
+rem    单文件版每次启动都要把 libSkiaSharp / libHarfBuzzSharp / av_libglesv2
+rem    释放到 %TEMP%\.net\ 再加载。这三个 dll 一旦被安全软件隔离、或者被
+rem    「清理 Temp」的工具删掉，程序就会在窗口出现之前直接退出 ——
+rem    双击毫无反应，日志里一个字都没有。删掉缓存让它重新解压即可恢复。
+rem
+rem  如果修完还是没反应，请把同目录的 host-trace.log 带回来。
+rem =====================================================================
+
+set "APP=%~dp0VibrantbitLauncher.Avalonia.exe"
+set "CACHE=%TEMP%\.net\VibrantbitLauncher.Avalonia"
+set "VCACHE=%~dp0.runtime-cache"
+set "HOSTLOG=%~dp0host-trace.log"
+
+if not exist "%APP%" (
+    echo [X] 本目录下找不到 VibrantbitLauncher.Avalonia.exe
+    echo     请把本脚本放到 exe 的同一目录后再运行。
+    pause
+    exit /b 1
+)
+
+echo ============================================================
+echo   VibrantbitLauncher 自助修复
+echo ============================================================
+echo.
+
+echo [1/3] 清理残留进程 ...
+taskkill /im VibrantbitLauncher.Avalonia.exe /f >nul 2>&1
+if errorlevel 1 (
+    echo         没有残留进程。
+) else (
+    echo         已结束残留进程。
+)
+timeout /t 2 >nul
+
+echo [2/3] 清理自解压缓存 ...
+if exist "%CACHE%" rd /s /q "%CACHE%" 2>nul
+if exist "%VCACHE%" rd /s /q "%VCACHE%" 2>nul
+if exist "%CACHE%" (
+    echo         [!] 缓存删不掉，可能仍被占用。建议重启电脑后再运行本脚本。
+) else (
+    echo         已清理。
+)
+
+echo [3/3] 以诊断模式启动 ...
+set "COREHOST_TRACE=1"
+set "COREHOST_TRACEFILE=%HOSTLOG%"
+start "" "%APP%"
+set "COREHOST_TRACE="
+set "COREHOST_TRACEFILE="
+
+echo.
+echo 已发出启动请求，请等待 10 秒：
+echo    - 窗口出来了   → 修好了。
+echo    - 还是没反应   → 请把 host-trace.log 带回来（就在本目录下）。
+echo.
+echo 另外请打开「Windows 安全中心 → 病毒和威胁防护 → 保护历史记录」，
+echo 看有没有把本程序或它的 dll 隔离掉。有的话请还原并加入白名单。
+echo.
+pause
+'@
+
 # Linux / macOS 上打的包丢了可执行位（Windows 文件系统没有权限位），
 # 所以包里放一个安装脚本，解压后 `sh install.sh` 即可。
 $installSh = @'
@@ -172,9 +329,9 @@ echo "[OK] 已赋予可执行权限。"
 echo
 echo "运行方式： ./VibrantbitLauncher.Avalonia"
 echo
-echo "注意：这是「框架依赖」发布，需要机器上已安装 .NET 10 Runtime。"
-echo "      Debian/Ubuntu 可用微软官方源安装 dotnet-runtime-10.0；"
-echo "      或者改用带 -SelfContained 发布的版本（已内置运行时，免装）。"
+echo "注意：默认发布已内置 .NET 10 运行时，直接运行 ./VibrantbitLauncher.Avalonia 即可。"
+echo "      若本包是「框架依赖」发布（-FrameworkDependent），需要机器上已安装 .NET 10 Runtime："
+echo "      Debian/Ubuntu 可用微软官方源安装 dotnet-runtime-10.0。"
 '@
 
 # macOS 包内附的「首次运行修复」脚本。
@@ -425,8 +582,9 @@ Write-Host '================================================================' -F
 Write-Host ("  版本号     : {0}" -f $version)
 Write-Host ("  dotnet SDK : {0}" -f $sdkVersion)
 Write-Host ("  配置       : {0}" -f $Configuration)
-Write-Host ("  部署方式   : {0}" -f $(if ($SelfContained) { '自包含（目标机器免装 .NET 运行时）' } else { '框架依赖（不含 .NET 运行时）' }))
+Write-Host ("  部署方式   : {0}" -f $(if ($deploySelfContained) { '自包含（目标机器免装 .NET 运行时，默认）' } else { '框架依赖（不含 .NET 运行时，需自备）' }))
 Write-Host ("  平台剥离   : {0}" -f $(if ($NoTrim) { '关闭' } else { '开启（按 RID 剥掉其它平台后端）' }))
+Write-Host ("  程序集剪裁 : {0}" -f $(if ($NoAppTrim) { '关闭（标准档，单文件约 52MB）' } else { '开启（单文件约 29MB，需逐页验收）' }))
 Write-Host ("  目标 RID   : {0}" -f ($Rids -join ', '))
 Write-Host ''
 
@@ -457,14 +615,29 @@ foreach ($rawRid in $Rids) {
     $rid = $rawRid.Trim().ToLowerInvariant()
     if (-not $rid) { continue }
 
-    $isWin   = $rid.StartsWith('win-')
-    $isOsx   = $rid.StartsWith('osx-')
-    $isLinux = $rid.StartsWith('linux-')
+    # ⚠️ 前缀必须用 $ridXxx。
+    # PowerShell 的变量名大小写不敏感，$IsLinux / $IsWindows / $IsMacOS 是
+    # 只读自动变量，写成 isLinux 会直接抛
+    #   "Cannot overwrite variable IsLinux because it is read-only or constant."
+    # GitHub Actions 的 pwsh 上必现（2026-10-23 用户反馈 Win 三架构全挂）。
+    # 统一加 rid 前缀，顺带避免以后再踩。
+    $ridWin   = $rid.StartsWith('win-')
+    $ridOsx   = $rid.StartsWith('osx-')
+    $ridLinux = $rid.StartsWith('linux-')
+
+    if ($Portable -and $ridOsx) {
+        # macOS 的 .app 组装逻辑假设「发布目录里只有一个可执行文件」，
+        # 便携形态是 exe + 上百个 dll，需要另写一套 bundle 逻辑。
+        # 与其在没验证的情况下悄悄产出一个坏包，不如直接说清楚。
+        throw 'macOS 暂不支持 -Portable（.app 打包逻辑假定单文件布局）。请去掉该 RID 或去掉 -Portable。'
+    }
 
     # 单文件可执行名：只有 Windows 带 .exe
-    $exeName = if ($isWin) { "$appName.exe" } else { $appName }
+    $exeName = if ($ridWin) { "$appName.exe" } else { $appName }
 
-    $outDir = Join-Path $OutputRoot $rid
+    # 便携形态单独一个目录：两种产物文件名相同、布局完全不同，
+    # 共用 publish/<rid>/ 会让「这次发的到底是哪种」变成悬案。
+    $outDir = Join-Path $OutputRoot ($rid + $portableSuffix)
 
     Write-Host ("[{0}] 发布中 ..." -f $rid) -ForegroundColor Yellow
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -480,8 +653,19 @@ foreach ($rawRid in $Rids) {
             '--nologo',
             '-v', 'quiet'
         )
-        $pubArgs += if ($SelfContained) { '--self-contained' } else { '--no-self-contained' }
+        $pubArgs += if ($deploySelfContained) { '--self-contained' } else { '--no-self-contained' }
         if ($NoTrim) { $pubArgs += '-p:SkipPlatformTrim=true' }
+
+        # 程序集剪裁（1.0.10.2，默认开启）。
+        # 属性与 TrimmerRootAssembly 全在 csproj 里，这里只传一个布尔开关 ——
+        # 千万**不要**在这里重复写 PublishTrimmed / TrimMode / TrimmerRootAssembly：
+        # 重复声明会让 ILLink 丢掉 Avalonia 的 !AvaloniaResources 索引，
+        # 产物一启动就 XamlLoadException（1.0.10.2 踩过一次）。
+        if (-not $NoAppTrim) { $pubArgs += '-p:EnableAppTrimming=true' }
+
+        # 便携形态：关掉单文件。csproj 里 EnableCompressionInSingleFile 的条件
+        # 已经同时看 PublishSingleFile，所以这里不必再手动关压缩。
+        if ($Portable) { $pubArgs += '-p:PublishSingleFile=false' }
 
         $pubLog = & dotnet @pubArgs 2>&1
         if ($LASTEXITCODE -ne 0) {
@@ -496,8 +680,13 @@ foreach ($rawRid in $Rids) {
 
         $exeBytes = (Get-Item $exePath).Length
 
+        # Windows：附一个「打不开自助修复」脚本（必须在打包前写入，否则进不了 zip）。
+        if ($ridWin -and -not $NoPackage) {
+            Write-Utf8NoBom -Path (Join-Path $outDir '修复打不开.cmd') -Content $winRepairCmd
+        }
+
         # Linux / macOS：往包里放赋权脚本（必须在打包前写入）
-        if (-not $isWin -and -not $NoPackage) {
+        if (-not $ridWin -and -not $NoPackage) {
             Write-Utf8NoBom -Path (Join-Path $outDir 'install.sh') -Content $installSh
         }
 
@@ -508,7 +697,7 @@ foreach ($rawRid in $Rids) {
 
         if (-not $NoPackage) {
 
-            if ($isOsx) {
+            if ($ridOsx) {
                 # macOS：先组 .app bundle，再打成 tar.gz
                 $appStage = Join-Path $OutputRoot ("_app_" + $rid)
                 Remove-DirectoryTree -Path $appStage -What 'macOS 暂存目录'
@@ -533,11 +722,11 @@ foreach ($rawRid in $Rids) {
                           -Entries @("$appName.app", 'install.command', 'README-macOS.txt')
                 [void]$packages.Add($tarName)
             }
-            elseif ($isWin) {
+            elseif ($ridWin) {
                 # Windows 只出 zip：目标是双击解压，zip 更顺手，也不再重复打一份 tar.gz。
                 # 必须先清掉旧包：Compress-Archive 覆盖同名文件时内部要删一次，
                 # 而在某些环境里「删除」被改写成回收站操作、会直接把整个平台搞失败。
-                $zipName = "$appName-$rid.zip"
+                $zipName = "$appName-$rid$portableSuffix.zip"
                 $zipPath = Join-Path $DistDir $zipName
                 Remove-FileSafe -Path $zipPath -What '旧 zip 包'
                 Compress-Archive -Path (Join-Path $outDir '*') -DestinationPath $zipPath -Force
@@ -545,7 +734,7 @@ foreach ($rawRid in $Rids) {
             }
             else {
                 # Linux：只出 tar.gz
-                $tarName = "$appName-$rid.tar.gz"
+                $tarName = "$appName-$rid$portableSuffix.tar.gz"
                 $tarPath = Join-Path $DistDir $tarName
                 New-TarGz -Out $tarPath -SourceDir $outDir -Entries @('.')
                 [void]$packages.Add($tarName)

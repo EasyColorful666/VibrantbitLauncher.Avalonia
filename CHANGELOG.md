@@ -6,6 +6,624 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
+## [1.0.10.5] - 2026-10-23
+
+### 修复
+
+- **GitHub Actions 上 Windows 三个架构全部发布失败**（`Cannot overwrite variable IsLinux
+  because it is read-only or constant.`）
+
+  `publish-all.ps1` 里原本写了：
+
+  ```powershell
+  $isWin   = $rid.StartsWith('win-')
+  $isOsx   = $rid.StartsWith('osx-')
+  $isLinux = $rid.StartsWith('linux-')     # ← 这里炸
+  ```
+
+  `$IsLinux` / `$IsWindows` / `$IsMacOS` 是 PowerShell 的**只读自动变量**，而且
+  **PowerShell 变量名不区分大小写**，所以 `$isLinux` 与 `$IsLinux` 是同一个变量，
+  赋值直接抛 `PSSecurityException` 级别的错误并终止脚本。
+
+  为什么本地一直没复现：本机是 **Windows PowerShell 5.1**，那三个变量是 PowerShell
+  **6.0（Core）** 才引入的，5.1 里根本不存在，赋值只是新建普通变量；
+  而 GitHub Actions 的 `shell: pwsh` 是 7.x，变量存在且只读 —— 必炸。
+
+  三个 Windows RID 报同一个错，是因为报错发生在 `foreach ($rawRid in $Rids)` 的
+  **第一轮循环**里，直接终止整个脚本；Linux / macOS 走的是 `.sh`，没有这段代码。
+
+  已把三个变量改名为 `$ridWin` / `$ridOsx` / `$ridLinux`，并加注释说明原因。
+  同时对全脚本做了「所有被赋值变量 × 只读自动变量」的全量比对（56 个赋值变量，
+  含带类型赋值与参数名），确认没有第二处同类冲突。
+
+  ⚠️ 与代码无关但同样关键：仓库里那份 `publish-all.ps1` 仍是 **642 行的旧版**，
+  本次修复在本地工作区（831 行），**必须提交并推送后 CI 才会生效**。
+
+- **workflow 文件名统一为 `build.yml`**
+
+  早期本地新建了 `release.yml` 并打算删除 `build.yml`；同时远端也在 `build.yml`
+  上做了一次重写（内容与 `release.yml` 逐字节相同，只是文件名不同）。
+  两边一旦合并就会出现「删一个、加一个」的假冲突。现统一沿用远端已在跑的
+  `build.yml`，本地不再保留 `release.yml`，避免同一份配置存在两个路径。
+
+## [1.0.10.4] - 2026-10-22
+
+### 新增
+
+- **GitHub Actions 自动发布** `.github/workflows/build.yml`：7 个平台**并行**构建并汇总到 GitHub Release。
+
+  | RID | Runner | 脚本 |
+  |---|---|---|
+  | win-x64 / win-x86 / win-arm64 | windows-latest | `publish-all.ps1` |
+  | linux-x64 / linux-arm64 | ubuntu-latest | `publish-all.sh` |
+  | osx-x64 / osx-arm64 | macos-latest | `publish-all.sh` |
+
+  - **Release 正文 = `CHANGELOG.md` 原文**（`body_path`），不做二次加工。
+  - 触发：推送 `v*` tag 或手动运行（手动时 tag 取 csproj 的 `<Version>`）；
+    PR 到 main 只构建不发布，保留 CI 校验又不污染 Release。
+  - 校验和由汇总 job **重新算一份合并的** `SHA256SUMS.txt`：
+    每个矩阵 job 各自只算得出「自己那一个包」，直接合并会互相覆盖。
+  - `fail-fast: false`：单个平台失败不影响其余 6 个继续构建，汇总 job 整体失败，
+    不发残缺的 Release。
+
+### 变更
+
+- **`publish-all.sh` 补上程序集剪裁开关**，与 `publish-all.ps1` 对齐（默认开启）。
+
+  此前两条路径是漂移的：ps1 自 1.0.10.2 起默认剪裁（29MB），sh 脚本没有对应开关，
+  CI 一旦走 sh 就会产出 52MB 的标准档。现在 sh 也默认 `-p:EnableAppTrimming=true`，
+  并提供 `--no-app-trim` 逃生阀（等价 ps1 的 `-NoAppTrim`）。
+  实测 sh 路径 win-x64 产出 **29.0MB**，与本机 ps1 结果一致。
+
+### 移除
+
+- **旧版 `.github/workflows/build.yml` 的发布逻辑整体重写**。它原来用 `--generate-notes`，
+  且 SELF_CONTAINED 固定为 false（1.0.9.6 起已改默认自包含），
+  与新的发布需求冲突。
+  现沿用 `build.yml` 这个文件名（远端已在使用），内容替换为重写后的版本，
+  保留其 PR 构建校验能力。
+
+## [1.0.10.3] - 2026-10-21
+
+### 新增
+
+- **下载页版本类型筛选（多选框）**：正式版 / 测试版 / 远古版 / 愚人节版四个多选框，
+  可任意叠加。**勾选才显示，不勾选整类隐藏**；默认只勾「正式版」。
+  每个多选框上带该类版本的总数（实测清单：正式版 103 / 测试版 748 / 远古版 61 / 愚人节版 8，合计 920）。
+
+- **版本分类器** `Models/McVersionKindClassifier`：清单 `type` → 四大类的唯一判定点。
+
+  必需按 id 认愚人节版的原因：Mojang 清单里**没有**「愚人节」这个 type，
+  `15w14a`、`3D Shareware v1.34`、`24w14potato` 等 8 个版本一律标成 `snapshot`。
+  不单独认的话它们会混进「测试版」。名单忽略大小写（清单里实际 id 是
+  `22w13oneblockatatime`，与官方公告的大小写不同）。
+
+### 界面
+
+- 四个多选框做成胶囊（高 30 / 圆角 99 / 12px 文字），沿用启动页主题切换的视觉语言，
+  但保留多选语义（分段控件是四选一，这里需要叠加）。
+- 状态齐全：hover / pressed / checked / checked:hover / checked:pressed / focus-visible / disabled；
+  过渡 150ms + `CubicEaseOut`（反馈档，比页面转场 250ms 快一档）。
+- 每个胶囊带 6px 类型色圆点（主色 / 橙 / 灰 / 紫），选中态一律转白，不与主色抢注意力。
+- 列表行内给非正式版补类型角标（测试版 / 远古版 / 愚人节），正式版不标（常态是噪音）。
+
+### 修正
+
+- 搜索计数分母改为「当前勾选范围内」的数量：只勾正式版再搜「1.20」显示
+  `匹配 3 / 103 个版本`，不再显示容易误读的 `匹配 3 / 共 920`。
+- 列表尚未加载完成时不再短暂显示「当前筛选条件下没有版本」的空状态。
+
+## [1.0.10.2] - 2026-10-21
+
+### 变更
+
+- **单文件体积 52.29 MB → 29.04 MB（-44%）**，win-x64 自包含单文件。
+
+  自包含发布默认把整个 `Microsoft.NETCore.App` 运行时包原样复制进来
+  （`System.Private.Xml` 7.4MB、`System.Linq.Expressions` 3.5MB、
+  `System.Data.Common` 2.6MB、`System.Private.DataContractSerialization` 2.0MB ……），
+  其中大半代码本应用一行都不走。改用 `PublishTrimmed` + `TrimMode=partial`
+  按调用图裁剪，只保留真正走到的部分。
+
+- **发布目录剔除调试器 / 转储分析组件（约 6.3MB 未压缩）**：
+  `mscordaccore.dll`、`mscordaccore_amd64_*.dll`、`mscordbi.dll`、
+  `Microsoft.DiaSymReader.Native.amd64.dll`。
+
+  它们只在 VS「附加到进程」或 `dotnet-dump` / 蓝屏转储分析时加载，应用运行不碰。
+  实测 `<DebuggerSupport>false</DebuggerSupport>` 对自包含载荷**无效**
+  （同名 dll 一个不少、体积零变化），只能在 `TrimPublishPayload` 里删。
+  副作用：发布出的 exe 不能再被附加调试、不能抓托管转储；
+  `dotnet build` 的产物不受影响，日常调试照旧。
+
+- **新增 `Properties/PublishProfiles/WindowsTrimmed.pubxml`**（剪裁档，29MB）。
+  与 `Windows.pubxml`（标准档，52MB）并存，出问题可一键回退。
+
+- **`publish-all.ps1` / `publish-all.sh` 默认走剪裁档**，新增 `-NoAppTrim`
+  回退到标准档。注意与既有的 `-NoTrim`（关平台后端剥离）不是一回事。
+
+### 修复
+
+- **剪裁档一启动就 `XamlLoadException: No precompiled XAML found for
+  VibrantbitLauncher.App`**（28.03MB 那版）。
+
+  根因不是「Avalonia 不兼容剪裁」，而是**同一份剪裁配置被写了两处**：
+  pubxml 与 csproj 各写一遍 `PublishTrimmed` / `TrimMode` / `TrimmerRootAssembly`，
+  叠加后 ILLink 重写程序集时丢掉了 Avalonia 的 `!AvaloniaResources` 索引。
+
+  排查过程（留档）：
+  | 形态 | 体积 | 结果 |
+  |---|---|---|
+  | 目录 + 剪裁 | 55.80 MB | ✅ 剪裁本身没问题 |
+  | 单文件 + 剪裁 + 不压缩 | 55.10 MB | ✅ 单文件打包也没问题 |
+  | 单文件 + 剪裁 + 压缩（配置只留一处） | 29.04 MB | ✅ |
+  | 单文件 + 剪裁 + 压缩（配置写两处） | 28.03 MB | ❌ |
+
+  现在 `PublishTrimmed` / `TrimMode` / `TrimmerRootAssembly` 只在 csproj 一处维护，
+  pubxml 与发布脚本都只传 `-p:EnableAppTrimming=true`。
+
+- **`TrimmerRootAssembly` 去掉 `Condition`**：pubxml 是在 csproj 全部求值
+  **之后**才 Import 的，条件块永远看不到 pubxml 里的开关，导致「开了剪裁但 root 全丢」。
+  改为无条件声明（不剪裁时 ILLink 不跑，该 Item 零影响，实测标准档仍是 52.29MB）。
+
+- **剪裁保留根 8 个程序集**：`VibrantbitLauncher.Avalonia`、`Avalonia.Base`、
+  `Avalonia.Controls`、`Avalonia.Markup.Xaml`、`FluentAvalonia`、
+  `MinecraftLaunch`、`MinecraftLaunch.Base`、`CommunityToolkit.Mvvm`。
+
+  本项目 `AvaloniaUseCompiledBindingsByDefault=false`，XAML 绑定与 JSON 序列化
+  全靠反射，这些「运行期才用到的元数据」正好是剪裁器最爱删的东西。
+
+### 已知（需要人工验收）
+
+剪裁档的隐性失效表现是「某个页面空白 / 点了没反应」，且只在发布产物里出现。
+发布前请逐项点一遍：冷启动、快捷设置、列表飞入、设置读写后重启、账号登录、
+皮肤换肤、下载、新建 Forge 实例并补全资源、**拖放文件 / 文件选择对话框**
+（走 COM，剪裁对 `BuiltInComInteropSupport` 有 IL2026 警告，最可能出问题的一处）。
+任何一项异常就 `-NoAppTrim` 回退。
+
+
+## [1.0.10.0] - 2026-10-20
+
+### 新增
+
+- **所有列表框：逐项从左飞入**（`Helpers/ListMotion.cs` + `Styles/Animations.axaml` 一条全局样式）。
+
+  每次列表挂到可视树上（进入页面 / 换版本后重建），项容器按视觉顺序从上到下，
+  每项错开 **50ms** 依次从左滑入 34px 并淡入（单项 300ms，CubicEaseOut）。
+
+  - 只对前 16 项错开：几百项的列表如果按 50ms 累加，最后一项要等十几秒才出现；
+  - 容器尚未生成（数据异步填充 / 空列表）时退化为整个列表飞入，不会「什么都不发生」；
+  - 动画结束会清掉 `RenderTransform` / `Opacity` 的局部值 ——
+    否则会压掉 `ListBoxItem` 自己的「按下回缩」样式（局部值优先级高于样式）；
+  - 性能模式下直接返回，一帧都不多画。
+
+- **启动页右侧「官方新闻」改为「快捷设置」**：Minecraft 文件夹 / Java 运行环境 / 外观（亮色·暗色）。
+
+  - **Minecraft 文件夹**：显示当前绝对路径，点「更改」选目录，写完立刻重扫版本列表；
+  - **Java**：下拉列出已检测到的 Java（版本 + 路径），也可「浏览」手动指定 `java.exe`，
+    选择前会过 `JavaHelper.IsUsableJava` 静态体检；不设置时回退「启动时自动选择」；
+  - **外观**：亮色 / 暗色分段胶囊，切换后立即生效（走 `SettingsService.ApplyTheme`，不用重启）。
+
+### 界面设计
+
+右侧面板刻意**没有做成三张等宽卡片**（模板化界面的典型特征，三块等大的框会把视线摊平）：
+改成「一整块面板 + 两条 1px 分割线」的设置行结构，视觉噪音更少，
+也让右侧始终是配角 —— 主角仍是左边的「启动游戏」按钮。
+
+- 字号只用两档：正文 14 / 说明 12（沿用全局 token，不新增档位）；
+- 圆角只加一种：胶囊 99；
+- 主色只出现在「当前选中的那个胶囊」上，面积 < 3%；
+- 胶囊补齐 hover / pressed / checked / focus-visible / disabled 五态，
+  键盘焦点用描边而非加粗边框（避免布局跳动）；
+- 新增 `Helpers/MotionSettings.cs` 作为减动效的统一入口（性能模式即减动效），
+  窗口动效 / 列表动效 / XAML 过渡三处统一读它。
+
+设计验收（`desktop-ui-designer` 技能）：
+
+| 项 | 结果 |
+|---|---|
+| `--ui` 人审美验收 | **100 / 100**（字号 2 档 · 圆角 1 种 · 网格齐 · 四态齐 · 文本兜底齐） |
+| `--motion` 动效验收 | **100 / 100**（时长 150ms 落在 50ms 网格 · 非线性缓动 · 有减动效 · 状态覆盖 4 类） |
+| `--taste` AI 味打分 | **100 / 100** |
+
+### 调整
+
+- 窗口飞出时长 280ms → **300ms**，对齐 50ms 时长网格。
+
+---
+
+## [1.0.9.9] - 2026-10-20
+
+### 修复
+
+- **Forge 26.x 安装「补丁文件生成不出来」→ 实例装完启动报 patched jar missing**。
+
+  三个叠在一起的根因，全部用真实数据实测确认：
+
+  1. **Java 处理器丢了 classpath（决定性根因）**。
+     新版 Forge 的 install_profile 里，二进制打补丁处理器**不再声明 `mainClass`**，
+     而它的 jar 不是 fat jar（jopt-simple / lzma-java / javaxdelta / trove 都在
+     `processor.classpath` 里）。旧代码在没有 mainClass 时走 `java -jar`，
+     等于把 classpath 整个丢弃，第一行就报
+     `NoClassDefFoundError: joptsimple/OptionException`，
+     `forge-<mc>-<ver>-client.jar` 永远生成不出来。
+
+     现在与官方 installer 一致：从 jar 的 `META-INF/MANIFEST.MF` 读 `Main-Class`，
+     用 `java -cp <jar + classpath> <Main-Class>` 启动。
+
+     实测：Minecraft 26.2 + Forge 65.1.5，正确参数下生成
+     `forge-26.2-65.1.5-client.jar` 共 79,191,305 字节，
+     SHA1 `be81e6d2…` 与 install_profile 声明的 `PATCHED_SHA` 逐字节一致。
+
+  2. **处理器产物被当成可下载依赖**。
+     `install_profile.data` 里的 `PATCHED` / `MC_UNPACKED` 是
+     `[group:artifact:version:classifier]` 形式的 maven 坐标，但它们是**本地生成**的；
+     maven 上根本没有（实测 `forge-26.2-65.1.5-client.jar` 在官方 maven 与
+     BMCLAPI 镜像都返回 404）。旧代码把它们塞进下载队列，连撞 4 轮 404 / 超时，
+     最后报「加载器依赖库下载失败：连接超时」，用户完全看不出真正原因。
+
+     现在下载前先排除这些坐标（`CollectProcessorOutputs`），只由处理器本地生成。
+
+  3. **处理器没产出也不报错**。
+     `EnsurePatchedLibrary` 发现产物不存在时只打一条 warning 就当安装成功，
+     留下一个「装好了但起不来」的实例。现在：client 侧处理器明确声明了
+     `{PATCHED}` 输出却没产出 → 安装直接失败并说明原因（附磁盘空间提示）；
+     没有该声明（服务端专有布局）才降级为 warning。
+
+- **「补全资源」对上述文件只会失败，不会修**。
+  旧流程把缺失库交给库的下载器，而这类文件的 url 是空字符串，必然 404。
+  现在补全时先识别「没有 url、只能由处理器生成」的库：
+  - 若能解析出 Forge / NeoForge 实例（id 形如 `26.2_forge_65.1.5`），
+    就**自动重跑一次加载器安装**来重建补丁文件（库已在本地，实际只重跑处理器）；
+  - 重跑成功并复核通过 → 返回「已补全」；
+  - 重跑失败 → 明确提示「需要重新安装加载器」，不再让用户对着「连接超时」猜。
+
+- 顺带修掉每个 Forge 安装后都会出现的假错误日志
+  `未观察到的任务异常 AggregateException: No process is associated with this object`。
+  心跳与僵死看门狗是无人 await 的后台任务，进程 Dispose 后再读 `HasExited`
+  会抛 `InvalidOperationException`，异常最终在 finalizer 线程冒出来。
+  现在统一走 `HasExitedSafe()`。
+
+---
+
+## [1.0.9.8] - 2026-10-20
+
+### 新增
+
+- **下载器：并发数与分块数拆成两个独立设置**（「设置 → 网络 → 下载」）。
+
+  原来只有一个「下载线程数」，同一个值既当「同时下几个文件」又当「单个文件切几块」，
+  想给单个大文件提速时会把并发文件数一起拉高 —— 镜像端直接 403。现在分成：
+
+  | 设置 | 含义 | 默认 | 范围 |
+  |---|---|---|---|
+  | 同时下载文件数 | 文件级并发（批量下载时同时下几个） | 6 | 1~16 |
+  | 单文件分块数 | 连接级并发（单个文件切几块并行） | 4 | 1~16 |
+
+  总连接数 ≈ 并发数 × 分块数。分块数填 **1** 表示不分块、走单连接，
+  这是镜像限流时的逃生阀（原来的下限被硬编码成 2，想关都关不掉）。
+
+  底层仍走 `Downloader` 多连接分块内核（`FileDownloader`），本次改动是：
+  - 分块数上限 8 → 16，下限 2 → 1，并允许关闭 `ParallelDownload`（单块时开并行没意义）；
+  - 每个文件的连接池大小跟随分块数（`MaxConnectionsPerServer = max(16, 分块数 × 2)`），
+    避免块数调高后多出来的块排队等连接、分块并行退化成串行；
+  - 各批量下载路径按自身容忍度取并发上限：原版 / 补资源 16，整合包 / 加载器 8，
+    Fabric 4（实测并发 10 路打 BMCLAPI 会被瞬时限流）。
+
+  **旧配置自动迁移**：旧的「下载线程数」会拆成「并发 = 旧值、分块 = 旧值」
+  （都夹到 1~16），随后该字段清零，不会重复迁移。
+
+### 修复
+
+- **安装页：勾选一个加载器后，其余加载器的列表框仍可操作**。
+
+  只禁用勾选框是不够的 —— 另一个加载器的列表还能点，选中版本后安装逻辑读到
+  「非空版本号」就会把它一起装上，表现就是「勾了 Forge，装出来的是 NeoForge」。
+  现在勾选框与列表同生共死：勾选某个加载器后，其余三个的勾选框**和**列表框一起禁用；
+  取消勾选后全部恢复可用。加载版本列表期间四组也一并锁住。
+
+---
+
+## [1.0.9.7] - 2026-10-20
+
+### 调整
+
+- **拉长窗口飞入 / 飞出动画的时长**（1.0.9.6 的节奏偏快，推近与下沉几乎看不清）：
+  - 飞入 300ms → **450ms**
+  - 飞出 180ms → **280ms**
+
+  参数集中在 `Helpers/WindowMotion.cs` 的两个 `TimeSpan` 常量，主窗口、开机向导、
+  全部内嵌子窗口同时生效。性能模式下仍然完全不播。
+
+---
+
+## [1.0.9.6] - 2026-10-20
+
+### 新增
+
+- **所有窗口都有飞入 / 飞出动画**。
+
+  主窗口与开机向导：打开时淡入 + 92% 推到 100% + 由下浮起（300ms），
+  关闭时淡出 + 后退到 94% + 下沉（180ms）后才真正关窗。
+
+  内嵌子窗口（登录、换肤、崩溃分析、补资源、实例工具箱、配装码等十几个浮在主窗口上的页面）：
+  遮罩同步淡入淡出，卡片走同一套位移 / 缩放节奏，关闭时先飞出再卸掉内容。
+
+  实现在 `Helpers/WindowMotion.cs`，全应用共用一份参数。性能模式下自动跳过 ——
+  低配机器上动画一卡就会长时间停在中途，比没有动画更难看。
+
+- **窗口按屏幕分辨率自适应**（`Helpers/WindowSizing.cs`）。
+
+  主窗口设计尺寸 1280×800、最小 1180×720，原来是小屏上底部按钮被任务栏压掉。
+  现在启动时取主屏**工作区**（已扣任务栏、已按 DPI 换算成 DIP）的 94% 作为上限，
+  放不下就等比收小；屏幕小到连最小尺寸都装不下时，最小尺寸一并下调，避免窗口必然出界。
+  改分辨率 / 缩放、拔插外接屏后会自动重算。
+
+  内嵌浮层卡片的最大尺寸也限制在主窗口内容区内，超出部分交给外层滚动，
+  不再顶出可视区域。
+
+### 变更
+
+- **固化发布设置**，以后不必再手工敲一长串参数：
+  - `Properties/PublishProfiles/Windows.pubxml`：自包含 + 单文件 + 压缩 + 关 R2R / 剪裁 + `CetCompat=false`，
+    VS 里点一次「发布」得到的产物就等于手工发布的那份。
+  - `csproj` 的 Release 段默认 `SelfContained=true`，`dotnet publish` 不带参数即产出双击可开的单文件 exe。
+  - `publish-all.ps1` / `publish-all.sh` 默认自包含；需要小包时用 `-FrameworkDependent` /
+    `--framework-dependent` 切回框架依赖。
+
+  顺带修掉一个隐藏的求值顺序问题：`EnableCompressionInSingleFile` 原来写在 Release 段**之前**，
+  MSBuild 按顺序求值时会读到旧的 `SelfContained=false`，导致压缩条件永远定格为 false。
+
+---
+
+## [1.0.9.5] - 2026-10-19
+
+### 修复
+
+- **Windows 10 虚拟机启动即崩（`0x80131506`）、无任何日志**。
+
+  在终端里手动运行才能看到的真实原因：
+
+  ```
+  Fatal error.
+  Your Windows doesn't fully support CET. Please install all available Windows updates.
+  ```
+
+  CET = Intel 控制流强制技术（影子栈）。.NET 8 起 apphost 默认把自身标记为「CET 兼容」，
+  运行时启动时据此检查系统是否完整支持 —— 而 Windows 10 某些补丁级别（如 19041.2913）
+  在支持 CET 的 CPU 上处于「半支持」：CPU 报告有 CET，系统补丁却没打全。
+  运行时检测到这个矛盾会直接 FailFast（`0x80131506` = `COR_E_EXECUTIONENGINE`），
+  崩溃发生在任何托管代码之前，所以连兜底日志都写不出来。
+
+  现在在 csproj 里关闭该标记：
+
+  ```xml
+  <CetCompat>false</CetCompat>
+  ```
+
+  关闭后进程不再被标记为 CET 兼容，运行时就不会做这项检查。
+  代价是放弃影子栈这一项硬件缓解措施 —— 对离线启动器来说可以接受。
+  系统装齐 Windows 更新后，删掉这一行即可恢复。
+
+- 撤销 1.0.9.4 的「虚拟机一律软件渲染」：那次是把渲染层崩溃误当成根因，
+  实际是 CET。虚拟机识别保留（只写进日志摘要，如 `[VMware]`），不再改变渲染行为，
+  以免有 GPU 直通的虚拟机白白变慢。
+
+### 说明
+
+- **如果新版本仍报同一句 CET 错误**，说明该机器的 CET 是被系统策略（而非 exe 标记）
+  启用的，此时唯一的出路是**装齐 Windows 更新** —— 这是 .NET 运行时自己给出的结论。
+
+
+
+### 修复
+
+- **Windows 10 虚拟机里双击无反应、且没有任何日志（事件查看器 `0x80131506`）**。
+
+  用户提供的崩溃事件：
+
+  ```
+  错误模块名称: KERNELBASE.dll，版本: 10.0.19041.2913
+  异常代码: 0x80131506
+  ```
+
+  `0x80131506` 是 `COR_E_EXECUTIONENGINE`（CLR **执行引擎内部错误**），
+  不是托管异常 —— 所以 `StartupFailureReporter` 也拦不到，磁盘上一个字节都不会有。
+  崩溃点发生在 Avalonia 的平台/渲染初始化阶段，**早于日志系统建立**。
+
+  根因是虚拟机的「显卡」大多是没有 D3D11 的虚拟适配器，而 Avalonia 默认渲染顺序是
+  D3D11 → D3D9 → OpenGL → 软件。在部分虚拟 GPU 上这条回退路径会在 native 层直接崩掉。
+
+  现在新增 **虚拟机识别**（`Helpers/AppEnvironment.cs` 的 `DetectVirtualMachine`）：
+  - 读注册表 `HKLM\HARDWARE\DESCRIPTION\System\BIOS` 的厂商 / 型号字符串，
+    命中 VMware / VirtualBox / Hyper-V / QEMU / Parallels / Xen / Bochs / KVM 即判定为虚拟机；
+  - BIOS 字符串被伪装时，再用 `Services\Disk\Enum` 的厂商串兜底；
+  - 识别到虚拟机即纳入「低配」，**启动时直接固定软件渲染**（跳过 GPU），
+    并写进启动日志的环境摘要（`[VMware]` 这样的标记），便于后续排查。
+
+  判定表（已用真实厂商字符串验证，物理机不会误判）：
+
+  | 字符串 | 结果 |
+  |---|---|
+  | `vmware, inc. vmware virtual platform` | VMware |
+  | `innotek gmbh virtualbox` | VirtualBox |
+  | `microsoft corporation virtual machine` | Hyper-V |
+  | `qemu standard pc (q35 + ich9, 2009)` | QEMU |
+  | `dell inc. xps 15 9520` | 物理机 |
+
+- 说明：若某个虚拟机的 BIOS 串无法识别，仍可用命令行 `--software-render`
+  或环境变量 `VBL_SOFTWARE_RENDER=1` 强制软件渲染（这两个入口 1.0.6 起就有）。
+
+
+
+### 改进
+
+- **自包含发布默认启用单文件压缩，体积从 113 MB 降到 55 MB**（用户反馈「文件怎么那么大」）。
+
+  `EnableCompressionInSingleFile` 现在按 `SelfContained` 自动开关（csproj 里的 Condition）：
+  只要用 `--self-contained` / `-SelfContained` 发布，压缩就自动生效，不必再手动传参。
+  框架依赖发布仍保持关闭 —— 那种组合 SDK 会直接拒绝（NETSDK1176）。
+
+  实测（win-x64、同一份代码、均不裁剪不 R2R）：
+
+  | 发布方式 | 体积 |
+  |---|---|
+  | 框架依赖单文件 | 39.6 MB（目标机需装 .NET 10 运行时） |
+  | 自包含单文件 | 113 MB |
+  | 自包含 + 单文件压缩 | **54.8 MB** |
+
+  代价是首次启动要把内嵌运行时解压到 `%TEMP%\.net\`，老机器上多 1~3 秒，之后复用已解压目录。
+  已实测该压缩版能正常启动（软件渲染与默认渲染均验证过日志完整）。
+
+- 同时验证过 **`InvariantGlobalization=true` 对本项目几乎没有收益**（54.79 MB vs 54.79 MB），
+  故不启用 —— 没必要为了 0 MB 牺牲中文区域格式与字符串比较行为。
+
+### 说明
+
+- 55 MB 里大头仍是 .NET 运行时本身（coreclr + 基础类库 + Avalonia/Skia 原生库），
+  应用自身代码约 6 MB。想再小只有两条路：
+  1. 改用框架依赖发布（39.6 MB），但目标机必须装 .NET 10 运行时；
+  2. 开启 `PublishTrimmed`，但本项目绑定走反射（`AvaloniaUseCompiledBindingsByDefault=false`），
+     裁剪会摘掉运行期才用到的属性元数据，症状是「页面绑不上」而非编译报错，不建议。
+- 本次产物：`dist/standalone-win-x64/VibrantbitLauncher.Avalonia.exe`（54.8 MB，免装运行时）。
+
+
+
+### 修复
+
+- **「双击 exe 没反应」不再是一片空白**（其他电脑上无法启动时完全无提示）。
+
+  根因有两层：
+
+  1. **框架依赖发布**：当前产物是 39.6 MB 的单文件，`runtimeconfig.json` 要求
+     `Microsoft.NETCore.App 10.0.0`。目标机器没装 **.NET 10 运行时**时，
+     Windows 的 GUI 子系统进程会把 host 的报错写到 stderr —— 而 GUI 程序没有控制台，
+     于是**静默退出**，用户看到的就是「双击没反应」。
+     这一层发生在我们的代码执行之前，程序自身无法兜住，只能靠「自包含发布」或目标机装运行时解决。
+  2. 即使进入了我们的代码，启动链上的异常也**没有任何可见痕迹**：
+     `Main` 的 catch 里调用 `Log.Fatal`，但日志系统要到
+     `App.OnFrameworkInitializationCompleted` 才初始化 —— 此时 Serilog 还是静默 logger，
+     等于什么都没写；随后 rethrow 又只会触发 WER 对话框（很多机器上被关闭）。
+
+  现在新增 `Helpers/StartupFailureReporter.cs`：**不依赖 Serilog、不依赖 Avalonia**，
+  在启动失败时
+  - 把完整异常（含系统版本、OS/进程架构、是否 64 位进程、运行时版本、程序目录）写到
+    `%LOCALAPPDATA%\VibrantbitLauncher\logs\startup-error-<时间>.log`
+    （依次尝试 LocalAppData → exe 目录 → 临时目录，任一可写即可）；
+  - 用 Win32 `MessageBoxW` 弹出错误摘要与日志路径，说明**系统与运行时版本**。
+  - `Program.Main` 不再 rethrow，改为设置 `Environment.ExitCode = 1` 后正常退出，
+    避免 WER 把我们的提示盖掉。
+  - 额外挂了 `AppDomain.CurrentDomain.UnhandledException`，
+    覆盖后台线程 / UI 线程之外的未处理异常（这类以前同样是「凭空消失」）。
+
+### 说明
+
+- 同时产出一份**自包含单文件**版本供没有运行时的机器使用：
+  `dist/standalone-win-x64/VibrantbitLauncher.Avalonia.exe`（约 108 MB，内含 .NET 10 运行时，拷过去即可双击运行）。
+  可复现命令：
+  ```bash
+  dotnet publish VibrantbitLauncher.Avalonia.csproj -c Release -r win-x64 \
+    --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=false -o dist/standalone-win-x64
+  ```
+  也可以通过 `./publish-all.sh --self-contained` / `.\publish-all.ps1 -SelfContained` 批量产出。
+- **Windows 7 / 8 / 8.1 不在 .NET 10 的支持范围内**（最低 Windows 10 1607），
+  这些系统上无论框架依赖还是自包含都跑不起来，需要另行降目标框架。
+
+
+
+### 改进
+
+- **Java 默认安装路径改为 Java 官方安装器的路径**（用户要求）：
+  `%ProgramFiles%\Eclipse Adoptium\jdk-<版本>-hotspot`。
+  以前装到启动器自己的 `runtime/jdk-<主版本>`，只有本启动器认识；
+  现在与 Temurin 官方安装器（MSI）用的是同一套目录约定 ——
+  目录名同样按「去掉 build 号 + `-hotspot` 后缀」生成
+  （发行名 `jdk-21.0.12.1+1` → 目录 `jdk-21.0.12.1-hotspot`），
+  于是 HMCL / PCL / IDEA 等按约定路径找 Java 的工具也能直接复用同一个运行时。
+- **「已安装」列表会扫各发行版的约定目录**，不再只看页面上的那个根目录：
+  `Eclipse Adoptium` / `AdoptOpenJDK` / `Java`(Oracle) / `Zulu` / `Amazon Corretto` /
+  `Semeru` / `Microsoft`，以及用户级安装的 `%LOCALAPPDATA%\Programs\Eclipse Adoptium`。
+  用户之前用官方安装器装过的 JDK 会直接出现在列表里。
+- **写入 Program Files 需要管理员权限**，因此安装前先做一次可写探测（含实际写探针文件，
+  因为「目录已存在」不代表能往里写）。没权限时给的是两条具体出路：
+  「以管理员身份运行启动器」或「点浏览换目录」，
+  而不是一句 `Access to the path 'C:\Program Files\...' is denied`。
+
+### 说明
+
+- 探测放在下载**之前**：否则用户要白等 200 MB 下完，才在解压阶段发现没权限。
+- 极少数取不到 `ProgramFiles` 的精简系统会自动回落到启动器目录，功能不受影响。
+
+
+
+本版两部分：**修好 Forge / NeoForge 安装**（此前几乎必失败或卡死），以及**新增 Java 运行环境下载**。
+
+### 新增
+
+- **Java 运行环境下载（下载中心 → 运行环境 → Java）**。
+  数据来自 Eclipse Adoptium（Temurin）的公开 REST API：
+  - 先取 `/v3/info/available_releases` 得到可用主版本（25 / 21 / 17 / 11 / 8，只列 LTS）；
+  - 再按选中主版本取 `/v3/assets/feature_releases/{major}/ga`，按**当前系统与架构**过滤出 JDK 制品；
+  - 反序列化后展示「版本 / 是否 LTS / 体积 / 发布日期」，点「下载」即安装到 `runtime/jdk-<主版本>`。
+  - 装完自动剥掉压缩包里的 `jdk-xx.yy/` 顶层目录，`bin/java(.exe)` 直接落在目标目录下；
+    若设置里还没配 Java，会自动把它设为启动用的 Java。
+  - 额外提供「已安装」列表（含手动配置过的那个），可一键「设为启动 Java」或打开目录。
+- 新增 `Services/JavaRuntimeService.cs`、`Models/JavaRuntime.cs`、`Views/Pages/JavaDownloadPage.axaml(.cs)`。
+- 新增 `Services/Download/ResilientFileDownloader.cs`：**跨连接断点续传**下载器（见下方「修复」里的实测背景）。
+
+### 修复
+
+本版针对「Forge / NeoForge 每次安装都失败、或卡在某一步不动」查了 6 个独立根因，全部有真实数据佐证：
+
+1. **安装器下载被截断，却当成成功**。
+   实测（同一台机器）：BMCLAPI 镜像取 Forge 安装器连续 4 次都是 `HTTP 200`，但只有
+   89 KB / 171 KB / 284 KB / 2.2 MB（完整 6.0 MB）；官方 `maven.minecraftforge.net`
+   则稳定停在 1,028,096 字节（正好 1 MB）不再增长；用 `Range` 从 1 MB 续取能再拿到 633 KB 后再次停住。
+   —— 即**单条连接约 1 MB 配额**，任何「一条连接下完整个文件」的实现都注定失败。
+   现在安装器改走 `ResilientFileDownloader`：每轮从「已有字节数」处发 `Range: bytes=N-` 续写同一个临时文件，
+   直到凑够 `Content-Range` 声明的总长；首字节 10 秒不到就换源，收到数据后放宽到 25 秒空闲。
+   实测同一个 195.6 MB 的 JDK 包在本机 **45 秒内完整取回**。
+2. **截断文件缺少校验**，崩在 `ZipFile.OpenRead` 上，用户只看到「解析安装清单失败」。
+   现在下载后校验：能否打开 ZipArchive 的**中央目录**、是否含 `version.json` / `install_profile.json`。
+   只查文件头 `PK\x03\x04` 是不够的 —— 实测那个 454 KB 的残片文件头完全正常。
+   同一校验也加到了所有 `.jar` / `.zip` 依赖库的下载流程里（`FileDownloader.VerifyAsync`），
+   避免残缺的工具库被当成「已下好」，最后在处理器阶段报 `ClassNotFoundException`。
+3. **处理器参数里的 `BINPATCH` 被原样传给 Java**（最致命）。
+   `install_profile.data.BINPATCH` 的值是 `/data/client.lzma` —— 这是**安装包内部条目**，
+   官方安装器会先解压到临时目录再把临时文件路径交给处理器。
+   旧代码直接传 `/data/client.lzma`，在 Windows 上被解析成 `C:\data\client.lzma`（实测确实不存在），
+   `binarypatcher` 必然失败。现在按官方规则处理：`/` 开头一律先从 installer jar 解到临时目录，用完即删。
+4. **裸 maven 坐标参数未解析**。NeoForge 1.21.1 的处理器里有
+   `--input [net.neoforged:neoform:1.21.1-20240808.144430@zip]`（直接写在 args 里，不走 `{KEY}`）。
+   旧实现刻意「保留原样让 java 报错」，结果 MCP_DATA 这一步必然失败。
+   现在整段是 `[a:b:c]` 就替换成 `libraries/` 下的绝对路径。
+5. **patched jar 没进 classpath**。处理器产出 `data.PATCHED` 指向的 client jar 之后，
+   `install_profile.libraries` 里并没有这一条声明，而 classpath 完全由版本 JSON 的 `libraries` 决定 ——
+   于是「安装成功、启动报 `The patched Minecraft jar is missing`」。
+   现在处理器跑完会把 PATCHED 产物按 maven 规则补成一条 library（带 path / size / sha1）写回版本 JSON，幂等。
+6. **NeoForge 版本列表源不可用**。官方 `maven.neoforged.net` 实测完全连不上（TLS 都建不起来），
+   BMCLAPI 的 `maven-metadata.xml` 也超时；只有 `/neoforge/list/{mc}` 稳定可用。
+   现在官方接口超时压到 12 秒、只试 1 轮，失败立刻回退 BMCLAPI 列表。
+
+另外两处「看起来卡死」的体验问题：
+
+- **处理器阶段长时间没有任何进度**。现在每 2 秒推一次「已耗时 X 秒」心跳，
+  并在每个处理器开跑前先报「运行 installertools（3/5）」，用户能区分「在算」和「真死了」。
+- **Java 进程僵死无兜底**。处理器连续 12 分钟一行输出都没有时主动终止，并给出
+  「多为依赖库不完整或网络被墙导致处理器内部下载挂起」的可操作提示，而不是让用户干等或去杀进程。
+- 安装器候选顺序按加载器区分：**Forge 走官方源、NeoForge 走 BMCLAPI 镜像**
+  （实测两者恰好互补），用户显式开启镜像时一律以镜像为先。
+
+### 说明
+
+- 编译 0 错误。
+- 验证方式（均针对真实数据）：
+  - 用真实 NeoForge 1.21.1 安装包的 `install_profile.json` 走了一遍参数解析，
+    `BINPATCH` 解析为临时目录下的实际文件、裸 maven 参数解析为 `libraries/` 路径；
+  - 用真实的 6.0 MB Forge 安装器残片验证「截断文件」能被校验器识别；
+  - 完整跑通一次 JDK 21 的下载 + SHA256 + 解压 + `bin/java.exe` 定位。
+- 升级后**建议重装一次 Forge / NeoForge**（patched jar 与 classpath 需要按新逻辑重新生成）。
+
+
 ## [1.0.8.2] - 2026-10-18
 
 ### 修复

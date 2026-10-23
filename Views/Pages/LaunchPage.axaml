@@ -4,9 +4,105 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:FluentAvalonia.UI.Controls"
     d:DesignHeight="600"
     d:DesignWidth="1000"
     mc:Ignorable="d">
+
+    <UserControl.Styles>
+        <!--
+            快捷设置里的「分段胶囊」。
+            用 RadioButton 而不是两个 Button：语义上它本来就是二选一，
+            键盘方向键 / 屏幕阅读器都能正确识别，视觉上则被模板去掉圆点改成胶囊。
+
+            选中态用主色填充，整个页面里主色只在这一处出现 ——
+            主色面积控制在 3% 以内，启动按钮才是真正的强调色主角。
+        -->
+        <Style Selector="RadioButton.segment">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border
+                        Name="SegmentRoot"
+                        Padding="15,5"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="2"
+                        CornerRadius="99">
+                        <ContentPresenter
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Content="{TemplateBinding Content}"
+                            FontSize="{StaticResource FontSizeCaption}"
+                            Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <Style Selector="RadioButton.segment:pointerover /template/ Border#SegmentRoot">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+        </Style>
+
+        <!--
+            胶囊底色 / 描边的过渡：150ms 在 50ms 时长网格上，属「反馈」档，
+            比页面的 250ms 转场快一档 —— 手指在按钮上，反馈必须先到。
+            缓动统一 CubicEaseOut：进快出慢，和全局动效规范一致。
+        -->
+        <Style Selector="RadioButton.segment /template/ Border#SegmentRoot">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition
+                        Property="Background"
+                        Duration="0:0:0.15"
+                        Easing="CubicEaseOut" />
+                    <BrushTransition
+                        Property="BorderBrush"
+                        Duration="0:0:0.15"
+                        Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!--
+            减动效（reduce-motion）：统一由 Helpers/MotionSettings 判定（性能模式即减动效），
+            MainWindow 会在根节点挂 performanceMode 类，下面这条把过渡整体清空。
+            代码里的动效（列表飞入 / 窗口开合）同样先问 MotionSettings.Enabled。
+        -->
+        <Style Selector=".performanceMode RadioButton.segment /template/ Border#SegmentRoot">
+            <Setter Property="Transitions">
+                <Transitions />
+            </Setter>
+        </Style>
+
+        <!--  按下：略深一档，给即时反馈（与全局 ListBoxItem 的 0.985 回缩同一档强度）  -->
+        <Style Selector="RadioButton.segment:pressed /template/ Border#SegmentRoot">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="RadioButton.segment:checked /template/ Border#SegmentRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="RadioButton.segment:checked:pressed /template/ Border#SegmentRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="RadioButton.segment:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+
+        <!--  键盘焦点：描边而不是加粗边框，避免布局跳动  -->
+        <Style Selector="RadioButton.segment:focus-visible /template/ Border#SegmentRoot">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="RadioButton.segment:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+    </UserControl.Styles>
 
     <Grid Margin="{StaticResource PagePadding}" ColumnDefinitions="*,340">
 
@@ -141,68 +237,159 @@
             </StackPanel>
         </Grid>
 
-        <!--  ==================== 右：官方新闻  ====================  -->
+        <!--  ==================== 右：快捷设置  ====================
+            原来这里是「官方新闻」图墙。改成快捷设置，是因为换游戏目录 / 换 Java / 切主题
+            这三件事用得最频繁，却都藏在「设置」的三级页面里，每次都要点进去找。
+
+             结构上没有用「三张等宽卡片」：那是模板化界面的典型特征，
+             三块等大的框会把视线摊平。这里是一整块面板 + 两条 1px 分割线，
+             用一个容器表达「这里是一组设置」，视觉噪音更少，
+             也让右侧始终是配角 —— 主角是左边的启动按钮。
+        -->
         <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
             <TextBlock
                 Grid.Row="0"
                 Margin="0,0,0,12"
                 Classes="sectionTitle"
-                Text="官方新闻" />
+                Text="快捷设置" />
 
             <ScrollViewer
                 Grid.Row="1"
                 Padding="0,0,8,0"
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
-                <!--  数据上下文由 code-behind 挂成 DashboardPageViewModel（新闻源）  -->
-                <!--  ItemsSource 由 code-behind 直接赋（新闻源 VM 与页面 VM 不是同一个），
-                      写成 {Binding News} 的话 InitializeComponent 时会先按「启动」VM 求值一次并报绑定告警  -->
-                <ItemsControl x:Name="NewsHost">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <!--  图片铺满卡片，底部渐变承托白色标题；悬停弹性放大  -->
+
+                <Border Padding="0" Classes="card" ClipToBounds="True">
+                    <StackPanel>
+
+                        <!--  ── Minecraft 文件夹 ──  -->
+                        <Grid Margin="16,14" ColumnDefinitions="Auto,*,Auto">
+                            <ui:FASymbolIcon
+                                Grid.Column="0"
+                                Margin="0,2,12,0"
+                                VerticalAlignment="Top"
+                                FontSize="16"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="Folder" />
+
+                            <StackPanel Grid.Column="1" Spacing="3">
+                                <TextBlock Classes="body" Text="Minecraft 文件夹" />
+                                <TextBlock
+                                    x:Name="quickMcFolderText"
+                                    Classes="caption"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap" />
+                            </StackPanel>
+
+                            <Button
+                                Grid.Column="2"
+                                Padding="12,5"
+                                VerticalAlignment="Center"
+                                Click="OnQuickMcFolderClick"
+                                Content="更改" />
+                        </Grid>
+
+                        <Border
+                            Height="1"
+                            Margin="40,0,16,0"
+                            Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+
+                        <!--  ── Java 运行环境 ──  -->
+                        <StackPanel Margin="16,14" Spacing="9">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <ui:FASymbolIcon
+                                    Grid.Column="0"
+                                    Margin="0,2,12,0"
+                                    VerticalAlignment="Top"
+                                    FontSize="16"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Symbol="Code" />
+
+                                <StackPanel Grid.Column="1" Spacing="3">
+                                    <TextBlock Classes="body" Text="Java 运行环境" />
+                                    <TextBlock
+                                        x:Name="quickJavaText"
+                                        Classes="caption"
+                                        TextTrimming="CharacterEllipsis"
+                                        TextWrapping="NoWrap" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Margin="28,0,0,0" ColumnDefinitions="*,Auto">
+                                <ComboBox
+                                    x:Name="quickJavaCombo"
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Stretch"
+                                    PlaceholderText="未检测到 Java"
+                                    SelectionChanged="OnQuickJavaSelectionChanged">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding JavaVersion}" />
+                                                <TextBlock
+                                                    Classes="caption"
+                                                    Text="{Binding JavaPath}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="NoWrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <Button
+                                    Grid.Column="1"
+                                    Margin="8,0,0,0"
+                                    Padding="12,5"
+                                    VerticalAlignment="Center"
+                                    Click="OnQuickJavaBrowseClick"
+                                    Content="浏览" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Border
+                            Height="1"
+                            Margin="40,0,16,0"
+                            Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+
+                        <!--  ── 外观：分段胶囊 ──  -->
+                        <Grid Margin="16,14" ColumnDefinitions="Auto,*,Auto">
+                            <ui:FASymbolIcon
+                                Grid.Column="0"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="Setting" />
+
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Classes="body"
+                                Text="外观" />
+
                             <Border
-                                Height="168"
-                                Margin="0,0,0,10"
-                                Cursor="Hand"
-                                Classes="hoverCard"
-                                ClipToBounds="True"
-                                PointerReleased="OnNewsItemPointerReleased">
-                                <Grid>
-                                    <Image Source="{Binding Image}" Stretch="UniformToFill" />
-
-                                    <Border>
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0%,32%" EndPoint="0%,100%">
-                                                <GradientStop Offset="0" Color="#00000000" />
-                                                <GradientStop Offset="1" Color="#E6000000" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
-
-                                    <StackPanel Margin="14,0,14,12" VerticalAlignment="Bottom">
-                                        <TextBlock
-                                            MaxHeight="46"
-                                            FontFamily="{StaticResource AppFont}"
-                                            FontSize="{StaticResource FontSizeBodyLarge}"
-                                            FontWeight="SemiBold"
-                                            Foreground="{StaticResource AppOnImageTextBrush}"
-                                            Text="{Binding Title}"
-                                            TextTrimming="CharacterEllipsis"
-                                            TextWrapping="Wrap" />
-                                        <TextBlock
-                                            Margin="0,4,0,0"
-                                            Classes="caption"
-                                            Foreground="{StaticResource AppOnImageTextBrush}"
-                                            Opacity="0.75"
-                                            Text="{Binding Date}" />
-                                    </StackPanel>
-                                </Grid>
+                                Grid.Column="2"
+                                Padding="3"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="99">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton
+                                        x:Name="quickThemeLight"
+                                        Classes="segment"
+                                        GroupName="QuickTheme"
+                                        Content="亮色" />
+                                    <RadioButton
+                                        x:Name="quickThemeDark"
+                                        Classes="segment"
+                                        GroupName="QuickTheme"
+                                        Content="暗色" />
+                                </StackPanel>
                             </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                        </Grid>
+
+                    </StackPanel>
+                </Border>
             </ScrollViewer>
         </Grid>
     </Grid>

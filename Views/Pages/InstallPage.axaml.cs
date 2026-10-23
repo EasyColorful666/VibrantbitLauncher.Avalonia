@@ -177,6 +177,7 @@ public partial class InstallPage : UserControl
         if (vm.IsLoadingVersions)
         {
             checkBox1.IsEnabled = checkBox2.IsEnabled = checkBox3.IsEnabled = checkBox4.IsEnabled = false;
+            forgeList.IsEnabled = fabricList.IsEnabled = neoforgeList.IsEnabled = quiltList.IsEnabled = false;
             return;
         }
 
@@ -207,6 +208,16 @@ public partial class InstallPage : UserControl
         checkBox2.IsEnabled = fabricOn || (fabricUsable && !anyOn);
         checkBox3.IsEnabled = neoOn || (neoUsable && !anyOn);
         checkBox4.IsEnabled = quiltOn || (quiltUsable && !anyOn);
+
+        // 列表跟着勾选框同生共死。
+        //
+        // 只禁用勾选框是不够的：另一个加载器的列表仍然能点，用户在那里选中一个版本后，
+        // 安装逻辑读到「非空版本号」就会把它一起装上 —— 表现就是「勾了 Forge，
+        // 结果装出来的是 NeoForge」。把列表一起锁掉，UI 与安装逻辑才真正一致。
+        forgeList.IsEnabled = checkBox1.IsEnabled;
+        fabricList.IsEnabled = checkBox2.IsEnabled;
+        neoforgeList.IsEnabled = checkBox3.IsEnabled;
+        quiltList.IsEnabled = checkBox4.IsEnabled;
     }
 
     /// <summary>

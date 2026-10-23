@@ -80,8 +80,34 @@ namespace VibrantbitLauncher.Services
         // ===== 网络 · 下载 =====
         /// <summary>使用 BMCLAPI 镜像下载（国内加速）。</summary>
         public bool UseBmclMirror { get; set; }
-        /// <summary>游戏文件下载并发数。</summary>
-        public int DownloadThreads { get; set; } = 10;
+
+        /// <summary>
+        /// 同时下载的文件数（批量下载的外层并发），1~16。
+        ///
+        /// <para>
+        /// 和 <see cref="DownloadChunkCount"/> 是**两个维度**：
+        /// 总连接数 ≈ 并发 × 分块。原先把两者混成一个「下载线程数」，
+        /// 结果是想加速单个大文件时，顺手把并发文件数也一起拉高了 —— 镜像端直接 403。
+        /// </para>
+        /// </summary>
+        public int DownloadConcurrency { get; set; } = 6;
+
+        /// <summary>
+        /// 单个文件切成几块并行下载（内层并发连接），1~16。1 表示不分块、走单连接。
+        /// </summary>
+        public int DownloadChunkCount { get; set; } = 4;
+
+        /// <summary>
+        /// [已废弃] 1.0.9.7 及更早版本的「下载线程数」。
+        ///
+        /// <para>
+        /// 保留这个字段只为读取旧配置做一次性迁移（见
+        /// <c>MigrateLegacyDownloadSettings</c>），迁移后置 0。
+        /// **新代码不要再读它**，否则又回到「一个值管两件事」的老问题。
+        /// </para>
+        /// </summary>
+        public int DownloadThreads { get; set; }
+
         /// <summary>下载失败重试次数。</summary>
         public int DownloadRetryCount { get; set; } = 4;
 
@@ -171,6 +197,41 @@ namespace VibrantbitLauncher.Services
             MainWindowViewModel.MainModel.MinecraftFolder = Current.MinecraftFolder;
             MainWindowViewModel.MainModel.JavaPath = string.IsNullOrEmpty(Current.JavaPath) ? null : Current.JavaPath;
             MainWindowViewModel.MainModel.IsMicrosoftAccount = Current.IsMicrosoftAccount;
+
+            // 旧配置的「下载线程数」拆成「并发文件数 + 分块数」（1.0.9.8）
+            MigrateLegacyDownloadSettings();
+        }
+
+        /// <summary>
+        /// 把 1.0.9.7 及更早的单一「下载线程数」拆成两个独立设置。
+        ///
+        /// <para>
+        /// 旧值同时被「批量下载的文件并发」和「单文件分块数」两个地方使用，
+        /// 语义本身是矛盾的（10 线程既当 10 个文件并发、又被 clamp 成 8 块）。
+        /// 迁移时两个新字段都先沿用旧值，至少不会让升级后的下载速度突然变慢，
+        /// 用户随后可以在设置页分别调。
+        /// </para>
+        ///
+        /// <para>
+        /// 用「旧字段 &gt; 0」作为「尚未迁移」的标记，迁移后置 0 ——
+        /// JSON 里留着 0，下次启动不会重复迁移。
+        /// </para>
+        /// </summary>
+        private static void MigrateLegacyDownloadSettings()
+        {
+            var legacy = Current.DownloadThreads;
+            if (legacy <= 0)
+                return;
+
+            Current.DownloadConcurrency = Math.Clamp(legacy, 1, 16);
+            Current.DownloadChunkCount = Math.Clamp(legacy, 1, 16);
+            Current.DownloadThreads = 0;
+
+            Serilog.Log.Information(
+                "下载设置已迁移：旧「线程数 {Legacy}」→ 并发文件数 {Concurrency} + 单文件分块数 {Chunks}",
+                legacy, Current.DownloadConcurrency, Current.DownloadChunkCount);
+
+            Save();
         }
 
         public static void Save()
@@ -275,6 +336,25 @@ namespace VibrantbitLauncher.Services
         // ===== 下载（下载源 / 重试次数） =====
 
         /// <summary>
+        /// 取「同时下载的文件数」，并夹到 [1, <paramref name="max"/>]。
+        ///
+        /// <para>
+        /// 各下载路径对并发的容忍度不同：原版依赖清单动辄几百个文件，可以放到 16；
+        /// Fabric / Forge 的库只有十几个，实测并发 10 路打 BMCLAPI 会立刻 403，
+        /// 所以那些地方调用时传更小的 <paramref name="max"/>。
+        /// </para>
+        /// </summary>
+        /// <param name="max">该路径允许的上限。</param>
+        public static int ResolveDownloadConcurrency(int max = 16)
+        {
+            var value = Current.DownloadConcurrency;
+            if (value <= 0)
+                value = 6;
+
+            return Math.Clamp(value, 1, Math.Max(1, max));
+        }
+
+        /// <summary>
         /// 把下载相关设置应用到 MinecraftLaunch。
         ///
         /// 实测 <c>InitializeHelper.Initialize</c> 内部只是把参数写进 <c>DownloadManager</c> 的静态属性，
@@ -284,6 +364,10 @@ namespace VibrantbitLauncher.Services
         /// 注意 BMCLAPI 的改写范围：launchermeta / piston-meta / libraries / resources / launcher.mojang.com
         /// 会被换成 bmclapi2.bangbang93.com，但 <c>piston-data.mojang.com</c> 不在其覆盖内
         /// （部分版本的 client.jar 仍走官方源）。
+        ///
+        /// 注意这里管不到本工程自己的下载器（<c>Services/Download/</c>）——
+        /// 那条链路在每次下载时实时读 <see cref="AppSettings.DownloadConcurrency"/> 与
+        /// <see cref="AppSettings.DownloadChunkCount"/>，不需要重新 Initialize。
         /// </summary>
         public static void ApplyDownloadSettings()
         {

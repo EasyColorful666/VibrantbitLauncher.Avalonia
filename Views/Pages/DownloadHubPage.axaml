@@ -82,6 +82,21 @@
                     <TextBlock Text="光影" VerticalAlignment="Center" />
                 </StackPanel>
             </ListBoxItem>
+
+            <!--
+                Java 运行环境：不是 Modrinth 资源，单独一组。
+                下载数据来自 Adoptium 的公开 API（见 JavaRuntimeService）。
+            -->
+            <ListBoxItem Classes="groupHeader">
+                <TextBlock Classes="caption" Text="运行环境" />
+            </ListBoxItem>
+
+            <ListBoxItem Tag="6">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ui:FASymbolIcon Symbol="Code" />
+                    <TextBlock Text="Java" VerticalAlignment="Center" />
+                </StackPanel>
+            </ListBoxItem>
         </ListBox>
 
         <!--

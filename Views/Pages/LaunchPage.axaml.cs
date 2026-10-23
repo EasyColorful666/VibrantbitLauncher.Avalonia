@@ -1,24 +1,33 @@
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using CommunityToolkit.Mvvm.Messaging;
+using MinecraftLaunch.Base.Models.Game;
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
 using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Pages;
+using VibrantbitLauncher.ViewModels.Windows;
 using VibrantbitLauncher.Views.Windows;
 
 namespace VibrantbitLauncher.Views.Pages
 {
     /// <summary>
-    /// 启动页：左侧选版本 + 启动，右侧官方新闻图墙。
-    /// 版本列表与启动逻辑复用 RunPageViewModel，新闻列表复用 DashboardPageViewModel。
+    /// 启动页：左侧选版本 + 启动，右侧快捷设置（游戏目录 / Java / 主题）。
+    /// 版本列表与启动逻辑复用 RunPageViewModel。
     /// </summary>
     public partial class LaunchPage : UserControl
     {
         private readonly RunPageViewModel? _launchViewModel;
-        private readonly DashboardPageViewModel? _newsViewModel;
+
+        /// <summary>快捷设置里 Java 下拉框的数据源。</summary>
+        private readonly ObservableCollection<JavaEntry> _quickJavas = new();
+
+        /// <summary>正在把设置回填到控件：此时控件事件不应反写配置。</summary>
+        private bool _quickRefreshing;
 
         public LaunchPage()
         {
@@ -26,14 +35,12 @@ namespace VibrantbitLauncher.Views.Pages
             DataContext = _launchViewModel;
             InitializeComponent();
 
-            // 新闻区用独立的数据上下文（新闻源），避免和启动逻辑混在一起
-            _newsViewModel = AppServices.Provider?.GetService(typeof(DashboardPageViewModel)) as DashboardPageViewModel;
-            NewsHost.DataContext = _newsViewModel;
+            quickJavaCombo.ItemsSource = _quickJavas;
 
-            // 直接赋 ItemsSource 而不是在 XAML 里绑 {Binding News}：
-            // 页面的 DataContext 是 RunPageViewModel（没有 News），InitializeComponent 阶段
-            // 那次求值会报一条绑定告警；这里显式给源，既准确又安静。
-            NewsHost.ItemsSource = _newsViewModel?.News;
+            // Avalonia 的 ToggleButton（RadioButton 的基类）没有 XAML 的 Checked/Unchecked
+            // 事件属性，只能在代码里订阅 IsCheckedChanged。
+            quickThemeLight.IsCheckedChanged += (_, _) => OnQuickThemeChanged(quickThemeLight);
+            quickThemeDark.IsCheckedChanged += (_, _) => OnQuickThemeChanged(quickThemeDark);
 
             // 版本列表是异步扫盘填进去的：页面 Loaded 那一刻集合必然还是空的，
             // 只在那时判一次「有没有版本」，就会把空状态一直挂在有版本的页面上。
@@ -44,13 +51,11 @@ namespace VibrantbitLauncher.Views.Pages
                 _launchViewModel.PropertyChanged += OnLaunchViewModelPropertyChanged;
             }
 
-            Loaded += async (_, _) =>
+            Loaded += (_, _) =>
             {
                 _launchViewModel?.LoadCommand.Execute(null);
                 UpdateEmptyStates();
-
-                if (_newsViewModel is { IsLoaded: false })
-                    await _newsViewModel.LoadNewsAsync();
+                RefreshQuickSettings();
             };
         }
 
@@ -60,7 +65,14 @@ namespace VibrantbitLauncher.Views.Pages
         private void OnLaunchViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName is nameof(RunPageViewModel.IsRefreshing) or nameof(RunPageViewModel.MinecraftVersions))
+            {
                 UpdateEmptyStates();
+            }
+            else if (e.PropertyName is nameof(RunPageViewModel.DetectedJavas))
+            {
+                // Java 扫描是后台完成的：扫完要把结果补进快捷设置的下拉框
+                RefreshQuickSettings();
+            }
         }
 
         /// <summary>
@@ -146,26 +158,155 @@ namespace VibrantbitLauncher.Views.Pages
             }
         }
 
-        //  ==================== 新闻  ====================
+        //  ==================== 快捷设置  ====================
 
         /// <summary>
-        /// 单击新闻卡片：打开详情页并传入该条新闻。
+        /// 把当前配置反映到右侧面板：游戏目录、Java（下拉 + 当前值）、亮暗主题。
         ///
-        /// Avalonia 没有 WPF 那样的 MouseLeftButtonUp 元素事件，改用 PointerReleased，
-        /// 并只认鼠标左键（触控 / 笔走 InitialPressMouseButton 为 None 时也放行）。
+        /// <para>
+        /// 回填期间用 <see cref="_quickRefreshing"/> 掐断控件事件 ——
+        /// 否则「设置 RadioButton.IsChecked」会走 Checked 事件再写一遍配置，
+        /// 主题切换甚至可能来回触发。
+        /// </para>
         /// </summary>
-        private void OnNewsItemPointerReleased(object? sender, PointerReleasedEventArgs e)
+        private void RefreshQuickSettings()
         {
-            if (e.InitialPressMouseButton is not (MouseButton.Left or MouseButton.None))
+            _quickRefreshing = true;
+            try
+            {
+                quickMcFolderText.Text = SettingsService.ResolveMinecraftFolder();
+
+                _quickJavas.Clear();
+
+                var detected = _launchViewModel?.DetectedJavas;
+                if (detected is not null)
+                {
+                    foreach (var java in detected)
+                        _quickJavas.Add(java);
+                }
+
+                // 用户手动指定的 Java 也要在下拉里出现，否则「当前值」对不上任何一项，
+                // ComboBox 会显示空白，看起来像没设置。
+                var customJava = MainWindowViewModel.MainModel.JavaPath;
+                if (!string.IsNullOrWhiteSpace(customJava)
+                    && _quickJavas.All(j => !string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _quickJavas.Add(new JavaEntry { JavaPath = customJava, Is64bit = true });
+                }
+
+                quickJavaCombo.SelectedItem = string.IsNullOrWhiteSpace(customJava)
+                    ? null
+                    : _quickJavas.FirstOrDefault(j =>
+                        string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase));
+
+                quickJavaText.Text = string.IsNullOrWhiteSpace(customJava)
+                    ? "未设置，启动时自动选择"
+                    : customJava;
+
+                var dark = string.Equals(SettingsService.Current.Theme, "Dark", StringComparison.OrdinalIgnoreCase);
+                quickThemeDark.IsChecked = dark;
+                quickThemeLight.IsChecked = !dark;
+            }
+            finally
+            {
+                _quickRefreshing = false;
+            }
+        }
+
+        /// <summary>改游戏目录：写完立刻重扫版本列表，左侧马上反映新目录里的实例。</summary>
+        private async void OnQuickMcFolderClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var picker = AppServices.FilePicker;
+                if (picker is null)
+                    return;
+
+                var folder = await picker.PickFolderAsync("选择 Minecraft 文件夹");
+                if (string.IsNullOrWhiteSpace(folder))
+                    return;
+
+                MainWindowViewModel.MainModel.MinecraftFolder = folder;
+                SettingsService.Current.MinecraftFolder = folder;
+                SettingsService.Save();
+
+                RefreshQuickSettings();
+                _launchViewModel?.LoadCommand.Execute(null);
+
+                AppServices.Notifications?.Show(
+                    "已切换到新的 Minecraft 文件夹", "快捷设置", NotificationSeverity.Success);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "切换 Minecraft 文件夹失败");
+                AppServices.Notifications?.Error("切换文件夹失败：" + FriendlyError.Describe(ex));
+            }
+        }
+
+        /// <summary>下拉里选一个已检测到的 Java。</summary>
+        private void OnQuickJavaSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (_quickRefreshing)
                 return;
 
-            if (sender is Control { DataContext: NewsItem news })
+            if (quickJavaCombo.SelectedItem is JavaEntry java && !string.IsNullOrWhiteSpace(java.JavaPath))
+                ApplyQuickJava(java.JavaPath);
+        }
+
+        /// <summary>手动挑一个 java.exe（可以是设置里没扫到的路径）。</summary>
+        private async void OnQuickJavaBrowseClick(object? sender, RoutedEventArgs e)
+        {
+            try
             {
-                var page = AppServices.Provider?.GetService(typeof(NewsDetailPage)) as NewsDetailPage
-                           ?? new NewsDetailPage();
-                page.ShowNews(news);
-                AppNavigation.Navigate(page);
+                var picker = AppServices.FilePicker;
+                if (picker is null)
+                    return;
+
+                var path = await picker.PickFileAsync("选择 java.exe", "exe");
+                if (string.IsNullOrWhiteSpace(path))
+                    return;
+
+                if (!JavaHelper.IsUsableJava(path))
+                {
+                    AppServices.Notifications?.Warning(
+                        "这个文件不是可用的 Java（同目录下应当有 java.dll）", "快捷设置");
+                    return;
+                }
+
+                ApplyQuickJava(path);
             }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "选择 Java 失败");
+                AppServices.Notifications?.Error("选择 Java 失败：" + FriendlyError.Describe(ex));
+            }
+        }
+
+        private void ApplyQuickJava(string path)
+        {
+            MainWindowViewModel.MainModel.JavaPath = path;
+            SettingsService.Current.JavaPath = path;
+            SettingsService.Save();
+
+            RefreshQuickSettings();
+
+            AppServices.Notifications?.Show($"已切换 Java：{path}", "快捷设置", NotificationSeverity.Success);
+        }
+
+        /// <summary>亮色 / 暗色切换，立即生效（不用重启）。</summary>
+        private void OnQuickThemeChanged(RadioButton source)
+        {
+            if (_quickRefreshing || source.IsChecked != true)
+                return;
+
+            var theme = ReferenceEquals(source, quickThemeDark) ? "Dark" : "Light";
+            if (string.Equals(SettingsService.Current.Theme, theme, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            SettingsService.Current.Theme = theme;
+            // 走统一入口：切主题时一并刷新窗口底色、背景遮罩与主题色
+            SettingsService.ApplyTheme();
+            SettingsService.Save();
         }
     }
 }

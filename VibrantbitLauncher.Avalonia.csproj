@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.8.2</Version>
+    <Version>1.0.10.5</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -32,8 +32,13 @@
       多平台一键发布见根目录 publish-all.ps1 / publish-all.sh。
     -->
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
+    <!--
+      同样带 Condition：发布配置文件（Properties/PublishProfiles/*.pubxml）与命令行
+      -p:PublishSingleFile=false 要能覆盖它。写成无条件赋值的话，便携目录那份
+      配置会被这里悄悄改回单文件，产物看着「发布成功」却是错的。
+    -->
+    <PublishSingleFile Condition="'$(PublishSingleFile)' == ''">true</PublishSingleFile>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
     <!-- 不包含运行时：产物里没有 coreclr/hostfxr/System.Private.CoreLib，
          用户机器须自备 .NET 10 Desktop Runtime（见 CHANGELOG 说明）。 -->
 
@@ -41,7 +46,12 @@
          （历史实测 73.6MB vs 42.6MB），本项目更在意分发体积。
          写在这里是为了让命令行发布与 IDE 的 pubxml 行为一致 -->
     <PublishReadyToRun>false</PublishReadyToRun>
-    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+
+    <!--
+      单文件压缩的开关在文件末尾（Release 段之后）。**不能放在这里**：
+      MSBuild 的属性按书写顺序求值，此处 SelfContained 还是上面的 false，
+      条件会当场定格成 false，后面再改 SelfContained 也不会重算。
+    -->
 
     <!--
       不开剪裁（PublishTrimmed=false）：本项目绑定走反射
@@ -50,6 +60,28 @@
       体积改由「单文件压缩 + 剥离符号 + 去掉未用依赖」来控制。
     -->
     <PublishTrimmed>false</PublishTrimmed>
+
+    <!--
+      ⚠️ 关掉 apphost 的 CET（Intel 控制流强制技术 / 影子栈）兼容标记。
+
+      症状（2026-10-19，Win10 22H2 虚拟机实测）：
+        双击无反应、没有任何日志，事件查看器里是 KERNELBASE.dll + 0x80131506；
+        手动在终端里跑才看得到真正的原因：
+          Fatal error.
+          Your Windows doesn't fully support CET. Please install all available Windows updates.
+
+      原理：.NET 8 起 apphost 默认给自己的 PE 打上「CET 兼容」标记。
+      运行时启动时会据此检查操作系统是否完整支持 CET —— 而 Windows 10 的某些
+      补丁级别（如 19041.2913）在支持 CET 的 CPU 上处于「半支持」状态：
+      CPU 报告有 CET，系统却没打全相关补丁。运行时检测到这个矛盾会直接 FailFast
+      （0x80131506 = COR_E_EXECUTIONENGINE），崩溃发生在任何托管代码之前 ——
+      所以 StartupFailureReporter 也拦不到，磁盘上一个字都不会有。
+
+      关掉这个标记后运行时不再做该检查，代价是放弃影子栈这一项硬件缓解措施。
+      对本项目（离线启动器、无不受信输入）来说，能启动远比这项缓解重要。
+      想让系统回到「全支持」状态的正道仍是装齐 Windows 更新，届时删掉这一行即可。
+    -->
+    <CetCompat>false</CetCompat>
 
     <!--  ==================== 体积控制  ====================  -->
 
@@ -64,6 +96,93 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <!--  ==================== 程序集剪裁（可选，默认关）  ====================  -->
+
+  <!--
+    ★ 开关：-p:EnableAppTrimming=true（publish-all.ps1 的 -Trimmed 走这里，
+      WindowsTrimmed.pubxml 也走这里）。
+
+    为什么单独做一个开关而不是直接开 PublishTrimmed：
+      ① csproj 里的 PublishTrimmed=false 是**默认值**，需要一个显式信号才能翻过来；
+      ② TrimmerRootAssembly 是 Item，命令行传多项要写 %3B 转义，极易踩坑 ——
+         固化在 csproj 里，调用方只需一个布尔开关；
+      ③ 发布配置（pubxml）与一键脚本共用同一份 root 列表，不会走偏。
+
+    实测收益（win-x64 / win 单文件 / 1.0.10.2）：
+      不剪裁  52.29 MB
+      剪裁    29.04 MB   ← -44%（已启动验证到主界面）
+
+    省下来的主要是自包含运行时里「整个包原样复制」的部分：
+      System.Private.Xml 7.4MB · System.Linq.Expressions 3.5MB ·
+      System.Data.Common 2.6MB · System.Private.DataContractSerialization 2.0MB ·
+      System.Text.Json 1.8MB（按实际调用图只留被走到的代码）
+  -->
+  <PropertyGroup Condition="'$(EnableAppTrimming)' == 'true'">
+    <PublishTrimmed>true</PublishTrimmed>
+    <!--
+      partial 而不是 full：只裁「自己声明了 IsTrimmable」的程序集，
+      对没有剪裁标注的第三方库保持原样。宁可少省几 MB，也不要在
+      MinecraftLaunch / Flurl / Newtonsoft 这类反射密集的库上赌。
+    -->
+    <TrimMode>partial</TrimMode>
+    <!-- 剪裁警告照常输出，不要用 SuppressTrimAnalysisWarnings 捂掉 -->
+    <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+  </PropertyGroup>
+
+  <!--
+    ★ 剪裁时的保留根（TrimmerRootAssembly = 整程序集元数据全保留）。
+
+    ⚠️⚠️ **这个 ItemGroup 刻意不写 Condition**（1.0.10.2 踩过的坑）
+    ================================================================
+    publish profile（pubxml）是在 csproj **全部求值之后**才 Import 的，
+    所以写在 pubxml 里的 EnableAppTrimming，csproj 里的条件块永远看不到：
+
+      dotnet publish -p:EnableAppTrimming=true   → 全局属性，求值前就有 → 生效
+      dotnet publish -p:PublishProfile=WindowsTrimmed → 求值后才有 → 条件不成立 → 不生效
+
+    后果实测：pubxml 路径下「只开了 PublishTrimmed 但 root 全丢」，
+    ILLink 把 Avalonia 的 !AvaloniaResources 索引一起裁掉，
+    产出 28.03MB 的 exe，一启动就是：
+
+      XamlLoadException: No precompiled XAML found for VibrantbitLauncher.App
+
+    去掉 Condition 后两条路径都正常，产物 29.04MB，启动到主界面（SHOWN）。
+
+    不写 Condition 安全吗？安全。标准档（PublishTrimmed=false）时 ILLink 根本
+    不运行，TrimmerRootAssembly 只是一个没人读的 Item，不进 ResolvedFileToPublish，
+    对产物与体积零影响（实测标准档仍是 52.29MB）。
+
+    为什么必须 root 这 8 个：本项目 AvaloniaUseCompiledBindingsByDefault=false，
+    XAML 绑定走反射，剪裁器看不到 XAML 里写的字符串路径；
+    而 JSON 序列化（SettingsService / SkinService / MojangNewsHelper）同样靠反射取属性。
+    两处都需要「运行期才用到的元数据」，正好是剪裁器最爱删的东西。
+
+      VibrantbitLauncher.Avalonia  全部 ViewModel / Model / JSON 契约类型
+      Avalonia.Base                属性系统、绑定引擎、样式选择器
+      Avalonia.Controls            控件属性与模板
+      Avalonia.Markup.Xaml         XAML 加载器（反射构造控件）
+      FluentAvalonia               FANavigationView / FAAppWindow 等模板
+      MinecraftLaunch(Base)        版本 JSON / 库模型的反序列化
+      CommunityToolkit.Mvvm        ObservableProperty 生成的成员
+
+    加完这 8 个之后单文件仍为 29.04MB（裁掉的是 BCL 里确实没走到的部分）。
+
+    ⚠️ 仍需人工验收（AI 无法替你跑 GUI）：冷启动、各页面绑定、设置读写后重启、
+    账号登录、皮肤换肤、下载、新建 Forge 实例、**拖放文件 / 文件选择对话框**
+    （后者走 COM，剪裁器对 BuiltInComInteropSupport 有 IL2026 警告，
+    是本档最可能出问题的一处）。任何一项异常就回到不剪裁的档位。
+  -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="VibrantbitLauncher.Avalonia" />
+    <TrimmerRootAssembly Include="Avalonia.Base" />
+    <TrimmerRootAssembly Include="Avalonia.Controls" />
+    <TrimmerRootAssembly Include="Avalonia.Markup.Xaml" />
+    <TrimmerRootAssembly Include="FluentAvalonia" />
+    <TrimmerRootAssembly Include="MinecraftLaunch" />
+    <TrimmerRootAssembly Include="MinecraftLaunch.Base" />
+    <TrimmerRootAssembly Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DebugType>embedded</DebugType>
   </PropertyGroup>
@@ -73,14 +192,45 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!--
-      单文件压缩（EnableCompressionInSingleFile）只在「独立部署」下可用，
-      框架依赖发布时会被 SDK 拦下来（NETSDK1176）。
-      实测框架依赖的单文件是 ~41MB，改成独立部署再压缩反而更大，
-      所以这里保持框架依赖，不启用压缩。
+      ★ 默认自包含（1.0.9.6 起固化）。
+
+      原来的默认是「框架依赖 + 不压缩」（约 40MB），代价是目标机器必须先装
+      .NET 10 Desktop Runtime —— 没装时双击**毫无反应**、零日志，宿主在托管代码
+      之前就退出，用户只会说「打不开」。分发场景下这个默认值是要命的。
+
+      现在不带任何参数执行 `dotnet publish` 就产出内含运行时的单文件 exe；
+      命令行仍可用「关闭自包含」的开关（no-self-contained）或
+      SelfContained=false 覆盖回框架依赖
+      （publish-all.ps1 -FrameworkDependent 走的就是这条路）。
     -->
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <!--
+    单文件压缩：**只在自包含发布时开启**（1.0.9.3 起自动生效，不必再手动传参）。
+
+    ⚠️ 必须写在 Release PropertyGroup **之后**：MSBuild 属性按顺序求值，
+    放在前面会读到旧的 SelfContained=false，条件当场定格成 false。
+
+    为什么带 Condition：框架依赖时 SDK 会直接拦下（NETSDK1176
+    「Compression is only supported for self-contained」），所以不能无条件开。
+
+    收益实测（win-x64，同一份代码）：
+      自包含 + 不压缩 → 113 MB
+      自包含 + 压缩   → 55 MB      ← 约 51%
+    代价是首次启动要把内嵌的运行时解压到 %TEMP%\.net\，老机器上多 1~3 秒；
+    之后就复用已解压的目录。相比「让用户去装 60MB 的 .NET 运行时」，
+    多等几秒、多占几十 MB 明显更划算。
+  -->
+  <PropertyGroup>
+    <!--
+      条件里必须同时看 PublishSingleFile：关闭单文件（-p:PublishSingleFile=false，
+      即「便携目录」形态）时还开着压缩，SDK 会报 NETSDK1169。
+    -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true' and '$(PublishSingleFile)' == 'true'">true</EnableCompressionInSingleFile>
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' != 'true' or '$(PublishSingleFile)' != 'true'">false</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <!--
@@ -98,10 +248,25 @@
        管不到它们（那只作用于 RAR 任务）。
 
     按文件名 / 扩展名匹配，不锁版本号，上游升级也不会失效。
+
+    3) 调试器 / 转储分析组件（1.0.10.2 新增，约 6.2MB 未压缩）
+       mscordaccore.dll                 DAC，托管调试器读取进程状态用
+       mscordaccore_amd64_*.dll         DAC 的架构专用副本（名字带运行时补丁号）
+       mscordbi.dll                     ICorDebug 实现
+       Microsoft.DiaSymReader.Native    PDB 读写（DAC 的依赖）
+
+       这些只在「VS 附加到进程」「dotnet-dump / 蓝屏转储分析」时才被加载，
+       应用自己运行一行都不碰。注意 `<DebuggerSupport>false</DebuggerSupport>`
+       对自包含载荷**无效**（实测 1.0.10.1：同名 dll 一个不少，体积 0 变化），
+       所以只能在这里删。
+
+       ⚠️ 副作用：发布产出的 exe 无法再被 VS「附加到进程」调试，也无法生成
+       托管转储分析。**开发调试请用 dotnet build 的产物**（不受此影响，bin/ 下
+       mscordaccore 仍在）。如果哪天真要查发布版的崩溃转储，临时去掉这 4 条 Remove。
   -->
   <Target Name="TrimPublishPayload" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="&#xA;            '%(Extension)' == '.pdb' or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('xunit.')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.CodeCoverage')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.CodeCoverage')) or&#xA;            '%(Filename)' == 'testhost'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="&#xA;            '%(Extension)' == '.pdb' or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('xunit.')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.TestPlatform')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.VisualStudio.CodeCoverage')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.CodeCoverage')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('mscordaccore')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('mscordbi')) or&#xA;            $([System.String]::Copy('%(Filename)').StartsWith('Microsoft.DiaSymReader')) or&#xA;            '%(Filename)' == 'testhost'" />
     </ItemGroup>
   </Target>
 

@@ -322,10 +322,10 @@ namespace VibrantbitLauncher.Services
                     : $"下载库 {currentDone}/{total} · {lastIssue}");
             }
 
-            // 并发数刻意比「下载线程数」低：Fabric 的库只有 ~8 个，
-            // 实测按 DownloadThreads（默认 10）并发打 BMCLAPI 会被瞬时限流（403）——
+            // 并发数上限压到 4：Fabric 的库只有 ~8 个，
+            // 实测按「同时下载文件数」原值（默认 6）并发打 BMCLAPI 会被瞬时限流（403）——
             // 4 路已经比原来的串行快好几倍，同时不至于把镜像惹毛。
-            var parallelism = Math.Clamp(SettingsService.Current.DownloadThreads, 1, 4);
+            var parallelism = SettingsService.ResolveDownloadConcurrency(4);
             var stopwatch = Stopwatch.StartNew();
 
             // 单个库失败不再让整批一起陪葬：把失败收集起来，剩下的照样下完，
@@ -505,10 +505,16 @@ namespace VibrantbitLauncher.Services
         /// </para>
         ///
         /// <para>
-        /// <paramref name="timeout"/> / <paramref name="idleTimeout"/> / <paramref name="totalTimeout"/>
-        /// 三个参数保留只是为了不动调用方签名 —— 内核的等价机制是
-        /// <c>BlockTimeout</c>（多久没收到字节算卡死，30 秒）+ 分块级自动重试 +
-        /// 候选源轮换，比「单文件总时限」更精确：慢而稳的下载不会被误杀，真卡死的 30 秒内就让位。
+        /// <paramref name="idleTimeout"/> 是<b>真正生效</b>的：它一路传给
+        /// <see cref="FileDownloader"/> 的字节级看门狗 ——
+        /// 「连接后若干秒内没有收到任何数据」或「收到过数据后又长时间没有新字节」
+        /// 都会掐掉这次尝试并换源。这一层是内核 <c>BlockTimeout</c> 覆盖不到的死角
+        /// （maven.minecraftforge.net 这类「响应头秒回、响应体不发」的主机），
+        /// 也正是 Forge / NeoForge 安装卡在「下载安装器」的根本原因。
+        /// </para>
+        /// <para>
+        /// <paramref name="timeout"/> / <paramref name="totalTimeout"/> 仍然只保留签名兼容，
+        /// 不再参与判断：慢而稳的下载不该被「总时限」误杀。
         /// </para>
         /// </summary>
         internal static async Task DownloadFileAsync(
@@ -519,7 +525,8 @@ namespace VibrantbitLauncher.Services
             Action<long> onBytes = null,
             Action<string> onStatus = null,
             TimeSpan? idleTimeout = null,
-            TimeSpan? totalTimeout = null)
+            TimeSpan? totalTimeout = null,
+            string? altUrl = null)
         {
             // 老版本用固定名 .vbltmp 做临时文件，升级后不会有人再清理它，顺手删掉
             TryDelete(targetPath + LegacyTempSuffix);
@@ -527,9 +534,12 @@ namespace VibrantbitLauncher.Services
             var item = new DownloadItem(
                 officialUrl,
                 targetPath,
-                DisplayName: Path.GetFileName(targetPath));
+                DisplayName: Path.GetFileName(targetPath),
+                AltUrl: altUrl);
 
-            await FileDownloader.DownloadAsync(item, onBytes, onStatus, ct).ConfigureAwait(false);
+            await FileDownloader.DownloadAsync(
+                item, onBytes, onStatus, ct, onProgress: null, idleTimeout: idleTimeout)
+                .ConfigureAwait(false);
         }
 
         /// <summary>

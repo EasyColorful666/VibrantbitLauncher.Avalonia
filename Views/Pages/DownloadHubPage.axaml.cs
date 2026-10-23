@@ -20,10 +20,7 @@ namespace VibrantbitLauncher.Views.Pages;
 /// </summary>
 public partial class DownloadHubPage : UserControl, INavigationAware
 {
-    /// <summary>
-    /// 分类序号 → Modrinth 项目类型；0 是原版游戏，不走 Modrinth。
-    /// 顺序必须与 XAML 里左侧 ListBox 的 Tag 一一对应（1=模组、2=整合包、3=数据包、4=资源包、5=光影）。
-    /// </summary>
+    /// <summary>分类序号 → Modrinth 项目类型；0 是原版游戏，6 是 Java 运行环境，两者都不走 Modrinth。</summary>
     private static readonly string[] ResourceTypes =
     {
         ModrinthSearchService.TypeMod,
@@ -33,8 +30,12 @@ public partial class DownloadHubPage : UserControl, INavigationAware
         ModrinthSearchService.TypeShader
     };
 
+    /// <summary>Java 运行环境页的分类序号（左侧 ListBox 的 Tag）。</summary>
+    private const int JavaCategoryIndex = 6;
+
     private readonly Dictionary<int, Control> _resourcePages = new();
     private DownloadPage? _downloadPage;
+    private JavaDownloadPage? _javaPage;
 
     /// <summary>上一次显示的分类序号；-1 表示还没显示过。</summary>
     private int _lastShownIndex = -1;
@@ -86,6 +87,8 @@ public partial class DownloadHubPage : UserControl, INavigationAware
 
         if (index <= 0)
             ShowVersionPage();
+        else if (index == JavaCategoryIndex)
+            ShowJavaPage();
         else
             ShowResourcePage(index);
 
@@ -114,6 +117,11 @@ public partial class DownloadHubPage : UserControl, INavigationAware
             return;
         }
 
+        // Java 页的「版本列表」来自网络且带缓存，没有专门的刷新入口 ——
+        // 用户想刷新时点页面上的「刷新」按钮（重进页面不该重新拉一遍 200 MB 的清单）。
+        if (index == JavaCategoryIndex)
+            return;
+
         if (_resourcePages.TryGetValue(index, out var page) && page is DownloadResourcesPage resources)
             resources.RefreshData();
     }
@@ -130,8 +138,34 @@ public partial class DownloadHubPage : UserControl, INavigationAware
             PageTransitionHelper.PlayEnterTransition(_downloadPage);
         }
 
+        if (_javaPage != null)
+            _javaPage.IsVisible = false;
+
         foreach (var page in _resourcePages.Values)
             page.IsVisible = false;
+    }
+
+    /// <summary>
+    /// 显示 Java 运行环境页。
+    ///
+    /// 与资源分类一样「一个分类一个实例」：Java 页自己持有版本列表与下载状态，
+    /// 反复重建会丢掉用户正在下载的进度。
+    /// </summary>
+    private void ShowJavaPage()
+    {
+        _javaPage ??= ResolveOrCreate<JavaDownloadPage>();
+
+        if (!HostGrid.Children.Contains(_javaPage))
+            HostGrid.Children.Add(_javaPage);
+
+        if (_downloadPage != null)
+            _downloadPage.IsVisible = false;
+
+        foreach (var page in _resourcePages.Values)
+            page.IsVisible = false;
+
+        _javaPage.IsVisible = true;
+        PageTransitionHelper.PlayEnterTransition(_javaPage);
     }
 
     private void ShowResourcePage(int index)
@@ -161,6 +195,9 @@ public partial class DownloadHubPage : UserControl, INavigationAware
 
         if (_downloadPage != null)
             _downloadPage.IsVisible = false;
+
+        if (_javaPage != null)
+            _javaPage.IsVisible = false;
 
         foreach (var pair in _resourcePages)
             pair.Value.IsVisible = pair.Key == index;

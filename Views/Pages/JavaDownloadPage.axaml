@@ -1,0 +1,201 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="using:VibrantbitLauncher.Models"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Views.Pages.JavaDownloadPage"
+             d:DesignWidth="800"
+             d:DesignHeight="450">
+
+    <!--
+        版式：标题区 / 参数栏 / 主体（左：版本列表，右：已安装）/ 进度区。
+        数据来源是 Adoptium 的公开 REST API，版本列表按「当前系统 + 架构」自动过滤。
+    -->
+    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto">
+
+        <!--  标题  -->
+        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
+            <TextBlock Classes="display" Text="Java 运行环境" />
+            <Border Classes="accentRule" Margin="0,10,0,0" />
+            <TextBlock Classes="caption" Margin="0,6,0,0"
+                       Text="从 Eclipse Adoptium 获取 Temurin JDK，装好后可直接用于启动游戏" />
+        </StackPanel>
+
+        <!--  参数栏  -->
+        <Border Grid.Row="1" Classes="card" Padding="16,12" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" >
+
+                <TextBlock Grid.Column="0" Classes="body" Text="主版本"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+
+                <ComboBox x:Name="MajorBox"
+                          Grid.Column="1"
+                          MinWidth="96"
+                          VerticalAlignment="Center"
+                          SelectionChanged="MajorBox_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock x:Name="PlatformText"
+                           Grid.Column="2"
+                           Classes="caption"
+                           VerticalAlignment="Center"
+                           Margin="14,0,14,0"
+                           Text="平台检测中…" />
+
+                <TextBox x:Name="PathBox"
+                         Grid.Column="3"
+                         VerticalAlignment="Center"
+                         ToolTip.Tip="默认 %ProgramFiles%\Eclipse Adoptium —— 与 Java 官方安装器使用同一路径；写入需要管理员权限，也可点「浏览…」换目录"
+                         PlaceholderText="安装目录" />
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0">
+                    <Button x:Name="BrowseButton" Content="浏览…" Click="Browse_Click" />
+                    <Button x:Name="ReloadButton" Click="Reload_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ui:FASymbolIcon Symbol="Refresh" />
+                            <TextBlock Text="刷新" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  主体  -->
+        <Grid Grid.Row="2" ColumnDefinitions="3*,16,2*">
+
+            <!--  左侧：可选版本  -->
+            <Grid Grid.Column="0" RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Classes="sectionTitle" Text="可下载的版本" Margin="0,0,0,8" />
+
+                <TextBlock x:Name="EmptyText"
+                           Grid.Row="1"
+                           Classes="secondary"
+                           Text="正在获取版本列表…"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+
+                <ListBox x:Name="ReleaseList"
+                         Grid.Row="1"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Margin" Value="0,0,0,8" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:JavaReleaseItem">
+                            <Border Classes="card" Padding="14,12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Classes="subtitle" Text="{Binding Version}" />
+                                            <Border Background="{DynamicResource AppAccentSurfaceBrush}"
+                                                    CornerRadius="4" Padding="6,1"
+                                                    IsVisible="{Binding IsLts}"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Classes="caption"
+                                                           Foreground="{DynamicResource AppAccentBrush}"
+                                                           Text="LTS" />
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Classes="caption" Text="{Binding SummaryText}" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1"
+                                            Classes="accent"
+                                            Content="下载"
+                                            VerticalAlignment="Center"
+                                            Tag="{Binding}"
+                                            Click="Download_Click" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <!--  右侧：已安装  -->
+            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Classes="sectionTitle" Text="已安装" Margin="0,0,0,8" />
+
+                <TextBlock x:Name="NoInstalledText"
+                           Grid.Row="1"
+                           Classes="secondary"
+                           Text="还没有安装过 Java"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+
+                <ListBox x:Name="InstalledList"
+                         Grid.Row="1"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Margin" Value="0,0,0,8" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:JavaInstallation">
+                            <Border Classes="card" Padding="12,10">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="body" Text="{Binding Version}" />
+                                    <TextBlock Classes="caption" Text="{Binding Home}" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                        <Button Content="设为启动 Java"
+                                                Tag="{Binding}"
+                                                Click="UseAsLaunchJava_Click" />
+                                        <Button Content="打开目录"
+                                                Tag="{Binding}"
+                                                Click="OpenFolder_Click" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Grid>
+
+        <!--  进度区  -->
+        <Border x:Name="ProgressPanel"
+                Grid.Row="3"
+                Classes="card"
+                Padding="14,10"
+                Margin="0,12,0,0"
+                IsVisible="False">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                <TextBlock x:Name="StatusText"
+                           Grid.Row="0" Grid.Column="0"
+                           Classes="caption"
+                           TextTrimming="CharacterEllipsis"
+                           Text="准备中…" />
+
+                <Button x:Name="CancelButton"
+                        Grid.Row="0" Grid.Column="1"
+                        Content="取消"
+                        Margin="12,0,0,0"
+                        Click="Cancel_Click" />
+
+                <ProgressBar x:Name="ProgressBar"
+                             Grid.Row="1" Grid.ColumnSpan="2"
+                             Margin="0,8,0,0"
+                             Minimum="0" Maximum="100"
+                             Height="4" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

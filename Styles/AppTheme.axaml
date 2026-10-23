@@ -15,6 +15,15 @@
     <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF10893E" />
     <SolidColorBrush x:Key="AppCriticalBrush" Color="#FFD13438" />
     <SolidColorBrush x:Key="AppCautionBrush" Color="#FFCC8800" />
+
+    <!--
+        愚人节版本的类型标识色（下载页筛选圆点用）。
+
+        只有 6px 的面积，所以取一个**亮而低饱和**的紫：浅色主题下能看清，
+        深色主题下也不刺眼。这是全工程唯一用到紫色系的地方 ——
+        它标记的是「梗版本」这个一次性的语义，不参与常规配色。
+    -->
+    <SolidColorBrush x:Key="AppAprilFoolsBrush" Color="#FFB146C2" />
     <SolidColorBrush x:Key="AppCriticalSurfaceBrush" Color="#FFD13438" Opacity="0.12" />
     <SolidColorBrush x:Key="AppCautionSurfaceBrush" Color="#FFCC8800" Opacity="0.14" />
     <SolidColorBrush x:Key="AppSuccessSurfaceBrush" Color="#FF10893E" Opacity="0.12" />

@@ -53,7 +53,8 @@ public static class FileDownloader
         Action<long>? onBytes = null,
         Action<string>? onStatus = null,
         CancellationToken ct = default,
-        Action<long, long>? onProgress = null)
+        Action<long, long>? onProgress = null,
+        TimeSpan? idleTimeout = null)
     {
         if (item is null)
             throw new ArgumentNullException(nameof(item));
@@ -96,7 +97,7 @@ public static class FileDownloader
 
                 try
                 {
-                    await DownloadCoreAsync(url, item, onBytes, onProgress, ct).ConfigureAwait(false);
+                    await DownloadCoreAsync(url, item, onBytes, onProgress, idleTimeout, ct).ConfigureAwait(false);
                     watch.Stop();
 
                     DownloadSources.ReportSourceHealth(
@@ -152,6 +153,7 @@ public static class FileDownloader
         DownloadItem item,
         Action<long>? onBytes,
         Action<long, long>? onProgress,
+        TimeSpan? idleTimeout,
         CancellationToken ct)
     {
         var tmpPath = MakeTempPath(item.TargetPath);
@@ -170,14 +172,81 @@ public static class FileDownloader
         // 界面上表现为「速度虚高、进度条跑过头」。锁里只有一次减法，开销可以忽略。
         var gate = new object();
 
+        // ==================== 字节级看门狗 ====================
+        //
+        // 为什么内核自带的 BlockTimeout 不够：
+        // maven.minecraftforge.net / maven.neoforged.net 属于「**TCP 连得上、响应头也能秒回、
+        // 但响应体一个字节都不发**」的那一类主机。内核的 BlockTimeout 判的是「这一块有没有
+        // 新数据」，而它在分块握手完成前不计时，于是表现就是「安装器下载」这一步无限期停住 ——
+        // 日志停在「下载 Forge 安装器」再也不动，取消都不好取消（用户唯一的出路是杀进程）。
+        //
+        // 这里在**调用方**再挂一层与内核无关的看门狗：
+        //   · 从发起请求起 20 秒内一个字节都没收到  → 判定源不可用，掐掉这次尝试；
+        //   · 收到数据之后连续 25 秒没有新字节        → 同上（弱网/限流下的假死）。
+        // 两条都以「有没有字节」为准，所以慢而稳的链路不会被误杀。
+        // 抛 TimeoutException 是为了让上层按「源故障 → 换下一个候选源」处理，
+        // 而不是被当成用户取消。
+        var idle = idleTimeout ?? DefaultIdleTimeout;
+        var firstByteGrace = TimeSpan.FromSeconds(Math.Min(20, Math.Max(5, idle.TotalSeconds * 0.8)));
+
+        using var watchdogCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var watchdogTripped = false;
+        long lastActivityTicks = Environment.TickCount64;
+        long firstByteAtTicks = 0;
+
+        // 给用户看的一句话：区分「一个字节都没来」和「传了一半断掉」
+        string StallDescription() =>
+            Interlocked.Read(ref firstByteAtTicks) == 0
+                ? $"连接后 {firstByteGrace.TotalSeconds:0} 秒内没有收到任何数据"
+                : $"已有 {idle.TotalSeconds:0} 秒没有再收到数据";
+
+        var watchdog = Task.Run(async () =>
+        {
+            var startedAt = Environment.TickCount64;
+
+            while (!watchdogCts.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1000, watchdogCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                var now = Environment.TickCount64;
+                var gotFirstByte = Interlocked.Read(ref firstByteAtTicks) != 0;
+
+                var stalled = gotFirstByte
+                    ? now - Interlocked.Read(ref lastActivityTicks) > (long)idle.TotalMilliseconds
+                    : now - startedAt > (long)firstByteGrace.TotalMilliseconds;
+
+                if (!stalled)
+                    continue;
+
+                watchdogTripped = true;
+                try { watchdogCts.Cancel(); } catch { /* 已释放 */ }
+                return;
+            }
+        });
+
         try
         {
-            var chunks = Math.Clamp(SettingsService.Current.DownloadThreads, 2, 8);
+            var chunks = ResolveChunkCount();
+            Log.Debug("下载 {File}：{Chunks} 块并行（{Mode}）",
+                item.Name, chunks, chunks > 1 ? "多连接分块" : "单连接");
+
             using var service = new DownloadService(DownloadEngine.CreateConfiguration(chunks));
 
             service.DownloadProgressChanged += (_, e) =>
             {
                 var received = e.ReceivedBytesSize;
+
+                // 看门狗：有字节在动就续命（这是唯一的活动信号）
+                Interlocked.Exchange(ref lastActivityTicks, Environment.TickCount64);
+                if (Interlocked.Read(ref firstByteAtTicks) == 0 && received > 0)
+                    Interlocked.Exchange(ref firstByteAtTicks, Environment.TickCount64);
 
                 lock (gate)
                 {
@@ -216,10 +285,28 @@ public static class FileDownloader
                 }
             };
 
-            await service.DownloadFileTaskAsync(new[] { url }, tmpPath, ct).ConfigureAwait(false);
+            try
+            {
+                await service.DownloadFileTaskAsync(new[] { url }, tmpPath, watchdogCts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested && watchdogTripped)
+            {
+                // 看门狗掐断的，不是用户按了取消 —— 换成超时类型，
+                // 上层才会按「换个源重试」处理，而不是把安装报成「已取消」。
+                throw new TimeoutException(
+                    $"{DownloadSources.HostOf(url)} 无响应：" + StallDescription());
+            }
 
             if (ct.IsCancellationRequested)
                 throw new OperationCanceledException(ct);
+
+            // 看门狗先于用户取消触发：这是「源假死」，不是用户行为
+            if (watchdogTripped && !ct.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"{DownloadSources.HostOf(url)} 无响应：" + StallDescription());
+            }
 
             lock (gate)
             {
@@ -236,6 +323,7 @@ public static class FileDownloader
         }
         finally
         {
+            try { watchdogCts.Cancel(); } catch { /* 已释放 */ }
             TryDelete(tmpPath);
             TryDelete(packagePath);
         }
@@ -259,6 +347,28 @@ public static class FileDownloader
 
         if (item.ExpectedSize > 0 && info.Length != item.ExpectedSize)
             throw DownloadIntegrityException.SizeMismatch(item.ExpectedSize, info.Length);
+
+        // jar / zip 做一次「中央目录」校验。
+        //
+        // 为什么清单里没给 size 也必须验：install_profile 里的工具库是纯 maven 写法
+        // （只有 name + url），既没有 size 也没有 sha1；而镜像站恰恰会「HTTP 200 + 传一半就断」。
+        // 这种残片长度对不上任何声明值，sha1 也没有，会一路被当成「下载成功」，
+        // 直到跑 Forge 处理器时报 ClassNotFoundException —— 用户完全看不出是下载问题。
+        // 打开 ZipArchive 只读文件末尾的中央目录，几毫秒，代价可以忽略。
+        if (item.TargetPath.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)
+            || item.TargetPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var probe = System.IO.Compression.ZipFile.OpenRead(path);
+                _ = probe.Entries.Count;
+            }
+            catch (InvalidDataException)
+            {
+                throw new DownloadIntegrityException(
+                    "下载到的 jar/zip 不完整（文件被截断，或下载源返回了错误页面）");
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(item.Sha1))
             return;
@@ -333,6 +443,32 @@ public static class FileDownloader
 
     /// <summary>库自己追加的临时后缀（见配置里的 DownloadFileExtension 默认值）。</summary>
     private const string DefaultExtension = ".download";
+
+    /// <summary>设置缺失 / 非法时的回退分块数。4 块在多数家用带宽上已经能跑满。</summary>
+    private const int DefaultChunkCount = 4;
+
+    /// <summary>分块数硬上限（与 <see cref="DownloadEngine"/> 的 MaxChunks 保持一致）。</summary>
+    private const int MaxChunkCount = 16;
+
+    /// <summary>
+    /// 取本次下载使用的分块数。
+    ///
+    /// <para>
+    /// 用户的意图优先：设置页选了 1 就是单连接（镜像限流时的逃生阀），
+    /// 选了 16 就切 16 块。只有值为 0 / 负数（旧配置没这个字段）才回退默认值。
+    /// </para>
+    /// </summary>
+    internal static int ResolveChunkCount()
+    {
+        var configured = SettingsService.Current.DownloadChunkCount;
+        if (configured <= 0)
+            configured = DefaultChunkCount;
+
+        return Math.Clamp(configured, 1, MaxChunkCount);
+    }
+
+    /// <summary>未显式指定时的空闲超时：40 秒没有任何字节就算这次尝试假死。</summary>
+    private static readonly TimeSpan DefaultIdleTimeout = TimeSpan.FromSeconds(40);
 
     private static void TryDelete(string path)
     {

@@ -123,6 +123,75 @@ namespace VibrantbitLauncher.Helpers
                 fromOffsetY: 0d, toOffsetY: 0d,
                 duration, easing, cancellationToken);
 
+        /// <summary>
+        /// 水平滑入 + 淡入（列表项「从左飞入」用）。
+        ///
+        /// <para>
+        /// 和 <see cref="AnimateAsync"/> 的区别只在于位移走 X 轴。单独开一个方法而不是
+        /// 给原方法加参数，是因为调用点太多（页面切换、按钮反馈、窗口动效），
+        /// 加可选参数会让每个调用都多读两个用不上的形参。
+        /// </para>
+        /// </summary>
+        public static Task AnimateSlideXAsync(
+            Visual visual,
+            double fromOpacity,
+            double toOpacity,
+            double fromOffsetX,
+            double toOffsetX,
+            TimeSpan duration,
+            Easing? easing = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (duration <= TimeSpan.Zero)
+            {
+                PrepareSlideX(visual, toOpacity, toOffsetX);
+                return Task.CompletedTask;
+            }
+
+            var (_, translate) = EnsureTransform(visual);
+            var ease = easing ?? DefaultEasing;
+
+            // 基准值 = 终态（与 AnimateAsync 同一套约定，播完自然回落到终态）
+            if (!AreEqual(fromOpacity, toOpacity))
+                visual.Opacity = toOpacity;
+
+            if (!AreEqual(fromOffsetX, toOffsetX))
+                translate.X = toOffsetX;
+
+            var tasks = new List<Task>(2);
+
+            if (!AreEqual(fromOpacity, toOpacity))
+            {
+                tasks.Add(CreateAnimation(
+                    duration, ease,
+                    new (AvaloniaProperty, double)[] { (Visual.OpacityProperty, fromOpacity) },
+                    new (AvaloniaProperty, double)[] { (Visual.OpacityProperty, toOpacity) })
+                    .RunAsync(visual, cancellationToken));
+            }
+
+            if (!AreEqual(fromOffsetX, toOffsetX))
+            {
+                tasks.Add(CreateAnimation(
+                    duration, ease,
+                    new (AvaloniaProperty, double)[] { (TranslateTransform.XProperty, fromOffsetX) },
+                    new (AvaloniaProperty, double)[] { (TranslateTransform.XProperty, toOffsetX) })
+                    .RunAsync(visual, cancellationToken));
+            }
+
+            return tasks.Count == 0 ? Task.CompletedTask : Task.WhenAll(tasks);
+        }
+
+        /// <summary>
+        /// 把元素直接摆到「左飞入起点」（透明 + 向左偏移）。
+        /// 必须在动画开始前调用，否则会先显示一帧完整内容再跳回去。
+        /// </summary>
+        public static void PrepareSlideX(Visual visual, double opacity, double offsetX)
+        {
+            var (_, translate) = EnsureTransform(visual);
+            visual.Opacity = opacity;
+            translate.X = offsetX;
+        }
+
         /// <summary>跳过动画时直接把元素摆到终态。</summary>
         public static void ApplyEndState(Visual visual, double opacity, double scale, double offsetY)
         {

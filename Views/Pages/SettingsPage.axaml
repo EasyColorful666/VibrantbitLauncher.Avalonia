@@ -572,7 +572,7 @@
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="下载" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="下载源与并发数。下载慢或频繁失败时，先换成镜像试试。" />
+                                           Text="下载源、并发与分块。下载慢或频繁失败时，先换成镜像试试。" />
 
                                 <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0">
@@ -586,16 +586,33 @@
 
                                 <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="下载线程数" />
+                                        <TextBlock Classes="body" Text="同时下载文件数" />
                                         <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="每个文件的分块并发连接数（2~8）。调高更容易压满带宽；带宽小或镜像限流时调低" />
+                                                   Text="批量下载时同时下几个文件（1~16）。总连接数 ≈ 并发数 × 分块数；镜像频繁 403 时先调低这项" />
                                     </StackPanel>
                                     <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
-                                              ItemsSource="{Binding DownloadThreadsOptions}"
-                                              SelectedItem="{Binding DownloadThreads, Mode=TwoWay}">
+                                              ItemsSource="{Binding DownloadConcurrencyOptionsList}"
+                                              SelectedItem="{Binding DownloadConcurrency, Mode=TwoWay}">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
-                                                <TextBlock Text="{Binding StringFormat={}{0} 线程}" />
+                                                <TextBlock Text="{Binding StringFormat={}{0} 个文件}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Classes="body" Text="单文件分块数" />
+                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="每个文件切成几块并行下载（1~16，1 表示不分块、单连接）。大文件提速主要靠它；小文件或镜像限流时调低" />
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
+                                              ItemsSource="{Binding DownloadChunkOptionsList}"
+                                              SelectedItem="{Binding DownloadChunkCount, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding StringFormat={}{0} 块}" />
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>

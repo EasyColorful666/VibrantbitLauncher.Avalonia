@@ -103,7 +103,9 @@
                                    Text="{Binding FabricVersions.Count, StringFormat='{}{0} 个版本'}" />
                     </StackPanel>
                     <Grid Grid.Row="1" Margin="0,8,0,0">
-                        <ListBox Background="Transparent" BorderThickness="0"
+                        <ListBox x:Name="fabricList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
                                  ItemsSource="{Binding FabricVersions}"
                                  SelectedItem="{Binding SelectFabricVersion, Mode=TwoWay}">
                             <ListBox.Styles>
@@ -132,7 +134,9 @@
                                    Text="{Binding NeoforgeVersions.Count, StringFormat='{}{0} 个版本'}" />
                     </StackPanel>
                     <Grid Grid.Row="1" Margin="0,8,0,0">
-                        <ListBox Background="Transparent" BorderThickness="0"
+                        <ListBox x:Name="neoforgeList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
                                  ItemsSource="{Binding NeoforgeVersions}"
                                  SelectedItem="{Binding SelectNeoforgeVersion, Mode=TwoWay}">
                             <ListBox.Styles>
@@ -161,7 +165,9 @@
                                    Text="{Binding QuiltVersions.Count, StringFormat='{}{0} 个版本'}" />
                     </StackPanel>
                     <Grid Grid.Row="1" Margin="0,8,0,0">
-                        <ListBox Background="Transparent" BorderThickness="0"
+                        <ListBox x:Name="quiltList"
+                                 Background="Transparent"
+                                 BorderThickness="0"
                                  ItemsSource="{Binding QuiltVersions}"
                                  SelectedItem="{Binding SelectQuiltVersion, Mode=TwoWay}">
                             <ListBox.Styles>

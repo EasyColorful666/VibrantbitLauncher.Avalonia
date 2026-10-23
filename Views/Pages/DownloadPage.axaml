@@ -8,7 +8,155 @@
              d:DesignWidth="800"
              d:DesignHeight="450">
 
-    <Grid Margin="0,16,0,8" RowDefinitions="Auto,*">
+    <UserControl.Styles>
+        <!--
+            ==================== 版本类型筛选胶囊 ====================
+
+            为什么是 CheckBox 而不是「分段控件」：
+            四个类型是**可叠加**的筛选条件（可以同时看正式版 + 测试版），
+            而分段控件（RadioButton）只能四选一，语义不对。
+            外形沿用启动页主题切换的胶囊语言，但保留勾选语义。
+
+            状态齐全（hover / pressed / checked / checked:hover / focus / disabled），
+            过渡统一 150ms + CubicEaseOut —— 属「反馈」档，比页面转场快一档。
+        -->
+        <Style Selector="CheckBox.filterChip">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="ChipRoot"
+                            Height="30"
+                            Padding="12,0"
+                            Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="2"
+                            CornerRadius="99">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!--  胶囊底色 / 描边的过渡：与启动页的 segment 取同一档参数  -->
+        <Style Selector="CheckBox.filterChip /template/ Border#ChipRoot">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!--
+            减动效：性能模式下整条摘掉过渡。
+            .performanceMode 类由 MotionSettings.DisableTransitions 驱动，
+            判断入口只有 SettingsService.Current.PerformanceMode 一处。
+        -->
+        <Style Selector=".performanceMode CheckBox.filterChip /template/ Border#ChipRoot">
+            <Setter Property="Transitions">
+                <Transitions />
+            </Setter>
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:pointerover /template/ Border#ChipRoot">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:pressed /template/ Border#ChipRoot">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked /template/ Border#ChipRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked:pointerover /template/ Border#ChipRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked:pressed /template/ Border#ChipRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorTertiaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked">
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+
+        <!--  键盘焦点：描边而不是加粗边框，避免布局跳动  -->
+        <Style Selector="CheckBox.filterChip:focus-visible /template/ Border#ChipRoot">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+
+        <!--  胶囊内文字：选中态转白（数量用次级白，保持主次）  -->
+        <Style Selector="TextBlock.chipLabel">
+            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.chipCount">
+            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="MinWidth" Value="22" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked TextBlock.chipLabel">
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox.filterChip:checked TextBlock.chipCount">
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorSecondaryBrush}" />
+        </Style>
+
+        <!--
+            类型标识圆点。四种颜色只是「一眼分辨类型」的冗余编码，
+            面积很小（6px），选中态一律转白，不与主色抢注意力。
+        -->
+        <Style Selector="Border.chipDot">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Height" Value="6" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox#chipRelease Border.chipDot">
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColorBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox#chipSnapshot Border.chipDot">
+            <Setter Property="Background" Value="{DynamicResource AppCautionBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox#chipLegacy Border.chipDot">
+            <Setter Property="Background" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
+
+        <Style Selector="CheckBox#chipAprilFools Border.chipDot">
+            <Setter Property="Background" Value="{DynamicResource AppAprilFoolsBrush}" />
+        </Style>
+
+        <!--  选中态圆点转白：写在最后，覆盖上面的类型色  -->
+        <Style Selector="CheckBox.filterChip:checked Border.chipDot">
+            <Setter Property="Background" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="0,16,0,8" RowDefinitions="Auto,Auto,*">
 
         <!--  搜索框：与下载中心其它页面保持一致的现代化样式（图标 + 占位文案）  -->
         <Grid Grid.Row="0" Margin="0,0,0,12" ColumnDefinitions="*,Auto">
@@ -28,7 +176,48 @@
                        Text="共 0 个版本" />
         </Grid>
 
-        <Grid Grid.Row="1">
+        <!--
+            版本类型筛选：勾选才显示，不勾选整类隐藏。
+            默认只勾「正式版」—— 打开就是玩家最常装的那批，想看快照自己点一下。
+        -->
+        <StackPanel Grid.Row="1"
+                    Margin="0,0,0,12"
+                    Orientation="Horizontal"
+                    Spacing="8">
+            <CheckBox x:Name="chipRelease" Classes="filterChip">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="chipDot" />
+                    <TextBlock Classes="chipLabel" Text="正式版" />
+                    <TextBlock x:Name="countRelease" Classes="chipCount" Text="0" />
+                </StackPanel>
+            </CheckBox>
+
+            <CheckBox x:Name="chipSnapshot" Classes="filterChip">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="chipDot" />
+                    <TextBlock Classes="chipLabel" Text="测试版" />
+                    <TextBlock x:Name="countSnapshot" Classes="chipCount" Text="0" />
+                </StackPanel>
+            </CheckBox>
+
+            <CheckBox x:Name="chipLegacy" Classes="filterChip">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="chipDot" />
+                    <TextBlock Classes="chipLabel" Text="远古版" />
+                    <TextBlock x:Name="countLegacy" Classes="chipCount" Text="0" />
+                </StackPanel>
+            </CheckBox>
+
+            <CheckBox x:Name="chipAprilFools" Classes="filterChip">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="chipDot" />
+                    <TextBlock Classes="chipLabel" Text="愚人节版" />
+                    <TextBlock x:Name="countAprilFools" Classes="chipCount" Text="0" />
+                </StackPanel>
+            </CheckBox>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
             <ListBox x:Name="listBox"
                      Background="Transparent"
                      BorderThickness="0"
@@ -60,7 +249,13 @@
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Classes="subtitle" Text="{Binding Version}"
                                                TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                                    <TextBlock Classes="caption" Margin="0,3,0,0" Text="{Binding Date}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0" Spacing="8">
+                                        <TextBlock Classes="caption" Text="{Binding Date}" />
+                                        <!--  非正式版才标类型，正式版不标（那是常态，标了是噪音）  -->
+                                        <TextBlock Classes="caption"
+                                                   Text="{Binding KindLabel}"
+                                                   IsVisible="{Binding ShowKindLabel}" />
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!--  右侧仅作视觉提示：进入箭头  -->
@@ -75,12 +270,15 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!--  空状态：搜索无结果时显示  -->
+            <!--  空状态：搜索无结果 / 一个筛选都没勾时显示（文案由代码切换）  -->
             <TextBlock x:Name="emptyText"
                        Classes="secondary"
+                       MaxWidth="360"
+                       TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
                        IsHitTestVisible="False"
                        IsVisible="False"
+                       TextWrapping="Wrap"
                        Text="没有匹配的版本，换个关键词试试" />
         </Grid>
     </Grid>

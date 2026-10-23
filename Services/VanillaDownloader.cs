@@ -124,8 +124,9 @@ public static class VanillaDownloader
                 speedText);
         };
 
-        // 并发数以设置页的「下载线程数」为准（1~64 之间夹紧，避免误填把网络或磁盘打满）
-        var parallelism = Math.Clamp(SettingsService.Current.DownloadThreads, 1, 64);
+        // 并发数以设置页的「同时下载文件数」为准（上限 16，避免误填把网络或磁盘打满）。
+        // 注意：这是「文件级」并发；单个文件内部还由 MinecraftLaunch 自己分片。
+        var parallelism = SettingsService.ResolveDownloadConcurrency(16);
 
         try
         {

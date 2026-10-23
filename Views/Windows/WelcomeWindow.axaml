@@ -22,7 +22,10 @@
         注意别用 FluentAvalonia 的 SolidBackgroundFillColorBase —— 那是 Color 资源，
         赋给 IBrush 类型的 Background 会静默失效，等于没有背景。
     -->
-    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+    <Grid x:Name="RootGrid"
+          RowDefinitions="Auto,*"
+          RenderTransformOrigin="50%,50%"
+          Background="{DynamicResource ApplicationBackgroundBrush}">
         <ctrl:TitleBar Grid.Row="0"
                        Height="36"
                        Title="Vibrantbit Launcher"

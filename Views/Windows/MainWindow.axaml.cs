@@ -73,7 +73,72 @@ public partial class MainWindow : FAAppWindow
             if (e.Property == ActualTransparencyLevelProperty)
                 UpdateMicaBackground();
         };
+
+        // ① 按屏幕分辨率把窗口收进可见范围。
+        //    硬写 1280×800 会在 1366×768 的机器上让底部按钮被任务栏压掉。
+        ApplyScreenFit();
+
+        // ② 先把根面板摆到飞入起点。
+        //    必须在首帧之前：否则窗口会完整闪一下，然后突然变透明重新飞入。
+        WindowMotion.PrepareFlyIn(AppRoot);
+
+        // ③ 关闭时先飞出、再真正关窗（系统关机 / 应用退出不拦）
+        WindowMotion.AttachCloseFlyOut(this, AppRoot);
+
+        // ④ 分辨率 / 缩放变化（改显示设置、拔插外接屏）后重新适配一次
+        TryWatchScreenChanges();
     }
+
+    // ==================== 窗口尺寸（按屏幕分辨率自适应） ====================
+
+    /// <summary>设计尺寸：平时就按这个大小开窗。</summary>
+    private const double DesignWidth = 1280d;
+    private const double DesignHeight = 800d;
+
+    /// <summary>设计最小尺寸：低于这个值布局会开始挤（小屏上会自动下调）。</summary>
+    private const double DesignMinWidth = 1180d;
+    private const double DesignMinHeight = 720d;
+
+    /// <summary>标题栏高度（与 XAML 里 ctrl:TitleBar 的 Height 一致）。</summary>
+    private const double TitleBarHeight = 40d;
+
+    private void ApplyScreenFit()
+        => WindowSizing.FitToScreen(this, DesignWidth, DesignHeight, DesignMinWidth, DesignMinHeight);
+
+    /// <summary>
+    /// 监听屏幕参数变化。改分辨率或 150% → 100% 缩放切换后，
+    /// 原来正好铺满的窗口会变成出界或过小，这里按新参数重算。
+    /// 订阅失败（极少数平台拿不到 Screens）不影响启动，只是失去自动重算。
+    /// </summary>
+    private void TryWatchScreenChanges()
+    {
+        try
+        {
+            var screens = Screens;
+            if (screens is null)
+                return;
+
+            screens.Changed += (_, _) =>
+            {
+                ApplyScreenFit();
+
+                // 窗口尺寸变了，浮层卡片的可用区域也跟着变
+                if (InlineHostLayer.IsVisible)
+                    ConstrainInlineCard();
+            };
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "订阅屏幕参数变化失败，窗口尺寸只在启动时适配一次");
+        }
+    }
+
+    /// <summary>把内嵌浮层卡片的最大尺寸限制在主窗口内容区内。</summary>
+    private void ConstrainInlineCard()
+        => WindowSizing.ConstrainToHost(
+            InlineCard,
+            ClientSize.Width,
+            Math.Max(0d, ClientSize.Height - TitleBarHeight));
 
     /// <summary>轻提示宿主，供 App 启动时装配 NotificationService。</summary>
     public Panel NotificationHost => SnackbarHost;
@@ -107,26 +172,13 @@ public partial class MainWindow : FAAppWindow
 
         var perfMode = SettingsService.Current.PerformanceMode;
 
-        // 性能模式：直接跳过窗口入场动画。
-        // AppRoot 的初始透明度是 0（由动画负责推上去），低配机器上动画一卡就长时间停在
-        // 半透明状态，观感就是「白屏 / 灰屏」。这里显式摆到终态，保证立刻可见。
-        if (perfMode)
-        {
-            // AnimationHelper 会从 Opacity=0 起播这些变换；低配机器上一卡就长时间停在
-            // 「淡 + 缩」的半路，观感就是糊了一层。这里直接摆到终态，保证立刻可见。
-            AppRoot.Opacity = 1;
+        // 万一构造函数里拿不到屏幕信息（Screens 尚未就绪），这里补算一次；重复调用是幂等的。
+        ApplyScreenFit();
 
-            var (scale, translate) = EnsureAppRootTransform();
-            scale.ScaleX = 1;
-            scale.ScaleY = 1;
-            translate.Y = 0;
-        }
-        else
-        {
-            // 先播窗口入场，再切页面：入场是「外壳浮出来」，页面切换是「内容浮上来」，
-            // 两者叠在一起会互相抢戏，所以入场只给外壳（含侧边栏），页面走自己的过渡。
-            PageTransitionHelper.PlayWindowEntrance(AppRoot);
-        }
+        // 飞入：淡入 + 92% 推到 100% + 由下浮起。
+        // WindowMotion 内部会读性能模式：开了就直接摆终态，一帧动效都不画
+        // （低配机器上动画一卡就会长时间停在半透明状态，观感就是白屏）。
+        _ = WindowMotion.FlyInAsync(AppRoot);
 
         // 默认进入「启动」页
         _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
@@ -145,25 +197,7 @@ public partial class MainWindow : FAAppWindow
         }
     }
 
-    /// <summary>取得 AppRoot 的缩放 / 位移变换（与 AnimationHelper 用同一套结构）。</summary>
-    private (ScaleTransform Scale, TranslateTransform Translate) EnsureAppRootTransform()
-    {
-        if (AppRoot.RenderTransform is TransformGroup group
-            && group.Children.Count >= 2
-            && group.Children[0] is ScaleTransform scale
-            && group.Children[1] is TranslateTransform translate)
-        {
-            return (scale, translate);
-        }
-
-        var newScale = new ScaleTransform(1, 1);
-        var newTranslate = new TranslateTransform(0, 0);
-        AppRoot.RenderTransform = new TransformGroup { Children = { newScale, newTranslate } };
-        return (newScale, newTranslate);
-    }
-
-    /// <summary>
-    /// 导航发生后同步侧边栏的选中态。
+    /// <summary>导航发生后同步侧边栏的选中态。
     ///
     /// FANavigationView 只在**用户点击菜单项**时自己更新 SelectedItem；
     /// 代码里跳转（ViewModel 发 NavigateTo、返回栈 GoBack 等）只换了 Content，
@@ -492,24 +526,100 @@ public partial class MainWindow : FAAppWindow
     /// </summary>
     internal static MainWindow? Instance { get; private set; }
 
-    internal void ShowInline(Control content)
+    /// <summary>
+    /// 当前内嵌浮层的动画令牌。切页 / 关页可能前一段还没播完，
+    /// 取消旧的再开新的，避免两段动画同时改同一组变换。
+    /// </summary>
+    private System.Threading.CancellationTokenSource? _inlineMotionCts;
+
+    /// <summary>
+    /// 显示内嵌子页：写入内容 → 遮罩淡入 + 卡片飞入（淡入 + 92% 推到 100% + 由下浮起）。
+    /// </summary>
+    internal async Task ShowInlineAsync(Control content)
     {
+        _inlineMotionCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        _inlineMotionCts = cts;
+
         InlineContentHost.Content = content;
         InlineHostLayer.IsVisible = true;
+
+        // 小屏（或主窗口被压缩后）把卡片收进宿主可视区，超出部分交给外层 ScrollViewer
+        ConstrainInlineCard();
 
         // 子页出现时把焦点交给它：否则键盘焦点还停在被盖住的导航项上，
         // Tab / 方向键会操作看不见的控件。
         content.Focus();
+
+        try
+        {
+            await WindowMotion.FlyInAsync(InlineCard, InlineScrim, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 被下一页顶掉：新页已经接管同一组元素，什么都不用做
+        }
+        finally
+        {
+            if (ReferenceEquals(_inlineMotionCts, cts))
+                _inlineMotionCts = null;
+
+            cts.Dispose();
+        }
     }
 
-    internal void HideInline()
+    /// <summary>
+    /// 关闭内嵌子页：先播飞出（淡出 + 后退 + 下沉），播完才真正隐藏并卸掉内容。
+    ///
+    /// <para>
+    /// <paramref name="content"/> 用来判断「飞出期间是不是已经有新页接管了宿主」——
+    /// 如果是，就只让它飞完，不要把新页一起收掉。
+    /// </para>
+    /// </summary>
+    internal async Task HideInlineAsync(Control? content)
     {
+        // 主窗口正在关闭：整个 AppRoot 本身就在飞出了，内嵌页不必再飞一次，
+        // 而且窗口一关渲染循环就停，等动画结束会一直挂着。
+        if (!IsVisible)
+        {
+            InlineHostLayer.IsVisible = false;
+            InlineContentHost.Content = null;
+            return;
+        }
+
+        _inlineMotionCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        _inlineMotionCts = cts;
+
+        try
+        {
+            await WindowMotion.FlyOutAsync(InlineCard, InlineScrim, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 飞出中途被新页顶掉：保留宿主可见，交给新页自己飞入
+            return;
+        }
+        finally
+        {
+            if (ReferenceEquals(_inlineMotionCts, cts))
+                _inlineMotionCts = null;
+
+            cts.Dispose();
+        }
+
+        if (content is not null && !ReferenceEquals(InlineContentHost.Content, content))
+            return;
+
         InlineHostLayer.IsVisible = false;
         InlineContentHost.Content = null;
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        // 窗口没了，还在跑的飞入 / 飞出动画（以及挂着等它的 await）都要收掉
+        _inlineMotionCts?.Cancel();
+
         // 主窗口关了，内嵌页的 await 不能永远挂着
         Services.InlineHost.Close();
         Instance = null;

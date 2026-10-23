@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services.Download;
 
 namespace VibrantbitLauncher.Services
@@ -89,20 +90,69 @@ namespace VibrantbitLauncher.Services
             // ---------- 2. 下载 installer jar ----------
             var installerJar = Path.Combine(mcFolder, $"vbl-{loaderName.ToLowerInvariant()}-{picked}-installer.jar");
             var installerUrl = BuildInstallerUrl(mcVersion, picked, neoForge);
-            Serilog.Log.Information("{Loader} 安装器：{Url}", loaderName, installerUrl);
+            var mirrorUrl = BuildMirrorInstallerUrl(mcVersion, picked, neoForge);
+
+            // 官方源的实际可用性，两种加载器完全不同（2026-10-18 实测）：
+            //
+            //   Forge     maven.minecraftforge.net  → 可用（约 60 KB/s，6.0 MB 能下完）
+            //             bmclapi 镜像             → HTTP 200 但**经常只给 89 KB / 171 KB 就断开**
+            //   NeoForge  maven.neoforged.net       → 完全连不上（TLS 都建不起来）
+            //             bmclapi 镜像             → 6.7 MB 数秒下完，稳定
+            //
+            // 所以顺序按加载器分开定，而不是一律「官方优先」：
+            // Forge 走官方（镜像容易给截断文件），NeoForge 走镜像（官方压根不通）。
+            // 用户显式开启「使用 BMCLAPI 镜像」时，两者都以镜像为先。
+            var preferMirror = SettingsService.Current.UseBmclMirror || neoForge;
+
+            var primary = preferMirror ? mirrorUrl : installerUrl;
+            var fallback = preferMirror ? installerUrl : mirrorUrl;
+
+            Serilog.Log.Information("{Loader} 安装器：主 {Primary}，备 {Fallback}",
+                loaderName, primary, fallback);
 
             onProgress(5, $"下载 {loaderName} 安装器");
             // 上一次失败留下的半截安装器会被内核的「文件已存在」判据当成下好了，
-            // 随后崩在 ZipFile.OpenRead —— 先清掉，9 MB 重下比排错便宜。
+            // 随后崩在 ZipFile.OpenRead —— 先清掉，重下比排错便宜。
+            // （续传残片 .vblresume 不在清理范围内：那正是我们要复用的进度。）
             TryDelete(installerJar);
-            // 安装器有 8~9 MB，慢速链路（代理/镜像限速）下整体下完可能远超 5 分钟，
-            // 但只要一直在收字节就不该判失败 —— 用空闲超时兜底「彻底卡死」的那次。
-            await FabricDownloader.DownloadFileAsync(
-                installerUrl, installerJar, TimeSpan.FromMinutes(5), ct,
-                idleTimeout: TimeSpan.FromSeconds(90));
 
-            if (!File.Exists(installerJar) || new FileInfo(installerJar).Length == 0)
-                throw new ModpackException($"{loaderName} 安装器下载失败（文件为空）");
+            // 用「跨连接续传」的下载器，而不是分块内核。
+            //
+            // 原因见 ResilientFileDownloader 的注释：这里实测的瓶颈是**单条连接约 1 MB 配额**，
+            // 一条连接下完 6 MB 的安装器根本不可能完成 —— 无论重试多少次，每次都会停在同一个位置。
+            // 续传下载器每轮从「已有字节数」处重新开一条连接，把配额一段段拼起来，
+            // 这才是「Forge 每次都装不上」的真正解法。
+            var installerSources = new[] { primary, fallback }
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            // 进度条 5% → 12% 这一段留给安装器下载；总长未知时退化成「已下载多少 MB」
+            var downloaded = await ResilientFileDownloader.DownloadAsync(
+                installerSources,
+                installerJar,
+                (have, total) => onProgress(5, total > 0
+                    ? $"下载 {loaderName} 安装器 {have * 100 / Math.Max(1, total)}%"
+                    : $"下载 {loaderName} 安装器 {have / 1024 / 1024.0:0.0} MB"),
+                ct);
+
+            if (!downloaded)
+            {
+                TryDelete(installerJar);
+                throw new ModpackException(
+                    $"{loaderName} 安装器下载不完整（文件被服务器多次截断）。"
+                    + "已尝试官方源与 BMCLAPI 镜像。"
+                    + "请检查网络稳定性，或在「设置 → 下载」切换下载源后重试");
+            }
+
+            var invalid = ValidateInstaller(installerJar);
+            if (invalid is not null)
+            {
+                TryDelete(installerJar);
+                throw new ModpackException(
+                    $"{loaderName} 安装器下载失败：{invalid}。"
+                    + "请在「设置 → 下载」切换下载源（或开启镜像）后重试");
+            }
 
             // ---------- 3. 解包 install_profile / version.json ----------
             onProgress(12, $"解析 {loaderName} 安装清单");
@@ -152,26 +202,55 @@ namespace VibrantbitLauncher.Services
             Serilog.Log.Information("{Loader} 版本文件已写入 {Path}", loaderName, clientJsonPath);
 
             // ---------- 5. 下载依赖库 ----------
+            //
+            // ⚠️ 必须排除「处理器产物」。install_profile.data 里的 PATCHED / MC_UNPACKED
+            // 是 [group:artifact:version:classifier] 形式的 maven 坐标，但**本地生成**、
+            // maven 上根本不存在（实测 https://maven.minecraftforge.net/.../forge-<mc>-<ver>-client.jar
+            // 返回 404）。把它们当依赖去下，结果就是：下 4 轮全 404 / 超时 →
+            // 安装直接失败，或者下载被跳过、装完缺 client.jar → 启动时 FML 报
+            // 「The patched Minecraft jar is missing」。
             onProgress(22, $"下载 {loaderName} 依赖库");
+            var processorOutputs = CollectProcessorOutputs(profileJson);
             await DownloadLibrariesAsync(mcFolder, deduped, p =>
-                onProgress(22 + (int)(p * 0.33), $"下载 {loaderName} 依赖库"), ct);
+                onProgress(22 + (int)(p * 0.33), $"下载 {loaderName} 依赖库"), ct, processorOutputs);
 
-            // ---------- 6. 落 client.lzma（processor 要用） ----------
-            var forgeVerDir = Path.Combine(mcFolder, "libraries", "net", "minecraftforge", "forge", $"{mcVersion}-{picked}");
-            Directory.CreateDirectory(forgeVerDir);
-            var clientData = zip.GetEntry("data/client.lzma");
-            if (clientData is not null)
-                clientData.ExtractToFile(Path.Combine(forgeVerDir, $"forge-{mcVersion}-{picked}-clientdata.lzma"), overwrite: true);
+            // ---------- 6. 已删除：手工落 client.lzma ----------
+            //
+            // 老实现把 data/client.lzma 解到 libraries/net/minecraftforge/forge/<mc>-<ver>/ 下，
+            // 但处理器的 BINPATCH 参数指向的**不是**那个路径（它要的是安装包内条目解出来的临时文件），
+            // 而且 NeoForge 的落点根本不在 net/minecraftforge 下 —— 这段对两种加载器都是无效动作。
+            // 现在由 ResolveData 统一处理「/ 开头的归档内路径」，见 ExtractInstallerEntry。
 
             // ---------- 7. 跑 processors ----------
             var processors = profileJson["processors"] as JsonArray;
             if (processors is { Count: > 0 })
             {
                 onProgress(56, $"运行 {loaderName} 安装处理器");
+                var clientProcessorCount = processors.Count(p =>
+                {
+                    var sides = p?["sides"] as JsonArray;
+                    return sides is null || sides.Count == 0
+                           || sides.Any(s => string.Equals(s?.GetValue<string>(), "client",
+                               StringComparison.OrdinalIgnoreCase));
+                });
+
                 await RunProcessorsAsync(
                     mcFolder, javaPath, installerJar, mcVersion, picked, neoForge,
-                    profileJson, processors, forgeVerDir,
-                    p => onProgress(56 + (int)(p * 0.42), $"运行 {loaderName} 安装处理器"), ct);
+                    profileJson, processors,
+                    // 进度 + 文案一起报：处理器阶段是全程最长的静默期，
+                    // 文案里带上「第 N/M 个」用户才知道它真的在走。
+                    (p, step) => onProgress(56 + (int)(p * 0.42),
+                        clientProcessorCount > 1 ? $"{step}（{loaderName} 安装处理器）" : step),
+                    ct);
+
+                // ---------- 7.5 把 patched jar 注册进 classpath ----------
+                //
+                // 处理器会把打补丁后的 client jar 写到 data.PATCHED 指向的位置，
+                // 但 install_profile 的 libraries 里**没有**这一条 —— 官方安装器在结束时自己补上。
+                // 我们不补的话，FML 启动时在 classpath 上找不到 Minecraft 类，报
+                //   「The patched Minecraft jar is missing. Please try to reinstall NeoForge.」
+                // 于是「安装成功、启动必崩」—— 这也是历史上被反复反馈的一条。
+                EnsurePatchedLibrary(mcFolder, profileJson, versionJson, clientJsonPath, loaderName, processors);
             }
 
             onProgress(100, $"{loaderName} 安装完成");
@@ -444,8 +523,11 @@ namespace VibrantbitLauncher.Services
             var artifact = mcVersion == "1.20.1" ? "forge" : "neoforge";
             var url = $"https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/{artifact}";
 
+            // 官方 REST 端点在国内实测**完全连不上**（curl 直接超时，连 TLS 都建不起来），
+            // 而它又是「唯一能给出完整版本集合」的地方，所以主路径之外必须有兜底。
+            // 抓不到就直接抛，让上层走 BMCLAPI 的 /neoforge/list/<mc>。
             var json = await FabricDownloader.GetStringAsync(
-                url, TimeSpan.FromSeconds(20), 2, "NeoForge 版本列表（官方）", null, ct);
+                url, TimeSpan.FromSeconds(12), 1, "NeoForge 版本列表（官方）", null, ct);
 
             // 1.20.1 走 Forge 版本号（47.x），不按前缀过滤
             var prefix = mcVersion == "1.20.1" ? null : mcVersion.StartsWith("1.", StringComparison.Ordinal)
@@ -567,6 +649,34 @@ namespace VibrantbitLauncher.Services
             return $"https://maven.neoforged.net/releases/net/neoforged/{artifact}/{ver}/{artifact}-{ver}-installer.jar";
         }
 
+        /// <summary>
+        /// 安装器的 BMCLAPI 镜像地址。
+        ///
+        /// <para>
+        /// 不复用 <see cref="Helpers.DownloadSources"/> 的自动改写，是因为那里对
+        /// <c>maven.neoforged.net/releases/</c> 的前缀映射没问题，但它把「用户偏好」放在
+        /// 第一位 —— 这里我们要的是「**镜像必进候选、且优先**」，需要显式拿到它，
+        /// 而不是赌用户设置里开了 <c>UseBmclMirror</c>。
+        /// </para>
+        ///
+        /// <para>
+        /// 实测（2026-10-18）：官方 <c>maven.neoforged.net</c> 完全连不上；
+        /// <c>maven.minecraftforge.net</c> 能连但响应体不发。两者的镜像路径都是
+        /// <c>/maven/&lt;groupId 路径&gt;/…</c>，且返回 200 + 完整文件。
+        /// </para>
+        /// </summary>
+        private static string BuildMirrorInstallerUrl(string mcVersion, string forgeVersion, bool neoForge)
+        {
+            const string mirrorRoot = "https://bmclapi2.bangbang93.com/maven";
+
+            if (!neoForge)
+                return $"{mirrorRoot}/net/minecraftforge/forge/{mcVersion}-{forgeVersion}/forge-{mcVersion}-{forgeVersion}-installer.jar";
+
+            var artifact = mcVersion == "1.20.1" ? "forge" : "neoforge";
+            var ver = mcVersion == "1.20.1" ? $"{mcVersion}-{forgeVersion}" : forgeVersion;
+            return $"{mirrorRoot}/net/neoforged/{artifact}/{ver}/{artifact}-{ver}-installer.jar";
+        }
+
         // ==================== 库下载 ====================
 
         private static void CollectLibraries(JsonNode? source, List<JsonNode> into)
@@ -605,7 +715,8 @@ namespace VibrantbitLauncher.Services
         /// </para>
         /// </summary>
         private static async Task DownloadLibrariesAsync(
-            string mcFolder, List<JsonNode> libraries, Action<double> onProgress, CancellationToken ct)
+            string mcFolder, List<JsonNode> libraries, Action<double> onProgress, CancellationToken ct,
+            IReadOnlySet<string>? skipCoordinates = null)
         {
             var libsDir = Path.Combine(mcFolder, "libraries");
             var items = new List<DownloadItem>(libraries.Count);
@@ -617,6 +728,15 @@ namespace VibrantbitLauncher.Services
                 var name = lib["name"]?.GetValue<string>();
                 if (string.IsNullOrEmpty(name))
                     continue;
+
+                // 处理器产物：maven 上没有这个文件，只能由 processor 在本地写出来。
+                // 这里必须跳过，否则会连着 4 轮 404 / 超时，最后把安装判死。
+                if (skipCoordinates is not null
+                    && skipCoordinates.Contains(NormalizeCoordinate(name)))
+                {
+                    Serilog.Log.Debug("跳过处理器产物（不下载）：{Name}", name);
+                    continue;
+                }
 
                 var (url, relativePath, size, sha1) = ResolveArtifact(lib, name!);
                 if (url is null || relativePath is null)
@@ -636,7 +756,7 @@ namespace VibrantbitLauncher.Services
 
             var result = await BatchDownloader.DownloadAsync(
                 items,
-                parallelism: 4,
+                parallelism: SettingsService.ResolveDownloadConcurrency(8),
                 onProgress: p => onProgress(Math.Clamp(p.Percent / 100d, 0, 1)),
                 ct: ct).ConfigureAwait(false);
 
@@ -735,8 +855,194 @@ namespace VibrantbitLauncher.Services
             return "https://maven.minecraftforge.net/";
         }
 
-        // ==================== processors ====================
+        /// <summary>
+        /// 规范化 maven 坐标：去掉 <c>@jar</c> 之类的扩展后缀，供比较用。
+        /// </summary>
+        private static string NormalizeCoordinate(string coordinate)
+        {
+            var value = coordinate.Trim();
+            var at = value.IndexOf('@');
+            return at > 0 ? value[..at] : value;
+        }
 
+        /// <summary>
+        /// 收集 <c>install_profile.data</c> 里所有「maven 坐标形式」的值。
+        ///
+        /// <para>
+        /// 形如 <c>[net.minecraftforge:forge:26.2-65.1.5:client]</c> 的条目是
+        /// <b>处理器本地生成</b>的产物（<c>PATCHED</c> / <c>MC_UNPACKED</c>），
+        /// maven 上并不存在同名文件：实测 Forge 26.2 的 client jar 在官方 maven 返回 404
+        /// （BMCLAPI 镜像同样 404）。它们只该由 processor 写出来，绝不能进下载队列。
+        /// </para>
+        ///
+        /// <para>
+        /// 反过来的 <c>/data/client.lzma</c>（BINPATCH）是安装包内条目，以 <c>/</c> 开头，
+        /// 不是坐标，这里自然被过滤掉。
+        /// </para>
+        /// </summary>
+        private static HashSet<string> CollectProcessorOutputs(JsonNode profile)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (profile["data"] is not JsonObject data)
+                return result;
+
+            foreach (var pair in data)
+            {
+                var raw = ReadSideValue(pair.Value);
+                if (raw is null)
+                    continue;
+
+                raw = raw.Trim();
+                if (raw.Length > 2 && raw[0] == '[' && raw[^1] == ']')
+                    result.Add(NormalizeCoordinate(raw[1..^1]));
+            }
+
+            return result;
+        }
+
+        /// <summary>这个处理器是否会在 client 侧执行（没写 sides 视为两端通用）。</summary>
+        private static bool IsClientSideProcessor(JsonNode proc)
+        {
+            if (proc["sides"] is not JsonArray sides || sides.Count == 0)
+                return true;
+
+            return sides.Any(s => string.Equals(
+                s?.GetValue<string>(), "client", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 把处理器产出的 patched client jar 作为一条 library 写进版本 JSON。
+        ///
+        /// <para>
+        /// <b>为什么必须做</b>：<c>install_profile.data.PATCHED</c> 只说明了「补丁后的产物放哪」，
+        /// 并没有在 <c>libraries</c> 里声明它。classpath 完全由版本 JSON 的 <c>libraries</c> 决定，
+        /// 所以少了这一条，游戏启动时 FML 就在 classpath 上找不到 Minecraft 类，直接报
+        /// <c>The patched Minecraft jar is missing</c>。官方安装器跑完处理器后会自己补，我们也得补。
+        /// </para>
+        ///
+        /// <para>
+        /// 不锁坐标前缀：Forge 是 <c>net.minecraftforge:forge:&lt;mc&gt;-&lt;ver&gt;:client</c>，
+        /// NeoForge 是 <c>net.neoforged:neoforge:&lt;ver&gt;:client</c>，
+        /// 老的 NeoForge 还出现过 <c>minecraft-client-patched</c>。统一按 maven 规则算路径即可。
+        /// </para>
+        /// </summary>
+        private static void EnsurePatchedLibrary(
+            string mcFolder, JsonNode profile, JsonNode versionJson, string clientJsonPath,
+            string loaderName, JsonArray? processors = null)
+        {
+            var raw = ReadSideValue(profile["data"]?["PATCHED"]);
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            raw = raw.Trim();
+            if (raw.Length < 3 || raw[0] != '[' || raw[^1] != ']')
+                return;   // 不是 maven 坐标，无从推断路径
+
+            var coordinate = raw[1..^1];
+            var (_, relative) = MavenToRelative(coordinate);
+            var jarPath = Path.Combine(mcFolder, "libraries",
+                relative.Replace('/', Path.DirectorySeparatorChar));
+
+            if (!File.Exists(jarPath))
+            {
+                // 这个产物是**必须**的：client 侧的 binarypatcher 明确声明了它的输出。
+                // 缺失就意味着安装没真正完成（游戏启动会报
+                // 「The patched Minecraft jar is missing」），
+                // 不能再像以前那样只打一条 warning 就当安装成功 ——
+                // 用户随后会拿着一个「装好了但起不来」的实例来问为什么。
+                var expectsClientPatch = processors is { Count: > 0 } && processors.Any(p =>
+                    p is not null
+                    && IsClientSideProcessor(p)
+                    && p["outputs"] is JsonObject outputs
+                    && outputs.ContainsKey("{PATCHED}"));
+
+                if (expectsClientPatch)
+                {
+                    throw new ModpackException(
+                        $"{loaderName} 安装处理器没有产出 {Path.GetFileName(jarPath)}。"
+                        + "这个文件是处理器把原版 client.jar 打补丁后生成的，缺失它游戏会报"
+                        + "「The patched Minecraft jar is missing」。"
+                        + "请确认磁盘空间充足（需要约 100 MB 临时空间）后重试安装。");
+                }
+
+                // 没有 client 侧 patcher 声明（例如服务端专用布局）：记一笔即可
+                Serilog.Log.Warning("{Loader} 的 patched jar 不存在，跳过注册：{Path}", loaderName, jarPath);
+                return;
+            }
+
+            var libraries = versionJson["libraries"] as JsonArray;
+            if (libraries is null)
+            {
+                libraries = new JsonArray();
+                versionJson["libraries"] = libraries;
+            }
+
+            // 已经声明过就不重复加（幂等：同一实例重装时不会长出一条重复项）
+            foreach (var lib in libraries)
+            {
+                var name = lib?["name"]?.GetValue<string>();
+                if (name is null)
+                    continue;
+
+                // name 可能带 @jar 后缀，比较时去掉
+                var normalized = name.Contains('@') ? name[..name.IndexOf('@')] : name;
+                if (string.Equals(normalized, coordinate, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            var info = new FileInfo(jarPath);
+            var sha1 = ComputeSha1(jarPath);
+
+            libraries.Add(new JsonObject
+            {
+                ["name"] = coordinate,
+                ["downloads"] = new JsonObject
+                {
+                    ["artifact"] = new JsonObject
+                    {
+                        ["path"] = relative,
+                        ["size"] = info.Length,
+                        ["sha1"] = sha1,
+                    },
+                },
+            });
+
+            File.WriteAllText(clientJsonPath,
+                versionJson.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+            Serilog.Log.Information("已把 {Loader} 的 patched jar 注册进 classpath：{Coord} → {Path}",
+                loaderName, coordinate, relative);
+        }
+
+        /// <summary>读 data 里某一项的 client 值（可能是字符串，也可能是 {client,server} 对象）。</summary>
+        private static string? ReadSideValue(JsonNode? node)
+        {
+            if (node is JsonObject sideObj)
+                return sideObj["client"]?.GetValue<string>() ?? sideObj["server"]?.GetValue<string>();
+
+            if (node is JsonValue value && value.TryGetValue<string>(out var s))
+                return s;
+
+            return null;
+        }
+
+        /// <summary>算文件的 SHA1（大写十六进制，与官方清单一致）。失败返回 null，不阻断安装。</summary>
+        private static string? ComputeSha1(string path)
+        {
+            try
+            {
+                using var stream = File.OpenRead(path);
+                var hash = System.Security.Cryptography.SHA1.HashData(stream);
+                return Convert.ToHexString(hash);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "计算 SHA1 失败：{Path}", path);
+                return null;
+            }
+        }
+
+        // ==================== processors ====================
         private static async Task RunProcessorsAsync(
             string mcFolder,
             string javaPath,
@@ -746,12 +1052,22 @@ namespace VibrantbitLauncher.Services
             bool neoForge,
             JsonNode profile,
             JsonArray processors,
-            string forgeVerDir,
-            Action<double> onProgress,
+            Action<double, string> onProgress,
             CancellationToken ct)
         {
-            // data 段：把 {KEY} 解析成真实值（processor 的 args 会引用它们）
-            var data = ResolveData(profile["data"], mcFolder, mcVersion, forgeVersion);
+            // 安装包内的条目（data/client.lzma 等）要解到临时目录再交给处理器。
+            // 放在 temp 而不是 .minecraft 里：这些是安装期的一次性中间物，
+            // 留在游戏目录会被下次「完整性检查」当成垃圾文件。
+            var extractDir = Path.Combine(
+                Path.GetTempPath(), "vbl-loader-" + Guid.NewGuid().ToString("N"));
+
+            try
+            {
+                Directory.CreateDirectory(extractDir);
+
+                // data 段：把 {KEY} 解析成真实值（processor 的 args 会引用它们）
+                var data = ResolveData(profile["data"], mcFolder, mcVersion, forgeVersion,
+                    installerJar, extractDir);
 
             // 变量替换表 —— 官方 installer 的同一套
             var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -779,11 +1095,17 @@ namespace VibrantbitLauncher.Services
                     if (!list.Contains("client", StringComparer.OrdinalIgnoreCase))
                     {
                         index++;
-                        onProgress((double)index / total);
+                        onProgress((double)index / total,
+                            $"跳过 {(neoForge ? "NeoForge" : "Forge")} 服务端专用处理器");
                         continue;
                     }
                 }
 
+                // 每个处理器开跑前先把「当前是第几个」推给界面。
+                // 处理器（尤其 Forge 的 installer-tools）单个可能跑几十秒到几分钟，
+                // 期间没有任何字节流可上报 —— 没有这一句，用户看到的就是进度条
+                // 停在 56% 一动不动，误判成「卡死」然后强杀进程（1.0.8.x 反馈最多的一条）。
+                onProgress((double)index / total, DescribeProcessor(proc, index + 1, total));
                 var jarName = proc["jar"]?.GetValue<string>()
                     ?? throw new ModpackException("加载器安装处理器缺少 jar 声明");
 
@@ -811,7 +1133,7 @@ namespace VibrantbitLauncher.Services
                     {
                         var raw = a?.GetValue<string>();
                         if (raw is null) continue;
-                        args.Add(Substitute(raw, data, replacements));
+                        args.Add(Substitute(raw, data, replacements, mcFolder));
                     }
                 }
 
@@ -821,16 +1143,151 @@ namespace VibrantbitLauncher.Services
                 Serilog.Log.Information("运行 {Loader} 处理器 {Index}/{Total}：{Jar} 参数 {Args}",
                     neoForge ? "NeoForge" : "Forge", index + 1, total, jarName, string.Join(" ", args.Take(6)));
 
-                await RunJavaAsync(javaPath, mainClass, cpString, args, mcFolder, ct);
+                // 心跳：处理器跑起来之后可能几十秒不产出任何一行输出（尤其 installer-tools
+                // 在解 lzma / 写 jar 的时候）。这里每 2 秒把「还在跑、已耗时多久」推给界面，
+                // 进度条不会走，但文案会跳 —— 用户能区分「在干活」和「真卡死」。
+                var stepLabel = DescribeProcessor(proc, index + 1, total);
+                var baseFraction = (double)index / total;
+                var slice = 1d / Math.Max(1, total);
+
+                await RunJavaAsync(javaPath, mainClass, cpString, args, mcFolder, ct,
+                    onHeartbeat: elapsed => onProgress(
+                        baseFraction + slice * 0.9,
+                        $"{stepLabel}（已耗时 {FormatElapsed(elapsed)}）"));
 
                 index++;
-                onProgress((double)index / total);
+                onProgress((double)index / total, stepLabel);
+            }
+            }
+            finally
+            {
+                // 临时解压目录用完即删：里面是 client.lzma 之类的中间物，几十 MB
+                try { Directory.Delete(extractDir, recursive: true); }
+                catch { /* 被占用就留给系统清理，不影响安装结果 */ }
             }
         }
 
-        /// <summary>把 <c>data</c> 段解析成「KEY → 真实值」。<c>[maven]</c> 转成本地路径，<c>'literal'</c> 去掉引号。</summary>
+        /// <summary>
+        /// 处理器的短描述，给界面显示用。
+        ///
+        /// 用 jar 名而不是 mainClass：jar 名短、可读性好（<c>installertools</c> / <c>jarsplitter</c>），
+        /// mainClass 是一长串 <c>net.minecraftforge.installertools.ConsoleTool</c>，
+        /// 塞进一行步骤文案里会被截断。
+        /// </summary>
+        private static string DescribeProcessor(JsonNode proc, int ordinal, int total)
+        {
+            var jar = proc["jar"]?.GetValue<string>();
+            var name = string.IsNullOrWhiteSpace(jar) ? "安装处理器" : ShortName(jar!);
+
+            // 去掉版本号后缀，只留构件名（installertools-1.4.2.jar → installertools）
+            if (name.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+                name = name[..^4];
+            var dash = name.LastIndexOf('-');
+            if (dash > 0 && name[(dash + 1)..].All(char.IsDigit))
+                name = name[..dash];
+
+            return $"运行 {name}（{ordinal}/{total}）";
+        }
+
+        /// <summary>
+        /// 从 jar 的 <c>META-INF/MANIFEST.MF</c> 里读 <c>Main-Class</c>。
+        ///
+        /// <para>
+        /// 读不到就返回 null，调用方退回 <c>-jar</c>。只认第一处 <c>Main-Class:</c>，
+        /// 不处理续行 —— manifest 的 Main-Class 极少折行，真折行了那也不是我们该猜的。
+        /// </para>
+        /// </summary>
+        private static string? ReadMainClassFromJar(string jarPath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(jarPath) || !File.Exists(jarPath))
+                    return null;
+
+                using var zip = ZipFile.OpenRead(jarPath);
+                var entry = zip.GetEntry("META-INF/MANIFEST.MF");
+                if (entry is null)
+                    return null;
+
+                using var reader = new StreamReader(entry.Open());
+                while (reader.ReadLine() is { } line)
+                {
+                    if (line.StartsWith("Main-Class:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var value = line["Main-Class:".Length..].Trim();
+                        return string.IsNullOrWhiteSpace(value) ? null : value;
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "读取 jar manifest 失败：{Path}", jarPath);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 安全地问「进程退出了吗」。
+        ///
+        /// <para>
+        /// <c>Process</c> 被 Dispose 之后再读 <c>HasExited</c> 会抛
+        /// <c>InvalidOperationException</c>（"No process is associated with this object"）。
+        /// 而心跳和僵死看门狗都是没人 await 的后台 Task，异常最终会在 finalizer 线程
+        /// 变成 AggregateException 打进日志 —— 每个 Forge 安装完都留一条红色「未观察到的任务异常」，
+        /// 看起来像安装失败，其实是噪音。
+        /// </para>
+        /// </summary>
+        private static bool HasExitedSafe(Process proc)
+        {
+            try
+            {
+                return proc.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                // ObjectDisposedException 是它的子类，会一并走到这里
+                return true;
+            }
+        }
+
+        /// <summary>把耗时格式化成「12 秒」/「1 分 20 秒」，避免界面上出现 83.4s 这种读数。</summary>
+        private static string FormatElapsed(TimeSpan elapsed)
+        {
+            if (elapsed.TotalSeconds < 60)
+                return $"{elapsed.TotalSeconds:0} 秒";
+
+            return $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒";
+        }
+
+        /// <summary>
+        /// 把 <c>data</c> 段解析成「KEY → 真实值」。
+        ///
+        /// <para>
+        /// 三种写法，缺一不可（对齐官方 installer 的 <c>Install.java</c>）：
+        /// </para>
+        /// <list type="number">
+        /// <item><description><c>'literal'</c> —— 去掉两侧单引号，直接用。</description></item>
+        /// <item><description><c>[group:artifact:version:classifier]</c> —— 换成 <c>libraries/</c> 下的绝对路径。</description></item>
+        /// <item><description>
+        /// <c>/data/client.lzma</c> —— <b>安装包内部条目</b>，必须先从 installer jar 解压到磁盘，
+        /// 再把**解压后的绝对路径**交给处理器。
+        /// </description></item>
+        /// </list>
+        ///
+        /// <para>
+        /// <b>第三条是「Forge / NeoForge 每次安装都失败」的直接原因。</b>
+        /// binarypatcher 的最后一个参数是 <c>--apply {BINPATCH}</c>，
+        /// 以前这里把 <c>/data/client.lzma</c> 原样传下去 —— 在 Windows 上会被当成
+        /// <c>C:\data\client.lzma</c>，处理器必然报「找不到文件」，
+        /// 表现为装到 90% 突然失败，或者（更糟）Java 卡在那里等输入。
+        /// 官方安装器从不这样传：它解压到临时目录，参数里给的是临时文件路径。
+        /// </para>
+        /// </summary>
         private static Dictionary<string, string> ResolveData(
-            JsonNode? data, string mcFolder, string mcVersion, string forgeVersion)
+            JsonNode? data, string mcFolder, string mcVersion, string forgeVersion,
+            string installerJar, string extractDir)
         {
             var result = new Dictionary<string, string>(StringComparer.Ordinal);
             if (data is not JsonObject obj) return result;
@@ -857,8 +1314,11 @@ namespace VibrantbitLauncher.Services
                 {
                     result[key] = LibraryPath(mcFolder, t[1..^1]);
                 }
-                // BINPATCH 这类以 / 开头的归档内路径 —— 指向安装器 jar 内的条目，
-                // 官方 installer 会先解出来；这里保留原样，由 processor 的 --clean 参数处理。
+                // /path/in/installer.jar —— 从安装包里解出来（client.lzma 等）
+                else if (t.Length > 1 && t[0] == '/' && !t.StartsWith("//", StringComparison.Ordinal))
+                {
+                    result[key] = ExtractInstallerEntry(installerJar, t[1..], extractDir);
+                }
                 else
                 {
                     result[key] = t;
@@ -866,6 +1326,35 @@ namespace VibrantbitLauncher.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 把安装包里的某个条目解压到 <paramref name="extractDir"/>，返回解压后的绝对路径。
+        ///
+        /// 目录结构与归档内保持一致（<c>data/client.lzma</c> → <c>&lt;tmp&gt;/data/client.lzma</c>），
+        /// 这样处理器如果对相对路径有假设也不会错位。
+        /// </summary>
+        private static string ExtractInstallerEntry(string installerJar, string entryName, string extractDir)
+        {
+            var target = Path.Combine(extractDir, entryName.Replace('/', Path.DirectorySeparatorChar));
+
+            using var zip = ZipFile.OpenRead(installerJar);
+            var entry = zip.GetEntry(entryName);
+
+            if (entry is null)
+            {
+                throw new ModpackException(
+                    $"加载器安装包里缺少 {entryName}（安装包可能不完整，请重新安装）");
+            }
+
+            var dir = Path.GetDirectoryName(target);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            entry.ExtractToFile(target, overwrite: true);
+            Serilog.Log.Debug("已从安装包解出 {Entry} → {Path}", entryName, target);
+
+            return target;
         }
 
         /// <summary>把 <c>group:artifact:version[:classifier][@ext]</c> 转成 libraries/ 下的绝对路径。</summary>
@@ -902,8 +1391,26 @@ namespace VibrantbitLauncher.Services
             return (maven, relative);
         }
 
-        /// <summary>占位符替换：先换 <c>{VAR}</c>（来自 data 与固定表），再对结果里出现的 <c>[maven]</c>/<c>'literal'</c> 兜一遍。</summary>
-        private static string Substitute(string raw, Dictionary<string, string> data, Dictionary<string, string> replacements)
+        /// <summary>
+        /// 占位符替换：先换 <c>{VAR}</c>（来自 data 与固定表），再把结果里的
+        /// <c>[maven]</c> / <c>'literal'</c> 归一化。
+        ///
+        /// <para>
+        /// <b>裸 <c>[maven]</c> 必须解析</b>（1.0.8.10）：NeoForge 1.21.1 的清单里有这样一条
+        /// <c>args</c>，注意它是**直接写死在 args 里**的，不是走 <c>{KEY}</c>：
+        /// </para>
+        /// <code>
+        /// --task MCP_DATA --input [net.neoforged:neoform:1.21.1-20240808.144430@zip] ...
+        /// </code>
+        /// <para>
+        /// 以前这里刻意「保留原样，让 java 报错更直观」—— 结果就是 java 收到一个字面量
+        /// <c>[net.neoforged:...]</c>，当成文件名打开、报找不到文件，MCP_DATA 这一步直接失败。
+        /// NeoForge 安装因此**必然**卡在第 4 个处理器上。官方 installer 的规则很明确：
+        /// 参数整段是 <c>[a:b:c]</c> 就换成 <c>libraries/</c> 下的绝对路径。
+        /// </para>
+        /// </summary>
+        private static string Substitute(
+            string raw, Dictionary<string, string> data, Dictionary<string, string> replacements, string mcFolder)
         {
             var s = raw;
 
@@ -913,14 +1420,18 @@ namespace VibrantbitLauncher.Services
             foreach (var (k, v) in data)
                 s = s.Replace("{" + k + "}", v, StringComparison.Ordinal);
 
-            // 第二轮：args 里直接写死了 [maven] / 'literal'
+            // 第二轮：args 里直接写死的 [maven] / 'literal'
             if (s.Length > 1 && s[0] == '\'' && s[^1] == '\'')
-                s = s[1..^1];
-            else if (s.Length > 1 && s[0] == '[' && s[^1] == ']')
             {
-                // 此时没法再拿 mcFolder，只能靠调用方保证 args 里以 [ 开头的已被 data 覆盖。
-                // Forge 的客户端 processor 不会把裸 [maven] 写进 args（都走 {KEY}），
-                // 所以走到这里基本都是解析异常 —— 保留原样让 java 报错更直观。
+                s = s[1..^1];
+            }
+            else if (s.Length > 2 && s[0] == '[' && s[^1] == ']')
+            {
+                // 整段都是 maven 坐标才替换；带空格的参数（如 "--input [x]"）不在本分支，
+                // 因为 JSON 里每个参数是独立一项，不会混在一起。
+                var coordinate = s[1..^1];
+                if (coordinate.Contains(':'))
+                    s = LibraryPath(mcFolder, coordinate);
             }
 
             return s;
@@ -930,8 +1441,13 @@ namespace VibrantbitLauncher.Services
         /// 跑一个 processor：<c>java [-cp classpath] mainClass args…</c>。
         /// 部分 processor 用 <c>jar</c> 作为可执行 jar（无 mainClass），退化成 <c>java -jar</c>。
         /// </summary>
+        /// <param name="onHeartbeat">
+        /// 每 2 秒回调一次「已运行时长」。处理器本身可能长时间不产出输出，
+        /// 界面靠它来区分「在算」和「死了」。
+        /// </param>
         private static async Task RunJavaAsync(
-            string javaPath, string? mainClass, string classpath, List<string> args, string workingDir, CancellationToken ct)
+            string javaPath, string? mainClass, string classpath, List<string> args, string workingDir,
+            CancellationToken ct, Action<TimeSpan>? onHeartbeat = null)
         {
             var psi = new ProcessStartInfo
             {
@@ -951,10 +1467,35 @@ namespace VibrantbitLauncher.Services
             }
             else
             {
-                // 没有 mainClass：把 classpath 第一项当成可执行 jar
-                var first = classpath.Split(Path.PathSeparator).FirstOrDefault() ?? "";
-                psi.ArgumentList.Add("-jar");
-                psi.ArgumentList.Add(first);
+                // 没有 mainClass：Main-Class 写在 jar 的 manifest 里，但**不能简单用 -jar**。
+                //
+                // ⚠️ 这是 Forge 26.x 安装失败的真正根因（2026-10-20 实测）：
+                // 新版 install_profile 的二进制打补丁 processor 不再显式给 mainClass，
+                // 而它的 jar 不是 fat jar —— jopt-simple / lzma-java / javaxdelta 等
+                // 全在 processor.classpath 里。用 `-jar` 启动等于把整个 classpath 丢掉，
+                // 第一行就报：
+                //     NoClassDefFoundError: joptsimple/OptionException
+                // 结果 client.jar 永远生成不出来，安装要么失败，要么留下一个
+                // 「装好了但缺 forge-<mc>-<ver>-client.jar」的实例（启动时 FML 报
+                // The patched Minecraft jar is missing）。
+                //
+                // 正确姿势与官方 installer 一致：从 manifest 读 Main-Class，
+                // 用 `-cp <jar + classpath> <Main-Class>` 启动。
+                var first = classpath.Split(Path.PathSeparator).FirstOrDefault() ?? string.Empty;
+                var mainFromManifest = ReadMainClassFromJar(first);
+
+                if (string.IsNullOrWhiteSpace(mainFromManifest))
+                {
+                    // 连 manifest 都没有 Main-Class：只能退回 -jar（真正可执行的 fat jar）
+                    psi.ArgumentList.Add("-jar");
+                    psi.ArgumentList.Add(first);
+                }
+                else
+                {
+                    psi.ArgumentList.Add("-cp");
+                    psi.ArgumentList.Add(classpath);   // classpath 第一项就是 jar 自身
+                    psi.ArgumentList.Add(mainFromManifest);
+                }
             }
 
             foreach (var a in args)
@@ -963,14 +1504,82 @@ namespace VibrantbitLauncher.Services
             using var proc = new Process { StartInfo = psi };
             var stdout = new System.Text.StringBuilder();
             var stderr = new System.Text.StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data is not null) { lock (stdout) stdout.AppendLine(e.Data); } };
-            proc.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (stderr) stderr.AppendLine(e.Data); } };
+
+            // 最后一次「有输出」的时刻 —— 挂死判据看的是它，不是总时长：
+            // 有的处理器确实要跑几分钟，只要还在打日志就不该被杀。
+            var lastOutputTicks = Environment.TickCount64;
+
+            void Append(System.Text.StringBuilder sb, string? line)
+            {
+                if (line is null) return;
+                lock (sb) sb.AppendLine(line);
+                Interlocked.Exchange(ref lastOutputTicks, Environment.TickCount64);
+            }
+
+            proc.OutputDataReceived += (_, e) => Append(stdout, e.Data);
+            proc.ErrorDataReceived += (_, e) => Append(stderr, e.Data);
 
             if (!proc.Start())
                 throw new ModpackException("无法启动 Java 进程（检查「设置 → 启动」里的 Java 路径）");
 
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            if (onHeartbeat is not null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    while (!HasExitedSafe(proc) && !ct.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await Task.Delay(2000, ct).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+
+                        if (HasExitedSafe(proc)) return;
+
+                        try { onHeartbeat(clock.Elapsed); }
+                        catch { /* 上报失败不影响安装 */ }
+                    }
+                }, ct);
+            }
+
+            // 挂死兜底：连续 12 分钟一行输出都没有 → 判定这个处理器僵死。
+            // 官方 installer 遇到这种情况也是干等，用户只能杀进程；我们主动收尾并给出可操作提示。
+            // 阈值放得很宽，是因为 installer-tools 处理大 jar 时确实会安静一阵。
+            var stallTimeout = TimeSpan.FromMinutes(12);
+            _ = Task.Run(async () =>
+            {
+                while (!HasExitedSafe(proc) && !ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(5000, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    if (HasExitedSafe(proc)) return;
+
+                    if (Environment.TickCount64 - Interlocked.Read(ref lastOutputTicks)
+                        > (long)stallTimeout.TotalMilliseconds)
+                    {
+                        Serilog.Log.Error(
+                            "加载器安装处理器 {Main} 连续 {Min} 分钟无输出，判定为僵死，已终止",
+                            mainClass ?? Path.GetFileName(classpath), stallTimeout.TotalMinutes);
+                        TryKill(proc);
+                        return;
+                    }
+                }
+            }, ct);
 
             try
             {
@@ -981,15 +1590,30 @@ namespace VibrantbitLauncher.Services
                 TryKill(proc);
                 throw;
             }
+            finally
+            {
+                clock.Stop();
+                // 不 await 这两个后台任务：它们靠 ct / HasExited 自行退出，
+                // 在这里等待只会给「取消」路径添一段无谓的延迟。
+            }
 
             if (proc.ExitCode != 0)
             {
                 var tail = stderr.ToString().Trim();
+                if (tail.Length == 0)
+                    lock (stdout) tail = stdout.ToString().Trim();
                 if (tail.Length > 600) tail = tail[^600..];
+
+                // 被杀掉的情况单独给一句话，避免用户看到 -1 退出码一头雾水
+                var hint = Environment.TickCount64 - Interlocked.Read(ref lastOutputTicks)
+                           > (long)stallTimeout.TotalMilliseconds
+                    ? $"处理器连续 {stallTimeout.TotalMinutes} 分钟没有任何输出，已判定为卡死并终止。"
+                      + "多为依赖库不完整或网络被墙导致处理器内部下载挂起，请切换下载源后重试。"
+                    : $"加载器安装处理器执行失败（退出码 {proc.ExitCode}）。";
+
                 Serilog.Log.Error("加载器安装处理器失败（退出码 {Code}）：{Err}", proc.ExitCode, tail);
                 throw new ModpackException(
-                    $"加载器安装处理器执行失败（退出码 {proc.ExitCode}）。"
-                    + (string.IsNullOrWhiteSpace(tail) ? "" : $"Java 输出：{tail}"));
+                    hint + (string.IsNullOrWhiteSpace(tail) ? "" : $"Java 输出：{tail}"));
             }
         }
 
@@ -1005,6 +1629,47 @@ namespace VibrantbitLauncher.Services
         {
             var slash = name.LastIndexOf('/');
             return slash >= 0 ? name[(slash + 1)..] : name;
+        }
+
+        /// <summary>
+        /// 校验「这个文件真的是一份加载器安装器」。
+        ///
+        /// <para>
+        /// <b>不能只看魔数</b>：实测从 BMCLAPI 的 302 目标站下载时，连接会在 450 KB 左右
+        /// 悄悄断掉（服务端不报错、HTTP 也已经是 200），文件**开头仍是 <c>PK\x03\x04</c>**
+        /// —— 只看头 4 字节会把它当成合法 jar，然后崩在 <c>ZipFile.OpenRead</c> 上。
+        /// 必须让 ZipArchive 真正去读**中央目录**（在文件末尾）才能识别截断。
+        /// </para>
+        ///
+        /// <para>
+        /// 返回失败原因（null 表示通过），由调用方拼成一句可操作的提示。
+        /// </para>
+        /// </summary>
+        private static string? ValidateInstaller(string path)
+        {
+            try
+            {
+                using var zip = ZipFile.OpenRead(path);
+
+                var hasVersion = zip.GetEntry("version.json") is not null;
+                var hasProfile = zip.GetEntry("install_profile.json") is not null;
+
+                // 1.12 及以前的老 Forge 只有 install_profile.json，没有 version.json，
+                // 那种情况在后面会给出「暂不支持」的专门提示，这里不算「文件坏了」。
+                if (!hasProfile && !hasVersion)
+                    return "压缩包里没有 version.json / install_profile.json，不是有效的加载器安装器";
+
+                return null;
+            }
+            catch (InvalidDataException)
+            {
+                // 中央目录读不到 —— 截断、或者是 HTML 错误页
+                return "文件不完整（下载被中途截断，或下载源返回了错误页面）";
+            }
+            catch (IOException ex)
+            {
+                return $"文件无法读取（{ex.Message}）";
+            }
         }
 
         private static void TryDelete(string path)

@@ -53,7 +53,13 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         // ===== 网络：下载 =====
         private bool _useBmclMirror;
-        private int _downloadThreads = 10;
+
+        /// <summary>同时下载几个文件（文件级并发）。</summary>
+        private int _downloadConcurrency = 6;
+
+        /// <summary>单个文件切成几块并行（连接级并发，1 = 不分块）。</summary>
+        private int _downloadChunkCount = 4;
+
         private int _downloadRetryCount = 4;
 
         /// <summary>
@@ -294,10 +300,15 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     OnPropertyChanged(nameof(UseBmclMirror));
                     OnPropertyChanged(nameof(DownloadSourceText));
 
-                    _downloadThreads = DownloadThreadOptions.Contains(SettingsService.Current.DownloadThreads)
-                        ? SettingsService.Current.DownloadThreads
-                        : 10;
-                    OnPropertyChanged(nameof(DownloadThreads));
+                    _downloadConcurrency = DownloadConcurrencyOptions.Contains(SettingsService.Current.DownloadConcurrency)
+                        ? SettingsService.Current.DownloadConcurrency
+                        : 6;
+                    OnPropertyChanged(nameof(DownloadConcurrency));
+
+                    _downloadChunkCount = DownloadChunkOptions.Contains(SettingsService.Current.DownloadChunkCount)
+                        ? SettingsService.Current.DownloadChunkCount
+                        : 4;
+                    OnPropertyChanged(nameof(DownloadChunkCount));
 
                     _downloadRetryCount = DownloadRetryOptions.Contains(SettingsService.Current.DownloadRetryCount)
                         ? SettingsService.Current.DownloadRetryCount
@@ -474,8 +485,18 @@ namespace VibrantbitLauncher.ViewModels.Pages
             new SettingOption("Close", "关闭启动器"),
         };
 
-        /// <summary>下载并发档位。</summary>
-        public static readonly IReadOnlyList<int> DownloadThreadOptions = new[] { 1, 2, 4, 6, 8, 10, 12, 16, 24, 32 };
+        /// <summary>
+        /// 「同时下载文件数」的档位。
+        ///
+        /// 上限 16：再高对家用带宽没有收益，而且总连接数 = 并发 × 分块，
+        /// 16 × 16 已经 256 条连接，镜像端（尤其 BMCLAPI）会直接限流。
+        /// </summary>
+        public static readonly IReadOnlyList<int> DownloadConcurrencyOptions =
+            new[] { 1, 2, 3, 4, 6, 8, 10, 12, 16 };
+
+        /// <summary>「单文件分块数」的档位。1 = 不分块、单连接。</summary>
+        public static readonly IReadOnlyList<int> DownloadChunkOptions =
+            new[] { 1, 2, 3, 4, 6, 8, 12, 16 };
 
         /// <summary>下载失败重试次数档位。</summary>
         public static readonly IReadOnlyList<int> DownloadRetryOptions = new[] { 0, 1, 2, 3, 4, 6, 8, 10 };
@@ -484,7 +505,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
         public IReadOnlyList<MemoryOption> MinMemoryOptions => MemoryOptions;
         public IReadOnlyList<SettingOption> GcModes => GcModeOptions;
         public IReadOnlyList<SettingOption> AfterLaunchActions => AfterLaunchOptions;
-        public IReadOnlyList<int> DownloadThreadsOptions => DownloadThreadOptions;
+        public IReadOnlyList<int> DownloadConcurrencyOptionsList => DownloadConcurrencyOptions;
+        public IReadOnlyList<int> DownloadChunkOptionsList => DownloadChunkOptions;
         public IReadOnlyList<int> DownloadRetryOptionsList => DownloadRetryOptions;
 
         /// <summary>本机可用物理内存的粗略值（取自 GC 对进程可见的内存上限），用于给出建议档位。</summary>
@@ -682,19 +704,35 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
         }
 
-        /// <summary>下载并发数。</summary>
-        public int DownloadThreads
+        /// <summary>同时下载几个文件（文件级并发）。</summary>
+        public int DownloadConcurrency
         {
-            get => _downloadThreads;
+            get => _downloadConcurrency;
             set
             {
-                if (!SetProperty(ref _downloadThreads, value) || _suppressSettingApply)
+                if (!SetProperty(ref _downloadConcurrency, value) || _suppressSettingApply)
                     return;
 
-                SettingsService.Current.DownloadThreads = value;
+                SettingsService.Current.DownloadConcurrency = value;
                 SettingsService.Save();
                 OnPropertyChanged(nameof(DownloadSourceSummary));
-                Serilog.Log.Information("下载并发已设为 {Count}", value);
+                Serilog.Log.Information("同时下载文件数已设为 {Count}", value);
+            }
+        }
+
+        /// <summary>单个文件切成几块并行下载（1 = 不分块）。</summary>
+        public int DownloadChunkCount
+        {
+            get => _downloadChunkCount;
+            set
+            {
+                if (!SetProperty(ref _downloadChunkCount, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadChunkCount = value;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+                Serilog.Log.Information("单文件分块数已设为 {Count}", value);
             }
         }
 
@@ -721,7 +759,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         /// <summary>概览面板用的下载源摘要。</summary>
         public string DownloadSourceSummary =>
-            $"{(_useBmclMirror ? "BMCLAPI 镜像" : "官方源")} · {_downloadThreads} 线程";
+            $"{(_useBmclMirror ? "BMCLAPI 镜像" : "官方源")} · {_downloadConcurrency} 文件并发 · {_downloadChunkCount} 块/文件";
 
         // ===== 个性化：主题色 / 渐变色 / 背景图 =====
 

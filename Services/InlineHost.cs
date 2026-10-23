@@ -62,29 +62,74 @@ public static class InlineHost
             return;
         }
 
+        // 上一页可能正在播「飞出」：先抓它的收尾信号。
+        // 不等的话，旧页飞走和新页飞来会同时改同一个卡片容器的变换，观感是抖一下再定格。
+        var previousClosed = _closedSignal?.Task;
+
         // 已有内嵌页：先把旧的收掉，避免叠两层互相抢焦点
         _current?.TrySetResult(true);
+
+        if (previousClosed is not null)
+        {
+            try
+            {
+                await previousClosed.ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                // 收旧页失败不能拦住新页打开
+                Serilog.Log.Warning(ex, "上一内嵌页收尾失败（已忽略，继续打开新页）");
+            }
+        }
+
+        var closedSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _closedSignal = closedSignal;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _current = tcs;
 
         _currentContent = content;
-        main.ShowInline(content);
 
         try
         {
+            // 飞入动画在宿主里播（淡入 + 缩放 + 位移），播完才把控制权交还给子页
+            await main.ShowInlineAsync(content).ConfigureAwait(true);
+
             await tcs.Task.ConfigureAwait(true);
         }
         finally
         {
             _currentContent = null;
-            main.HideInline();
+
+            // 先播飞出，播完宿主才真正隐藏并卸掉内容；
+            // 等待这 280ms 的代价远小于「窗口啪一下消失」的观感损失
+            try
+            {
+                await main.HideInlineAsync(content).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                // 窗口正在关闭时宿主可能已经不在可视树上了
+                Serilog.Log.Warning(ex, "内嵌页飞出动画失败（不影响关闭结果）");
+            }
 
             // 只清自己那一份：被别人顶掉时 _current 已经换人了，不能误清新页的令牌
             if (ReferenceEquals(_current, tcs))
                 _current = null;
+
+            if (ReferenceEquals(_closedSignal, closedSignal))
+                _closedSignal = null;
+
+            // 放行下一个等待者（新页的 ShowAsync 或关闭流程）
+            closedSignal.TrySetResult(true);
         }
     }
+
+    /// <summary>
+    /// 每次 <see cref="ShowAsync"/> 一开始就登记一个「本页已彻底退场」的信号，
+    /// 下一个页面 / 关闭流程据此排队，保证飞出与飞入不重叠。
+    /// </summary>
+    private static TaskCompletionSource<bool>? _closedSignal;
 
     /// <summary>关闭当前内嵌页（子页内部的「确定 / 取消 / 完成」都调它）。</summary>
     public static void Close()

@@ -1,6 +1,7 @@
 using System;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.Views.Pages;
 
@@ -22,6 +23,17 @@ public partial class WelcomeWindow : Window
     {
         InitializeComponent();
 
+        // 按屏幕工作区把向导窗口收进可见范围：960×600 在 125% 缩放的 1366×768 上
+        // 会超出高度，「下一步」按钮正好被压掉。最小尺寸同样按屏幕收敛。
+        WindowSizing.FitToScreen(this, desiredWidth: 960d, desiredHeight: 600d,
+                                 minWidth: 720d, minHeight: 480d);
+
+        // 首帧之前摆到飞入起点，避免「完整闪一帧再重播动画」
+        WindowMotion.PrepareFlyIn(RootGrid);
+
+        // 关闭时先飞出（280ms）再真正关窗
+        WindowMotion.AttachCloseFlyOut(this, RootGrid);
+
         _host = new ContentControlNavigationHost(PageHost);
 
         // 接管全局导航，让向导页面里的 AppNavigation.Navigate 落到本窗口
@@ -37,6 +49,14 @@ public partial class WelcomeWindow : Window
         };
 
         _host.Navigate(typeof(WelcomePage));
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+
+        // 窗口出现后再播：动画内部会看性能模式，开了就直接摆终态
+        _ = WindowMotion.FlyInAsync(RootGrid);
     }
 }
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Messaging;
 using VibrantbitLauncher.Helpers;
@@ -15,7 +16,7 @@ using VibrantbitLauncher.ViewModels.Pages;
 namespace VibrantbitLauncher.Views.Pages;
 
 /// <summary>
-/// 原版游戏下载页：版本清单 + 关键词搜索（相关度重排）。
+/// 原版游戏下载页：版本清单 + 版本类型筛选 + 关键词搜索（相关度重排）。
 /// </summary>
 public partial class DownloadPage : UserControl
 {
@@ -48,6 +49,11 @@ public partial class DownloadPage : UserControl
         // 用自管的过滤集合替代 WPF 的 ListCollectionView（Avalonia 无此类型）
         listBox.ItemsSource = _shown;
 
+        // 默认只勾「正式版」：玩家装的多半是正式版，快照 / 远古 / 愚人节要自己点开。
+        // 必须在订阅事件之前赋值，否则会被当成一次用户操作白刷一遍视图。
+        chipRelease.IsChecked = true;
+        AttachFilterHandlers();
+
         _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
         _debounceTimer.Tick += (_, _) =>
         {
@@ -69,6 +75,28 @@ public partial class DownloadPage : UserControl
             this, (_, _) => RefreshVersions());
     }
 
+    /// <summary>四个筛选勾选框（多选，可任意叠加）。</summary>
+    private CheckBox[] FilterChips() => new[]
+    {
+        chipRelease, chipSnapshot, chipLegacy, chipAprilFools,
+    };
+
+    private void AttachFilterHandlers()
+    {
+        foreach (var chip in FilterChips())
+            chip.IsCheckedChanged += OnFilterChipChanged;
+    }
+
+    /// <summary>
+    /// 勾选 / 取消勾选后的即时重排。
+    /// 不走 260ms 防抖：勾选是一次明确的点击，压着不给反应会显得卡。
+    /// </summary>
+    private void OnFilterChipChanged(object? sender, RoutedEventArgs e)
+    {
+        _debounceTimer.Stop();
+        RefreshView();
+    }
+
     /// <summary>
     /// 重新拉取 Minecraft 版本列表。
     /// 触发点：启动后 1.3 秒的广播、切入下载中心、以及在下载中心里切回「原版游戏」分类。
@@ -87,17 +115,23 @@ public partial class DownloadPage : UserControl
     }
 
     /// <summary>
-    /// 刷新过滤视图：有搜索词时按相关度重排，无搜索词时恢复原始顺序（新版本在前）。
-    /// 这里同时刷新计数文案，避免两处各算一遍。
+    /// 刷新过滤视图：先按勾选的版本类型过滤，再按关键词筛 + 相关度重排。
+    /// 计数文案与空状态也在这里一并更新，避免三处各算一遍。
     /// </summary>
     private void RefreshView()
     {
+        var kinds = SelectedKinds();
         var keyword = textBox.Text;
-        IEnumerable<McVersion> result = _all;
+
+        // 一个类型都没勾 = 什么都不显示（这比「全显示」更符合勾选框的直觉：
+        // 玩家把它当筛选器，不是当排除器）
+        var scoped = _all.Where(v => kinds.Contains(v.Kind)).ToList();
+
+        IEnumerable<McVersion> result = scoped;
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
-            result = _all
+            result = scoped
                 .Where(v => VersionSearchMatcher.IsMatch(v.Version, keyword))
                 .OrderByDescending(v => VersionSearchMatcher.Score(v.Version, keyword))
                 .ThenBy(v => v.Index);
@@ -107,7 +141,18 @@ public partial class DownloadPage : UserControl
         foreach (var v in result)
             _shown.Add(v);
 
-        UpdateCountText();
+        UpdateCountText(scoped.Count, kinds.Count == 0, keyword);
+    }
+
+    /// <summary>当前勾选的大类集合。</summary>
+    private HashSet<McVersionKind> SelectedKinds()
+    {
+        var kinds = new HashSet<McVersionKind>();
+        if (chipRelease.IsChecked == true) kinds.Add(McVersionKind.Release);
+        if (chipSnapshot.IsChecked == true) kinds.Add(McVersionKind.Snapshot);
+        if (chipLegacy.IsChecked == true) kinds.Add(McVersionKind.Legacy);
+        if (chipAprilFools.IsChecked == true) kinds.Add(McVersionKind.AprilFools);
+        return kinds;
     }
 
     /// <summary>
@@ -131,6 +176,10 @@ public partial class DownloadPage : UserControl
                 {
                     Version = entry.McVersion,
                     Date = entry.ReleaseTime.ToString("yyyy-MM-dd"),
+                    Type = entry.Type,
+                    // 分类只在这一处做：页面和筛选都读 Kind，不各自判 type。
+                    // 拿不到 type 的条目由分类器兜底成「正式版」，不会被筛丢。
+                    Kind = McVersionKindClassifier.Classify(entry.McVersion, entry.Type),
                     Index = index
                 }).ToList();
             });
@@ -139,6 +188,7 @@ public partial class DownloadPage : UserControl
             {
                 _all.Clear();
                 _all.AddRange(allVersions);
+                UpdateKindCounts();
                 RefreshView();
             });
         }
@@ -163,27 +213,70 @@ public partial class DownloadPage : UserControl
     }
 
     /// <summary>
-    /// 刷新搜索框右侧的计数文案。
-    /// 无搜索词时显示「共 N 个版本」；有搜索词时显示「匹配 M / 共 N 个版本」。
+    /// 回填四个胶囊上的数量（各类版本的总数，不受搜索影响）。
+    /// 数量让玩家在勾选前就知道「测试版有 700 多个」，避免勾完等一大串列表。
     /// </summary>
-    private void UpdateCountText()
+    private void UpdateKindCounts()
+    {
+        var release = 0;
+        var snapshot = 0;
+        var legacy = 0;
+        var aprilFools = 0;
+
+        foreach (var v in _all)
+        {
+            switch (v.Kind)
+            {
+                case McVersionKind.Snapshot: snapshot++; break;
+                case McVersionKind.Legacy: legacy++; break;
+                case McVersionKind.AprilFools: aprilFools++; break;
+                default: release++; break;
+            }
+        }
+
+        countRelease.Text = release.ToString();
+        countSnapshot.Text = snapshot.ToString();
+        countLegacy.Text = legacy.ToString();
+        countAprilFools.Text = aprilFools.ToString();
+    }
+
+    /// <summary>
+    /// 刷新搜索框右侧的计数文案与空状态。
+    ///
+    /// <para>
+    /// 分母用 <paramref name="scopedTotal"/>（当前勾选范围内的数量）而不是全量 920：
+    /// 只勾了正式版再搜「1.20」时，写「匹配 3 / 共 920」会让人以为漏了两百个结果，
+    /// 写「匹配 3 / 103」才说得通。
+    /// </para>
+    /// </summary>
+    private void UpdateCountText(int scopedTotal, bool noKindSelected, string? keyword)
     {
         if (countText == null)
             return;
 
         var total = _all.Count;
-        var keyword = textBox.Text;
+        var shown = _shown.Count;
+        var searching = !string.IsNullOrWhiteSpace(keyword);
 
-        if (string.IsNullOrWhiteSpace(keyword))
-        {
+        if (searching)
+            countText.Text = $"匹配 {shown} / {scopedTotal} 个版本";
+        else if (shown == total)
             countText.Text = $"共 {total} 个版本";
-            emptyText.IsVisible = false;
-            return;
-        }
+        else
+            countText.Text = $"显示 {shown} / 共 {total} 个版本";
 
-        var matched = _shown.Count;
-        countText.Text = $"匹配 {matched} / 共 {total} 个版本";
-        emptyText.IsVisible = matched == 0 && total > 0;
+        // 列表还没加载出来时不报「空」——那不是筛选造成的空，是还没到货
+        emptyText.IsVisible = shown == 0 && total > 0;
+
+        if (shown > 0 || total == 0)
+            return;
+
+        // 空状态分三种原因，文案要说清「下一步该做什么」
+        emptyText.Text = noKindSelected
+            ? "一个版本类型都没勾选\n点上面的多选框挑一种玩法吧"
+            : searching
+                ? "没有匹配的版本，换个关键词试试"
+                : "当前筛选条件下没有版本";
     }
 
     /// <summary>
