@@ -9,7 +9,7 @@
 # 触发：
 #   - 推送 v* tag           → 7 平台构建 + 创建 Release（讨论见下）
 #   - workflow_dispatch     → 同上，tag 取 csproj 的 <Version>（v1.0.10.3）
-#   - PR 到 main            → 只构建，不发布（保留 CI 校验，不污染 Release）
+#   - PR 到 master / main  → 只构建，不发布（保留 CI 校验，不污染 Release）
 #
 # 设计原则：
 #   1. **不重复实现发布逻辑**。构建步骤直接调用仓库根目录的
@@ -41,7 +41,8 @@ on:
   push:
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    # 本仓库默认分支是 master；main 一并列出，将来改名也不会静默失效。
+    branches: [ master, main ]
   workflow_dispatch:
 
 # 默认只读；只有发布 job 需要写权限（创建 / 更新 Release）
