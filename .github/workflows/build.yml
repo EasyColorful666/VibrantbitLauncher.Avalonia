@@ -1,72 +1,97 @@
 # =============================================================================
-# VibrantbitLauncher.Avalonia — 跨平台桌面构建工作流
+# VibrantbitLauncher.Avalonia — 7 平台并行发布 → GitHub Release
 #
-# 覆盖 7 个运行时目标（RID）：
-#   win-x64 / win-x86 / win-arm64 / linux-x64 / linux-arm64 / osx-x64 / osx-arm64
+# 覆盖 7 个运行时目标（RID），每个都在**对应平台的 runner** 上构建：
+#   Windows  win-x64 / win-x86 / win-arm64
+#   Linux    linux-x64 / linux-arm64
+#   macOS    osx-x64 / osx-arm64
 #
 # 触发：
-#   - 推送到 main 分支（仅构建，不上传 Release）
-#   - 推送以 v 开头的 tag（构建 + 自动创建 GitHub Release）
-#   - 手动触发 (workflow_dispatch)
+#   - 推送 v* tag           → 7 平台构建 + 创建 Release（讨论见下）
+#   - workflow_dispatch     → 同上，tag 取 csproj 的 <Version>（v1.0.10.3）
+#   - PR 到 main            → 只构建，不发布（保留 CI 校验，不污染 Release）
 #
-# 设计：
-#   本工作流**不重复实现发布逻辑**，直接调用仓库根目录的 publish-all.sh
-#   （与本地 `.\publish-all.ps1` 行为一致），避免两套逻辑长期漂移。
-#   脚本会按 RID 发布、按平台打包、算校验和，产物统一落在 dist/。
+# 设计原则：
+#   1. **不重复实现发布逻辑**。构建步骤直接调用仓库根目录的
+#      publish-all.ps1（Windows）/ publish-all.sh（Linux、macOS），
+#      与本地 `.\publish-all.ps1` 完全同一条路径，避免两套逻辑长期漂移。
+#      两个脚本各自跑在自己平台原生的 shell 上：Windows 用 pwsh 调 ps1，
+#      Unix 用 bash 调 sh —— 不让 Git Bash 去模拟 Windows 打包。
+#   2. **7 个 job 并行**（matrix + fail-fast: false）。任一平台失败不影响
+#      其余平台继续构建，但汇总 job 会整体失败，避免发出残缺的 Release。
+#   3. **Release 说明 = CHANGELOG.md 原文**（body_path），不做二次加工。
+#   4. 校验和由汇总 job **重新计算一份合并的** SHA256SUMS.txt：
+#      每个 matrix job 各自只会算出「自己那一个包」的校验和，
+#      直接合并会互相覆盖，所以只收集包体、在最后一站统一算。
 #
-#   每个 RID 在「对应平台的 runner」上构建：Avalonia 的原生库虽然能跨平台
-#   交叉发布，但在目标平台上构建能顺带验证该平台的编译期行为，更保险。
+# 产物（来自 publish-all 脚本，文件名固定）：
+#   VibrantbitLauncher.Avalonia-<rid>.zip       Windows（win-*）
+#   VibrantbitLauncher.Avalonia-<rid>.tar.gz    Linux / macOS
+#   SHA256SUMS.txt                              汇总 job 重算
+#
+# 发布前检查清单（人工）：
+#   - csproj 的 <Version> 已 bump，且与要打的 tag 一致
+#   - CHANGELOG.md 已写好该版本的段落（它就是 Release 正文）
+#   - 剪裁档默认开启；若某平台启动异常，PR 上先加 -NoAppTrim / --no-app-trim 验证
 # =============================================================================
 
-name: Build Desktop
+name: Release
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
-# 同一分支/PR 只保留最新一次运行，节省 CI 分钟
+# 默认只读；只有发布 job 需要写权限（创建 / 更新 Release）
+permissions:
+  contents: read
+
+# PR 上新的推送取消旧运行（省 CI 分钟）；
+# tag 发布绝不取消 —— 中途掐断会留下半个 Release。
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   APP_NAME: VibrantbitLauncher.Avalonia
-  # 框架依赖单文件发布（与 csproj 的 <SelfContained>false</SelfContained> 一致）
-  SELF_CONTAINED: false
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 构建矩阵：每个 RID 在对应平台的 runner 上发布
+  # 构建矩阵：7 个 RID 并行
   # ---------------------------------------------------------------------------
   build:
-    name: Build ${{ matrix.rid }}
+    name: ${{ matrix.rid }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      # 一个平台挂了也要看到其余 6 个的结果，否则每修一个都要重跑全量
       fail-fast: false
       matrix:
         include:
-          - { rid: win-x64,     os: windows-latest }
-          - { rid: win-x86,     os: windows-latest }
-          - { rid: win-arm64,   os: windows-latest }
-          - { rid: linux-x64,   os: ubuntu-latest }
-          - { rid: linux-arm64, os: ubuntu-latest }
-          - { rid: osx-x64,     os: macos-latest }
-          - { rid: osx-arm64,   os: macos-latest }
+          - { rid: win-x64,     os: windows-latest, script: ps1 }
+          - { rid: win-x86,     os: windows-latest, script: ps1 }
+          - { rid: win-arm64,   os: windows-latest, script: ps1 }
+          - { rid: linux-x64,   os: ubuntu-latest,  script: sh }
+          - { rid: linux-arm64, os: ubuntu-latest,  script: sh }
+          - { rid: osx-x64,     os: macos-latest,   script: sh }
+          - { rid: osx-arm64,   os: macos-latest,   script: sh }
 
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: 安装 .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Cache NuGet packages
+      - name: 缓存 NuGet 包
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -74,47 +99,105 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Publish ${{ matrix.rid }}
+      # 自包含 + 单文件 + 程序集剪裁的默认档（≈29MB）由脚本固化，
+      # 这里显式不传任何形态参数 —— 想临时关剪裁就加 --no-app-trim / -NoAppTrim。
+      - name: 发布 ${{ matrix.rid }}（Windows）
+        if: matrix.script == 'ps1'
+        shell: pwsh
+        run: |
+          ./publish-all.ps1 -Rids ${{ matrix.rid }}
+
+      - name: 发布 ${{ matrix.rid }}（Linux / macOS）
+        if: matrix.script == 'sh'
         shell: bash
         run: |
-          ARGS=(--rids "${{ matrix.rid }}")
-          if [ "$SELF_CONTAINED" = "true" ]; then ARGS+=(--self-contained); fi
-          bash ./publish-all.sh "${ARGS[@]}"
+          chmod +x ./publish-all.sh
+          ./publish-all.sh --rids ${{ matrix.rid }}
 
-      - name: Upload artifact
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ matrix.rid }}
-          path: dist/*
+          name: dist-${{ matrix.rid }}
+          # 只收包体：各 job 自己的 SHA256SUMS.txt 只含单个包，合并会互相覆盖
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 仅在推送 v* tag 时，把全部产物汇总成一个 GitHub Release
+  # 汇总：收集 7 个平台产物 → 合并校验和 → 创建 / 更新 Release
   # ---------------------------------------------------------------------------
   release:
-    name: Create Release
+    name: 汇总并发布 Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    # PR 只做构建校验，绝不发布
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
+
     steps:
-      - name: Download all artifacts
+      - name: 检出代码（取 CHANGELOG.md 与 csproj）
+        uses: actions/checkout@v4
+
+      - name: 下载全部平台产物
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ env.APP_NAME }}-*
-          merge-multiple: true
+          pattern: dist-*
           path: artifacts
 
-      - name: List artifacts
-        run: ls -lh artifacts
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 汇总产物并重算校验和
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --generate-notes \
-            artifacts/*
+          set -euo pipefail
+          mkdir -p release-assets
+
+          # 各 artifact 落在 artifacts/dist-<rid>/ 下，摊平到一个目录
+          find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' \) \
+            -exec cp {} release-assets/ \;
+
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+
+          echo "=== 本次 Release 共 $(($(ls | wc -l) - 1)) 个包 ==="
+          ls -lh
+
+      - name: 解析版本号与 tag
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's|.*<Version>\([^<]*\)</Version>.*|\1|p' \
+                     VibrantbitLauncher.Avalonia.csproj | head -n1)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法从 csproj 读取 <Version>"
+            exit 1
+          fi
+
+          # tag 推送用 tag 名；手动触发时用 csproj 版本（Release 需要 tag 才能挂）
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v$VERSION"
+          fi
+
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::warning::tag $TAG 与 csproj 版本 $VERSION 不一致，Release 以 tag 为准"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: 创建 / 更新 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: VibrantbitLauncher.Avalonia ${{ steps.meta.outputs.version }}
+          # Release 正文 = CHANGELOG.md 原文（用户要求，不做二次加工）
+          body_path: CHANGELOG.md
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
