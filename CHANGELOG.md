@@ -10,6 +10,20 @@
 
 ### 更改
 
+- **GitHub Actions 改为「每次推送到仓库就自动部署」**
+
+  `on.push` 增加了 `branches: [master, main]`，不再只认 `v*` tag。
+  现在推到默认分支就会跑满 7 个平台并自动创建 / 更新 Release。
+
+  tag 规则沿用已有逻辑：推分支时 tag 取 csproj 的 `<Version>`（形如 `v1.0.10.6`），
+  所以**版本号 bump 过**才新建 Release，版本号没变则更新同一个 Release
+  （覆盖同名附件，正文随 CHANGELOG 刷新），不会堆出一串同版号 Release。
+
+  `concurrency` 同步调整：分支推送 / PR 上的新推送会取消旧运行，避免两次部署
+  抢同一个 Release；tag 发布仍然绝不取消（掐断会留下半个 Release）。
+
+  ⚠️ 代价是每次推送都跑 7 个平台。纯文档改动想跳过，提交信息里加 `[skip ci]`。
+
 - **下载页搜索改为「点按钮 / 按回车」触发，去掉输入即搜**
 
   原来输入框挂了 `TextChanged` + 260ms `DispatcherTimer` 防抖，边打边筛。

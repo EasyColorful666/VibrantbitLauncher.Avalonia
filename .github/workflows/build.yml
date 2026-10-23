@@ -7,9 +7,20 @@
 #   macOS    osx-x64 / osx-arm64
 #
 # 触发：
-#   - 推送 v* tag           → 7 平台构建 + 创建 Release（讨论见下）
-#   - workflow_dispatch     → 同上，tag 取 csproj 的 <Version>（v1.0.10.3）
-#   - PR 到 master / main  → 只构建，不发布（保留 CI 校验，不污染 Release）
+#   - 推送到 master / main  → 7 平台构建 + 自动创建 / 更新 Release（默认行为）
+#   - 推送 v* tag           → 同上（tag 名优先于 csproj 版本号）
+#   - workflow_dispatch     → 同上，tag 取 csproj 的 <Version>
+#   - PR 到 master / main   → 只构建，不发布（保留 CI 校验，不污染 Release）
+#
+# ★ 关于「每次推送都部署」
+#   推送分支时 tag 取 csproj 的 <Version>（形如 v1.0.10.6）：
+#     - 版本号 bump 过 → 新建一个 Release
+#     - 版本号没变     → 更新同一个 Release（覆盖同名附件，正文随 CHANGELOG 更新）
+#   所以「随手推一次」不会堆出一串同版号 Release，而是始终只有每个版本一个。
+#   ⚠️ 代价：每次推送都会跑满 7 个平台。纯文档改动想跳过，在提交信息里加
+#      [skip ci]，或临时改成本文件的 on.push.paths 过滤。
+#   ⚠️ Release 的 tag 由 action 自动创建；若之后再手动 `git push` 同名 tag 会被拒。
+#      要么删掉远端同名 tag，要么直接改版本号重新发布。
 #
 # 设计原则：
 #   1. **不重复实现发布逻辑**。构建步骤直接调用仓库根目录的
@@ -39,6 +50,8 @@ name: Release
 
 on:
   push:
+    # 每次推送到默认分支就自动构建并部署到 Release
+    branches: [ master, main ]
     tags: [ 'v*' ]
   pull_request:
     # 本仓库默认分支是 master；main 一并列出，将来改名也不会静默失效。
@@ -49,11 +62,12 @@ on:
 permissions:
   contents: read
 
-# PR 上新的推送取消旧运行（省 CI 分钟）；
+# 同一 ref 只保留最新一次运行：
+# 分支推送 / PR 上新的推送取消旧运行（省 CI 分钟，也避免两次部署抢同一个 Release）；
 # tag 发布绝不取消 —— 中途掐断会留下半个 Release。
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   APP_NAME: VibrantbitLauncher.Avalonia
@@ -132,7 +146,7 @@ jobs:
   release:
     name: 汇总并发布 Release
     needs: build
-    # PR 只做构建校验，绝不发布
+    # PR 只做构建校验，绝不发布；推分支 / 推 tag / 手动触发都会发布
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
