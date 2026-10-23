@@ -348,15 +348,19 @@ public static class FileDownloader
         if (item.ExpectedSize > 0 && info.Length != item.ExpectedSize)
             throw DownloadIntegrityException.SizeMismatch(item.ExpectedSize, info.Length);
 
-        // jar / zip 做一次「中央目录」校验。
+        // jar / zip / mrpack 做一次「中央目录」校验。
         //
         // 为什么清单里没给 size 也必须验：install_profile 里的工具库是纯 maven 写法
         // （只有 name + url），既没有 size 也没有 sha1；而镜像站恰恰会「HTTP 200 + 传一半就断」。
         // 这种残片长度对不上任何声明值，sha1 也没有，会一路被当成「下载成功」，
         // 直到跑 Forge 处理器时报 ClassNotFoundException —— 用户完全看不出是下载问题。
         // 打开 ZipArchive 只读文件末尾的中央目录，几毫秒，代价可以忽略。
+        //
+        // .mrpack 是整合包（本质就是 zip），同样必须验：它没有 size/sha1，
+        // 一个被截断的包要到解包阶段才炸，错误信息会变成「整合包格式不正确」，指不到网络上去。
         if (item.TargetPath.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)
-            || item.TargetPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            || item.TargetPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            || item.TargetPath.EndsWith(".mrpack", StringComparison.OrdinalIgnoreCase))
         {
             try
             {

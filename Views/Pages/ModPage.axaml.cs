@@ -395,6 +395,22 @@ public partial class ModPage : UserControl
         _ => null
     };
 
+    // ==================== 导航 ====================
+
+    /// <summary>
+    /// 返回上一页（来源是「下载中心 → 资源分类」）。
+    ///
+    /// 优先走导航栈；栈为空时（例如本页被直接导航过来）退回下载中心，
+    /// 保证按钮在任何进入路径下都有反应。
+    /// </summary>
+    private void OnBack(object? sender, RoutedEventArgs e)
+    {
+        if (AppNavigation.Current?.GoBack() == true)
+            return;
+
+        AppNavigation.Navigate(typeof(DownloadHubPage));
+    }
+
     // ==================== 下载 ====================
 
     private async void OnSaveAsClick(object? sender, RoutedEventArgs e)
@@ -462,48 +478,44 @@ public partial class ModPage : UserControl
         var taskService = AppServices.Provider?.GetService(typeof(DownloadTaskService)) as DownloadTaskService;
         var downloadTask = taskService?.CreateTask($"下载整合包：{info.Name}", DownloadTaskType.ModDownload);
 
+        // 临时目录里可能残留上一次的同名包（进程被杀、断网后没走到清理）。
+        // 下载内核的「已存在」判定是：目标文件非空、且调用方没给期望大小时就算下好了 → 直接跳过。
+        // 整合包走的是 Modrinth 直链，既没有 size 也没有 sha1，那条捷径会把旧包当成新包。
+        TryDeletePartialFile(tempFile);
+
         _isDownloading = true;
         var ok = false;
         try
         {
             AppServices.Notifications?.Show($"正在下载「{info.Name}」…", "安装整合包", NotificationSeverity.Informational);
 
-            using (var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(300) })
+            // 整合包本体也走统一下载内核：8 块并行 + 断点续传 + 源健康度换源 + 字节级看门狗。
+            //
+            // 这里以前是手写的一条 HTTP 流复制 —— 单连接、不分块、不续传、不换源。
+            // 后果很直观：几百 MB 的整合包在 Modrinth 官方 CDN 上常年只有几百 KB/s，
+            // 而包里那几十个模组（走的是 FileDownloader）反倒先下完，本体成了整条链路的瓶颈。
+            var item = new DownloadItem(info.DownloadUrl, tempFile, DisplayName: info.Name);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var lastReportMs = 0L;
+
+            await FileDownloader.DownloadAsync(item, onProgress: (received, total) =>
             {
-                using var response = await httpClient.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
+                // 每 200ms 刷一次，避免分块进度把 UI 线程打满
+                if (clock.ElapsedMilliseconds - lastReportMs < 200)
+                    return;
+                lastReportMs = clock.ElapsedMilliseconds;
 
-                var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-                await using var contentStream = await response.Content.ReadAsStreamAsync();
-                await using var fileStream = new FileStream(
-                    tempFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+                var percent = total > 0 ? (int)(received * 100 / total) : 0;
+                var sizeText = total > 0
+                    ? $"{DownloadSpeedometer.FormatBytes(received)}/{DownloadSpeedometer.FormatBytes(total)}"
+                    : DownloadSpeedometer.FormatBytes(received);
 
-                var buffer = new byte[81920];
-                long totalRead = 0;
-                long lastReported = 0;
-                int read;
-                var sw = System.Diagnostics.Stopwatch.StartNew();
+                // 速度取全局速度表：同一时刻可能还有加载器/资源在并行下，界面数字要和任务中心一致
+                taskService?.UpdateProgress(
+                    downloadTask, percent, DownloadSpeedometer.FormatSpeed(), sizeText);
+            });
 
-                while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                {
-                    await fileStream.WriteAsync(buffer, 0, read);
-                    totalRead += read;
-
-                    if (totalBytes > 0 && sw.ElapsedMilliseconds >= 200)
-                    {
-                        var percent = (int)(totalRead * 100 / totalBytes);
-                        var speed = (totalRead - lastReported) / sw.Elapsed.TotalSeconds / 1024 / 1024;
-                        taskService?.UpdateProgress(downloadTask, percent, $"{speed:F1} MB/s",
-                            $"{totalRead / 1024 / 1024:F1}/{totalBytes / 1024 / 1024:F1} MB");
-                        lastReported = totalRead;
-                        sw.Restart();
-                    }
-                }
-
-                await fileStream.FlushAsync();
-                ok = true;
-            }
-
+            ok = true;
             taskService?.CompleteTask(downloadTask, "下载完成，开始安装");
         }
         catch (Exception ex)

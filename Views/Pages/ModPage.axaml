@@ -10,11 +10,31 @@
 
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*">
 
-        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock x:Name="headerTitle" Classes="display" Text="模组文件" />
-            <TextBlock x:Name="headerSubtitle" Classes="caption" Margin="0,6,0,0"
-                       Text="选择游戏版本与加载器，查看可下载的模组文件；只有加载器匹配的实例才能直接添加" />
-        </StackPanel>
+        <!--
+            标题行：左侧返回 + 右侧两行标题。
+            本页是从「下载中心 → 资源分类」点进来的下钻页（见
+            DownloadResourcesPage 里的 AppNavigation.Navigate(typeof(ModPage))），
+            没有返回按钮就只能靠左侧导航跳走，等于丢掉来路。
+        -->
+        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="Auto,*">
+            <Button Grid.Column="0"
+                    Margin="0,0,12,0"
+                    Padding="16,10"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="返回上一页"
+                    Click="OnBack">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:FASymbolIcon Symbol="Back" />
+                    <TextBlock Text="返回" />
+                </StackPanel>
+            </Button>
+
+            <StackPanel Grid.Column="1">
+                <TextBlock x:Name="headerTitle" Classes="display" Text="模组文件" />
+                <TextBlock x:Name="headerSubtitle" Classes="caption" Margin="0,6,0,0"
+                           Text="选择游戏版本与加载器，查看可下载的模组文件；只有加载器匹配的实例才能直接添加" />
+            </StackPanel>
+        </Grid>
 
         <!--  筛选栏  -->
         <StackPanel Grid.Row="1" Margin="0,0,0,12" Spacing="10">
