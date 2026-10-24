@@ -22,6 +22,12 @@ public partial class MainWindow : FAAppWindow
     private readonly TransitioningContentControl _pageHost;
     private NavigationService? _navigation;
 
+    /// <summary>
+    /// 首帧初始化是否已经做过。Hide → Show（收进托盘后再打开）会再次触发 Opened，
+    /// 而导航 / 飞入只在第一次有意义（见 <see cref="OnOpened"/>）。
+    /// </summary>
+    private bool _shownOnce;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -85,6 +91,11 @@ public partial class MainWindow : FAAppWindow
         // ③ 关闭时先飞出、再真正关窗（系统关机 / 应用退出不拦）
         WindowMotion.AttachCloseFlyOut(this, AppRoot);
 
+        // ③.5 关闭 = 收进系统托盘（托盘菜单里可以把这个行为关掉）。
+        //     必须赶在 AttachCloseFlyOut 之前订阅：它在 Closing 里看到 e.Cancel 就会让路，
+        //     否则飞出动效跑完还会补一次 Close()，把窗口真关掉。
+        Closing += OnClosingToTray;
+
         // ④ 分辨率 / 缩放变化（改显示设置、拔插外接屏）后重新适配一次
         TryWatchScreenChanges();
     }
@@ -122,9 +133,9 @@ public partial class MainWindow : FAAppWindow
             {
                 ApplyScreenFit();
 
-                // 窗口尺寸变了，浮层卡片的可用区域也跟着变
-                if (InlineHostLayer.IsVisible)
-                    ConstrainInlineCard();
+                // 窗口尺寸变了，浮层卡片的可用区域也跟着变 ——
+                // 浮层自己订阅了 SizeChanged，这里只需保证窗口本身先重排一次。
+                InlineOverlay.InvalidateMeasure();
             };
         }
         catch (Exception ex)
@@ -132,13 +143,6 @@ public partial class MainWindow : FAAppWindow
             Serilog.Log.Debug(ex, "订阅屏幕参数变化失败，窗口尺寸只在启动时适配一次");
         }
     }
-
-    /// <summary>把内嵌浮层卡片的最大尺寸限制在主窗口内容区内。</summary>
-    private void ConstrainInlineCard()
-        => WindowSizing.ConstrainToHost(
-            InlineCard,
-            ClientSize.Width,
-            Math.Max(0d, ClientSize.Height - TitleBarHeight));
 
     /// <summary>轻提示宿主，供 App 启动时装配 NotificationService。</summary>
     public Panel NotificationHost => SnackbarHost;
@@ -163,12 +167,56 @@ public partial class MainWindow : FAAppWindow
         RenderOptions.SetBitmapInterpolationMode(BackgroundImageLayer, BitmapInterpolationMode.LowQuality);
     }
 
+    /// <summary>
+    /// 点窗口的关闭按钮 → 收进系统托盘，而不是退出程序。
+    ///
+    /// 这是「启动器退出后联机继续跑」的一半：窗口藏起来、进程留着，EasyTier 内核自然不受影响。
+    /// 真退出走托盘菜单的「退出启动器」（那条路是 ApplicationShutdown，这里不会拦）。
+    /// 用户也可以在托盘菜单里把「关闭窗口时最小化到托盘」关掉，恢复成点 × 就退出。
+    /// </summary>
+    private void OnClosingToTray(object? sender, WindowClosingEventArgs e)
+    {
+        if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
+            return;
+
+        if (!SettingsService.Current.MinimizeToTray)
+            return;
+
+        e.Cancel = true;
+
+        // 注意：这里**不能**用 AppServices.Notifications 提示。
+        // 轻提示是挂在主窗口里的（NotificationHost = SnackbarHost），窗口一藏就跟着藏了，
+        // 用户永远看不到。托盘图标本身就是唯一可靠的「它还在」的信号。
+        Hide();
+
+        Serilog.Log.Information("主窗口已收进系统托盘（关闭窗口不再退出程序）");
+    }
+
+    /// <summary>从托盘叫回主窗口（最小化状态下先还原）。</summary>
+    public void ShowFromTray()
+    {
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+
+        Show();
+        Activate();
+
+        // Win32 上前台权限经常被抢：短暂置顶能稳定把窗口拉到最前，随后立刻取消置顶。
+        Topmost = true;
+        Topmost = false;
+    }
+
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
 
-        // 内嵌子页宿主要有窗口可依附
-        Instance = this;
+        // 从托盘恢复（Hide → Show）时平台会**再走一次** Opened。
+        // 这时候绝不能重跑下面的初始化：导航会把用户正在看的页面拽回「启动」页，
+        // 飞入动效也会莫名其妙重播一遍。首帧相关的准备工作只需做一次。
+        if (_shownOnce)
+            return;
+
+        _shownOnce = true;
 
         var perfMode = SettingsService.Current.PerformanceMode;
 
@@ -521,108 +569,25 @@ public partial class MainWindow : FAAppWindow
     // ==================== 内嵌子页宿主（1.0.8.0） ====================
 
     /// <summary>
-    /// 当前主窗口。内嵌子页要往它的内容区里塞控件，而 ViewModel / Service
-    /// 层拿不到窗口实例，所以留一个静态引用（只此一处，别扩散）。
-    /// </summary>
-    internal static MainWindow? Instance { get; private set; }
-
-    /// <summary>
-    /// 当前内嵌浮层的动画令牌。切页 / 关页可能前一段还没播完，
-    /// 取消旧的再开新的，避免两段动画同时改同一组变换。
-    /// </summary>
-    private System.Threading.CancellationTokenSource? _inlineMotionCts;
-
-    /// <summary>
     /// 显示内嵌子页：写入内容 → 遮罩淡入 + 卡片飞入（淡入 + 92% 推到 100% + 由下浮起）。
+    ///
+    /// <para>
+    /// 动画与尺寸约束都在 <see cref="Controls.InlineHostOverlay"/> 里，主窗口只负责转发 ——
+    /// 首次使用向导也要承载同样的子页，两边共用一份实现才不会走样。
+    /// </para>
     /// </summary>
-    internal async Task ShowInlineAsync(Control content)
-    {
-        _inlineMotionCts?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _inlineMotionCts = cts;
-
-        InlineContentHost.Content = content;
-        InlineHostLayer.IsVisible = true;
-
-        // 小屏（或主窗口被压缩后）把卡片收进宿主可视区，超出部分交给外层 ScrollViewer
-        ConstrainInlineCard();
-
-        // 子页出现时把焦点交给它：否则键盘焦点还停在被盖住的导航项上，
-        // Tab / 方向键会操作看不见的控件。
-        content.Focus();
-
-        try
-        {
-            await WindowMotion.FlyInAsync(InlineCard, InlineScrim, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // 被下一页顶掉：新页已经接管同一组元素，什么都不用做
-        }
-        finally
-        {
-            if (ReferenceEquals(_inlineMotionCts, cts))
-                _inlineMotionCts = null;
-
-            cts.Dispose();
-        }
-    }
+    internal Task ShowInlineAsync(Control content) => InlineOverlay.ShowAsync(content);
 
     /// <summary>
     /// 关闭内嵌子页：先播飞出（淡出 + 后退 + 下沉），播完才真正隐藏并卸掉内容。
-    ///
-    /// <para>
-    /// <paramref name="content"/> 用来判断「飞出期间是不是已经有新页接管了宿主」——
-    /// 如果是，就只让它飞完，不要把新页一起收掉。
-    /// </para>
     /// </summary>
-    internal async Task HideInlineAsync(Control? content)
-    {
-        // 主窗口正在关闭：整个 AppRoot 本身就在飞出了，内嵌页不必再飞一次，
-        // 而且窗口一关渲染循环就停，等动画结束会一直挂着。
-        if (!IsVisible)
-        {
-            InlineHostLayer.IsVisible = false;
-            InlineContentHost.Content = null;
-            return;
-        }
-
-        _inlineMotionCts?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _inlineMotionCts = cts;
-
-        try
-        {
-            await WindowMotion.FlyOutAsync(InlineCard, InlineScrim, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // 飞出中途被新页顶掉：保留宿主可见，交给新页自己飞入
-            return;
-        }
-        finally
-        {
-            if (ReferenceEquals(_inlineMotionCts, cts))
-                _inlineMotionCts = null;
-
-            cts.Dispose();
-        }
-
-        if (content is not null && !ReferenceEquals(InlineContentHost.Content, content))
-            return;
-
-        InlineHostLayer.IsVisible = false;
-        InlineContentHost.Content = null;
-    }
+    internal Task HideInlineAsync(Control? content) => InlineOverlay.HideAsync(content);
 
     protected override void OnClosed(EventArgs e)
     {
-        // 窗口没了，还在跑的飞入 / 飞出动画（以及挂着等它的 await）都要收掉
-        _inlineMotionCts?.Cancel();
-
         // 主窗口关了，内嵌页的 await 不能永远挂着
+        // （浮层自己的动画令牌在控件内部，窗口卸载后会随控件一起失效）
         Services.InlineHost.Close();
-        Instance = null;
         base.OnClosed(e);
     }
 

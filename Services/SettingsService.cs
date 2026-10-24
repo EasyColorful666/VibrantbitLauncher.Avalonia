@@ -137,6 +137,22 @@ namespace VibrantbitLauncher.Services
         /// </summary>
         public string LanModInstanceId { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 关闭启动器后是否让 EasyTier 联机内核继续运行（默认开）。
+        ///
+        /// 房主把游戏挂在后台去干别的事时，启动器一关就把虚拟网卡拆掉，房客那边会
+        /// 直接掉线 —— 所以默认改成「跟启动器脱钩」。下次启动器启动时会自动接管
+        /// 这个还在跑的内核（见 <c>EasyTierService.TryRestoreSessionAsync</c>），
+        /// 密钥 / 身份 / 虚拟 IP 都沿用，不需要重新加入。
+        /// </summary>
+        public bool KeepMultiplayerAlive { get; set; } = true;
+
+        /// <summary>
+        /// 点窗口右上角关闭时收进系统托盘而不是退出程序（默认开）。
+        /// 真正的退出走托盘菜单里的「退出启动器」。
+        /// </summary>
+        public bool MinimizeToTray { get; set; } = true;
+
         public List<MicrosoftAccount> MicrosoftAccounts { get; set; } = new();
         public List<YggdrasilAccount> YggdrasilAccounts { get; set; } = new();
         public List<OfflineAccount> OfflineAccounts { get; set; } = new();

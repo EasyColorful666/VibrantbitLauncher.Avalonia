@@ -1,6 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.VisualTree;
 
 namespace VibrantbitLauncher.Services;
 
@@ -52,13 +56,13 @@ public static class InlineHost
         if (content is null)
             return;
 
-        var main = Views.Windows.MainWindow.Instance;
-        if (main is null)
+        var host = ResolveHost();
+        if (host is null)
         {
-            // 主窗口还没建好（极早期调用）：退回成独立窗口，至少不会丢功能。
-            Serilog.Log.Warning("主窗口尚未就绪，内嵌页改用独立窗口显示：{Type}", content.GetType().Name);
-            if (content is Window window)
-                window.Show();
+            // 一个能承载浮层的窗口都没有（极早期调用 / 窗口还没挂到可视树）。
+            // 以前这里会尝试把 content 当 Window 显示，但子页早就改成 UserControl 了，
+            // 那个分支实际永远不会成立，留着只会误导。
+            Serilog.Log.Warning("没有可用的内嵌页宿主，已放弃显示：{Type}", content.GetType().Name);
             return;
         }
 
@@ -93,7 +97,7 @@ public static class InlineHost
         try
         {
             // 飞入动画在宿主里播（淡入 + 缩放 + 位移），播完才把控制权交还给子页
-            await main.ShowInlineAsync(content).ConfigureAwait(true);
+            await host.ShowAsync(content).ConfigureAwait(true);
 
             await tcs.Task.ConfigureAwait(true);
         }
@@ -105,7 +109,7 @@ public static class InlineHost
             // 等待这 280ms 的代价远小于「窗口啪一下消失」的观感损失
             try
             {
-                await main.HideInlineAsync(content).ConfigureAwait(true);
+                await host.HideAsync(content).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
@@ -123,6 +127,37 @@ public static class InlineHost
             // 放行下一个等待者（新页的 ShowAsync 或关闭流程）
             closedSignal.TrySetResult(true);
         }
+    }
+
+    /// <summary>
+    /// 找出当前该用哪个浮层宿主。
+    ///
+    /// <para>
+    /// 不能写死主窗口：首次使用向导显示期间主窗口是 <b>Hide</b> 状态，浮层画进去谁也看不见，
+    /// 用户点「微软 / 外置 / 离线账户」就表现为「点击没反应」。
+    /// 这里按「当前激活窗口 → 其它可见窗口」的顺序，取第一个带浮层宿主的窗口；
+    /// 向导在显示时它就是激活窗口，主界面时则落到主窗口。
+    /// </para>
+    /// </summary>
+    private static Controls.InlineHostOverlay? ResolveHost()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.Windows is null)
+        {
+            return null;
+        }
+
+        foreach (var window in desktop.Windows.OrderByDescending(w => w.IsActive))
+        {
+            if (!window.IsVisible)
+                continue;
+
+            var overlay = window.GetVisualDescendants().OfType<Controls.InlineHostOverlay>().FirstOrDefault();
+            if (overlay is not null)
+                return overlay;
+        }
+
+        return null;
     }
 
     /// <summary>

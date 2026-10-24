@@ -103,6 +103,40 @@ namespace VibrantbitLauncher.Services
         /// <summary>停止时抑制 Exited 事件里的「异常退出」处理。</summary>
         private bool _stopping;
 
+        /// <summary>
+        /// 已经跟启动器脱钩（脱钩后核心继续运行，<see cref="Dispose"/> 不再杀它）。
+        /// </summary>
+        private bool _detached;
+
+        /// <summary>
+        /// 本次内核是否以「脱离启动器」方式拉起 —— 表现为不接管道，
+        /// 核心的生存周期与启动器进程无关（见 <see cref="StartAsync"/> 的说明）。
+        /// </summary>
+        private bool _keepAlive;
+
+        /// <summary>
+        /// 本次内核是从上一次会话接管来的：我们手里没有进程句柄，
+        /// 停止时只能靠 <see cref="KillStrayCores"/> 按名字收尾。
+        /// </summary>
+        private bool _adopted;
+
+        /// <summary>
+        /// 会话描述文件：记下「当前内核是给哪个密钥、什么身份、哪个监听端口起的」。
+        /// 启动器重启后靠它判断还能不能接管，以及接管到的确实是同一个网络。
+        /// </summary>
+        public static string SessionFilePath => Path.Combine(VblDirectory, "multiplayer-session.json");
+
+        /// <summary>会话文件的契约（只在本机读写，不对外，字段名保持简单）。</summary>
+        private sealed class SessionState
+        {
+            public string Key { get; set; } = string.Empty;
+            public bool IsHost { get; set; }
+            public string Relay { get; set; } = string.Empty;
+            public int ListenPort { get; set; }
+            public int Pid { get; set; }
+            public DateTimeOffset StartedAt { get; set; }
+        }
+
         /// <summary>状态有变化时触发（可能在后台线程，订阅方自行切回 UI 线程）。</summary>
         public event Action? StateChanged;
 
@@ -110,6 +144,16 @@ namespace VibrantbitLauncher.Services
 
         /// <summary>EasyTier 核心是否正在运行。</summary>
         public bool IsRunning { get; private set; }
+
+        /// <summary>
+        /// 本次内核是否以「脱钩方式」启动（没接管道）。
+        /// 只有这种情况才能安全地把内核留在后台 —— 接了管道的实例在启动器退出后
+        /// 写日志会撞 EPIPE，属于不能放生的形态。
+        /// </summary>
+        public bool KeepAliveEnabled => _keepAlive;
+
+        /// <summary>当前内核是不是从上一次会话接管来的（没有进程句柄）。</summary>
+        public bool IsAdopted => _adopted;
 
         /// <summary>本机是房主还是房客（仅用于界面展示）。</summary>
         public bool IsHost { get; private set; }
@@ -296,7 +340,15 @@ namespace VibrantbitLauncher.Services
         /// <summary>
         /// 启动 EasyTier 核心并加入虚拟网络。返回 null 表示成功，否则是给用户看的错误文本。
         /// </summary>
-        public async Task<string?> StartAsync(string key, bool isHost, string relayServer)
+        /// <param name="keepAlive">
+        /// 退出启动器后是否让内核继续运行。为 true 时**不接管道**：
+        /// 管道是启动器持有的内核对象，启动器一退出读端就关，核心此后每次写日志都会撞 EPIPE，
+        /// 轻则日志丢失、重则被运行时当成致命错误退出。不接管道时核心的 stdout 是无效句柄，
+        /// 写失败会被静默丢弃，进程活得好好的 —— 这正是「脱钩」能成立的前提。
+        /// 代价是拿不到核心的实时输出（启动失败时只能靠退出码提示），
+        /// 成员列表仍然由 <c>easytier-cli</c> 轮询获得，不受影响。
+        /// </param>
+        public async Task<string?> StartAsync(string key, bool isHost, string relayServer, bool keepAlive = false)
         {
             Stop();
 
@@ -317,11 +369,15 @@ namespace VibrantbitLauncher.Services
                 WorkingDirectory = Path.GetDirectoryName(core) ?? VblDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                RedirectStandardOutput = !keepAlive,
+                RedirectStandardError = !keepAlive
             };
+
+            if (!keepAlive)
+            {
+                startInfo.StandardOutputEncoding = Encoding.UTF8;
+                startInfo.StandardErrorEncoding = Encoding.UTF8;
+            }
 
             // 参数与官方文档一致：网络名与网络密码都取密钥，-p 指定公共中继节点。
             startInfo.ArgumentList.Add("--network-name");
@@ -381,6 +437,9 @@ namespace VibrantbitLauncher.Services
 
             _ipFromLog = string.Empty;
             _stopping = false;
+            _detached = false;
+            _adopted = false;
+            _keepAlive = keepAlive;
 
             // 先把「运行中」这套状态设好，再去订阅 Exited。
             // 顺序反过来的话，核心秒退时 Exited 会先把状态清成「未启动」，随后又被这里覆盖回「运行中」。
@@ -397,19 +456,27 @@ namespace VibrantbitLauncher.Services
                 listenPort, endpoint, isHost ? "房主" : "房客");
 
             // 进程在 Start 与这里之间就退出了的话，订阅时会立刻收到 Exited，由 OnCoreExited 收尾。
-            process.OutputDataReceived += _outputHandler = (_, e) => OnCoreOutput(e.Data);
-            process.ErrorDataReceived += _errorHandler = (_, e) => OnCoreOutput(e.Data);
+            // 脱钩模式没有管道，自然也没有输出可读（见 StartAsync 的参数说明）。
+            if (!keepAlive)
+            {
+                process.OutputDataReceived += _outputHandler = (_, e) => OnCoreOutput(e.Data);
+                process.ErrorDataReceived += _errorHandler = (_, e) => OnCoreOutput(e.Data);
+            }
+
             process.EnableRaisingEvents = true;
             process.Exited += _exitedHandler = OnCoreExited;
 
-            try
+            if (!keepAlive)
             {
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-            }
-            catch (Exception ex)
-            {
-                Serilog.Log.Debug(ex, "挂接 EasyTier 输出失败");
+                try
+                {
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Debug(ex, "挂接 EasyTier 输出失败");
+                }
             }
 
             StartPolling();
@@ -432,7 +499,40 @@ namespace VibrantbitLauncher.Services
                 return DescribeStartupFailure(exitCode, detail);
             }
 
+            // 记下这一轮的会话参数：启动器意外退出（进程被任务管理器结束、蓝屏重启前）时，
+            // 下次启动也能认出后台那个内核还给哪个网络用。不脱钩的普通会话则清掉旧记录，
+            // 避免下次启动去接管一个其实已经被 Stop 杀掉的内核。
+            if (keepAlive)
+            {
+                WriteSession(new SessionState
+                {
+                    Key = key,
+                    IsHost = isHost,
+                    Relay = endpoint,
+                    ListenPort = listenPort,
+                    Pid = TryGetProcessId(process),
+                    StartedAt = DateTimeOffset.Now
+                });
+            }
+            else
+            {
+                DeleteSession();
+            }
+
             return null;
+        }
+
+        /// <summary>安全读取进程号（拿不到返回 0，仅用于会话文件记录）。</summary>
+        private static int TryGetProcessId(Process process)
+        {
+            try
+            {
+                return process.Id;
+            }
+            catch (InvalidOperationException)
+            {
+                return 0;
+            }
         }
 
         /// <summary>这个进程实例是否仍是当前会话的核心（被 Stop() 收走后为 false）。</summary>
@@ -521,6 +621,13 @@ namespace VibrantbitLauncher.Services
             // 兜底：核心可能被外部手动拉起，或上一次没杀干净。
             KillStrayCores();
 
+            _keepAlive = false;
+            _adopted = false;
+            _detached = false;
+
+            // 是用户主动停的，就不该给下一次启动留接管线索。
+            DeleteSession();
+
             IsRunning = false;
             LocalVirtualIp = string.Empty;
             _ipFromLog = string.Empty;
@@ -529,7 +636,223 @@ namespace VibrantbitLauncher.Services
             NotifyStateChanged();
         }
 
-        public void Dispose() => Stop();
+        /// <summary>
+        /// 与启动器脱钩：内核留在后台继续跑，启动器随后退出。
+        /// 返回 false 表示当前没有在跑的内核，什么也不用保留。
+        ///
+        /// <para>
+        /// ⚠️ 这里只解引用 + 关句柄，**绝不 Kill**，也不能走 <see cref="KillStrayCores"/> ——
+        /// 那等于把刚放生的内核立刻杀掉。
+        /// </para>
+        /// </summary>
+        public bool Detach()
+        {
+            if (!IsRunning)
+                return false;
+
+            // 让可能迟到的 Exited 不再被当成「核心异常退出」
+            _stopping = true;
+            _detached = true;
+
+            StopPolling();
+
+            Process? process;
+            lock (_gate)
+            {
+                process = _core;
+                _core = null;
+                _peers.Clear();
+            }
+
+            if (process != null)
+            {
+                try
+                {
+                    if (_outputHandler != null)
+                        process.OutputDataReceived -= _outputHandler;
+
+                    if (_errorHandler != null)
+                        process.ErrorDataReceived -= _errorHandler;
+
+                    if (_exitedHandler != null)
+                        process.Exited -= _exitedHandler;
+
+                    // 只关我们手里的句柄，进程照旧在后台活着。
+                    process.EnableRaisingEvents = false;
+                    process.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Debug(ex, "脱钩 EasyTier 进程时出错（不影响核心继续运行）");
+                }
+                finally
+                {
+                    _outputHandler = null;
+                    _errorHandler = null;
+                    _exitedHandler = null;
+                }
+            }
+
+            StatusMessage = "已脱钩（启动器退出后仍在运行）";
+            Serilog.Log.Information("EasyTier 内核已与启动器脱钩，继续在后台运行（密钥 {Key}）", NetworkKey);
+            return true;
+        }
+
+        /// <summary>
+        /// 启动器刚起来时调用：上一次退出时如果把内核留在了后台，这里把它接管回来。
+        /// 成功返回 true —— 此时 <see cref="IsRunning"/> 为真，成员列表会立刻开始轮询，
+        /// 界面直接显示「已接管」，不需要用户再点一次启动（点启动会先 Stop，等于重连一次）。
+        /// </summary>
+        public async Task<bool> TryRestoreSessionAsync()
+        {
+            if (IsRunning)
+                return true;
+
+            var session = ReadSession();
+            if (session == null || string.IsNullOrWhiteSpace(session.Key))
+                return false;
+
+            // 记录说内核应该在，实际进程却没了 —— 记录过期，清掉，走正常的「未启动」。
+            if (!IsAnyCoreRunning())
+            {
+                Serilog.Log.Information("联机会话文件存在，但后台已无 EasyTier 内核，清理记录");
+                DeleteSession();
+                return false;
+            }
+
+            var cli = ResolveCliExecutable();
+            if (cli == null)
+                return false;
+
+            string output;
+            try
+            {
+                output = await RunProcessAsync(cli, new[] { "-o", "json", "peer", "list" }, 6000);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "接管上次联机会话时读取成员列表失败");
+                return false;
+            }
+
+            // 拿不到任何输出说明这个内核根本没在我们的网络里（或被别的账户起过），不接管。
+            if (string.IsNullOrWhiteSpace(output))
+                return false;
+
+            var parsed = ParsePeers(output, out var selfIp);
+
+            IsRunning = true;
+            _adopted = true;
+            _keepAlive = true;
+            _stopping = false;
+            _detached = false;
+            IsHost = session.IsHost;
+            NetworkKey = session.Key;
+            RelayServer = session.Relay;
+            ListenPort = session.ListenPort;
+            LocalVirtualIp = selfIp;
+            _ipFromLog = selfIp;
+            LastError = null;
+            StatusMessage = "已接管上次会话（启动器重启后仍在联机）";
+
+            lock (_gate)
+            {
+                _peers.Clear();
+                _peers.AddRange(parsed);
+                _recentOutput.Clear();
+            }
+
+            StartPolling();
+            NotifyStateChanged();
+
+            Serilog.Log.Information("已接管上次退出时保留的 EasyTier 内核（密钥 {Key}，身份 {Role}，虚拟 IP {Ip}）",
+                NetworkKey, IsHost ? "房主" : "房客", selfIp);
+            return true;
+        }
+
+        /// <summary>
+        /// 已经跟启动器脱钩时，宿主释放（进程退出前）不能杀内核 —— 只把自己的定时器收掉。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_detached)
+            {
+                StopPolling();
+                return;
+            }
+
+            Stop();
+        }
+
+        // ============================ 会话文件 ============================
+
+        private static void WriteSession(SessionState state)
+        {
+            try
+            {
+                var directory = Path.GetDirectoryName(SessionFilePath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    Directory.CreateDirectory(directory);
+
+                File.WriteAllText(SessionFilePath, JsonSerializer.Serialize(state));
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "写入联机会话文件失败（不影响联机本身）");
+            }
+        }
+
+        private static SessionState? ReadSession()
+        {
+            try
+            {
+                if (!File.Exists(SessionFilePath))
+                    return null;
+
+                var json = File.ReadAllText(SessionFilePath);
+                return string.IsNullOrWhiteSpace(json)
+                    ? null
+                    : JsonSerializer.Deserialize<SessionState>(json);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "读取联机会话文件失败");
+                return null;
+            }
+        }
+
+        private static void DeleteSession()
+        {
+            try
+            {
+                if (File.Exists(SessionFilePath))
+                    File.Delete(SessionFilePath);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "删除联机会话文件失败");
+            }
+        }
+
+        /// <summary>系统里是否还有 easytier-core 进程（不关心是谁起的）。</summary>
+        private static bool IsAnyCoreRunning()
+        {
+            try
+            {
+                var name = Path.GetFileNameWithoutExtension(CoreFileName);
+                foreach (var process in Process.GetProcessesByName(name))
+                {
+                    process.Dispose();
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "探测 EasyTier 残留进程失败");
+            }
+
+            return false;
+        }
 
         /// <summary>把用户填的中继地址补成 EasyTier 认的 URL 形式。</summary>
         public static string NormalizeRelayServer(string? relayServer)

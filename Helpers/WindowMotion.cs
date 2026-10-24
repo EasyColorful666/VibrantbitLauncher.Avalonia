@@ -226,6 +226,11 @@ public static class WindowMotion
             if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
                 return;
 
+            // 已经被别人拦下并接管了的关闭（例如 MainWindow 把窗口「收进托盘」）：
+            // 既不要再播飞出动效，更不能在这里补一次 window.Close() 把它真关掉。
+            if (e.Cancel)
+                return;
+
             closing = true;
             e.Cancel = true;
 

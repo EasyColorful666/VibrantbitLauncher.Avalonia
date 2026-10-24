@@ -32,5 +32,12 @@
                        Icon="/Assets/icon.ico" />
 
         <ContentControl x:Name="PageHost" Grid.Row="1" />
+
+        <!--
+            向导里也要能弹出内嵌子页（微软 / 外置 / 离线账户）。
+            此前这些子页只会画进主窗口内容区，而向导期间主窗口是隐藏的，
+            于是三个账户按钮看起来「点了没反应」。与主窗口共用同一个浮层控件。
+        -->
+        <ctrl:InlineHostOverlay x:Name="InlineOverlay" Grid.Row="1" ZIndex="150" />
     </Grid>
 </Window>

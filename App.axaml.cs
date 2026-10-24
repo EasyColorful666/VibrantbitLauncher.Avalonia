@@ -86,6 +86,33 @@ public partial class App : Application
             AppServices.Notifications = new NotificationService(mainWindow.NotificationHost);
             AppServices.FilePicker = new FilePickerService();
 
+            // ⑤.5 系统托盘 + 联机内核脱钩（1.0.11.8）。
+            //
+            // 这两件事是一套：托盘让「关窗口」不再等于「退出程序」，联机内核因此能留在后台，
+            // 房客不会因为房主随手关掉启动器就掉线。真正的退出只剩托盘菜单那一条。
+            var easyTier = Services.GetRequiredService<EasyTierService>();
+
+            TrayIconHost? tray = null;
+            try
+            {
+                tray = new TrayIconHost(
+                    showWindow: () => Dispatcher.UIThread.Post(() => mainWindow.ShowFromTray()),
+                    // Stop() 里有 Kill + WaitForExit(4s)，不能压在 UI 线程上等。
+                    stopMultiplayer: () => Task.Run(() => easyTier.Stop()),
+                    exit: () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
+
+                UpdateTrayStatus(tray, easyTier);
+
+                // 联机状态每变一次（启动 / 停止 / 接管 / 拿不到 IP）都刷一遍托盘文案。
+                easyTier.StateChanged += () => Dispatcher.UIThread.Post(() => UpdateTrayStatus(tray, easyTier));
+            }
+            catch (Exception ex)
+            {
+                // 托盘建不出来不该影响启动：退化成「关窗口就退出」的老行为。
+                Log.Warning(ex, "创建系统托盘图标失败，关闭窗口将直接退出程序");
+                tray = null;
+            }
+
             // ⑥ 外观必须在窗口建好之后再应用
             SettingsService.ApplyAppearance();
 
@@ -123,6 +150,9 @@ public partial class App : Application
             {
                 mainWindow.Opened -= OnMainWindowOpened;
                 RunPostShowStartupWork();
+
+                // 接管上一次退出时留在后台的联机内核（有就接管，没有就什么都不做）。
+                RestoreKeptMultiplayerAsync(easyTier);
             }
 
             mainWindow.Opened += OnMainWindowOpened;
@@ -132,6 +162,32 @@ public partial class App : Application
                 // 退出前记一笔：这是「上一次运行是正常结束的」的唯一凭据，
                 // 没有它，下次启动会把这次的正常退出误判成崩溃（见 StartupTrace）。
                 StartupTrace.MarkExit("lifetime");
+
+                // ★ 联机内核脱钩：必须赶在宿主 Dispose 之前。
+                //   DI 释放 EasyTierService 时会走 Stop()，那一步会把内核杀掉（见 EasyTierService.Dispose）。
+                //   只在「本次内核本来就是脱钩方式启动」时保留 —— 接了管道的实例放生会撞 EPIPE，
+                //   那是会连带把核心弄退出的形态，宁可按老行为一起停掉。
+                try
+                {
+                    var tier = _host?.Services.GetService<EasyTierService>();
+                    if (tier is { IsRunning: true, KeepAliveEnabled: true }
+                        && SettingsService.Current.KeepMultiplayerAlive)
+                    {
+                        tier.Detach();
+                        Log.Information("退出：联机内核留在后台继续运行（密钥 {Key}，IP {Ip}）",
+                            tier.NetworkKey, tier.LocalVirtualIp);
+                    }
+                    else if (tier is { IsRunning: true })
+                    {
+                        Log.Information("退出：联机内核随启动器一起停止（密钥 {Key}）", tier.NetworkKey);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "退出时处理联机内核失败，忽略");
+                }
+
+                tray?.Dispose();
 
                 // ⚠️ 这里的 StopAsync **必须带超时**。
                 //
@@ -182,6 +238,54 @@ public partial class App : Application
             }
 
             base.OnFrameworkInitializationCompleted();
+        }
+    }
+
+    /// <summary>把联机状态写进托盘（tooltip + 菜单第一行）。</summary>
+    private static void UpdateTrayStatus(TrayIconHost? tray, EasyTierService easyTier)
+    {
+        if (tray is null)
+            return;
+
+        string status;
+        if (!easyTier.IsRunning)
+        {
+            status = "联机未启动";
+        }
+        else if (string.IsNullOrEmpty(easyTier.LocalVirtualIp))
+        {
+            status = "联机中（正在获取虚拟 IP）";
+        }
+        else
+        {
+            status = $"联机中 · {easyTier.LocalVirtualIp}（{(easyTier.IsHost ? "房主" : "房客")}）";
+        }
+
+        tray.SetStatus(status);
+    }
+
+    /// <summary>
+    /// 接管上一次退出时留在后台的联机内核。
+    ///
+    /// 放在主窗口显示之后：这一步要起一个 CLI 子进程并最多等 6 秒，绝不能挡在首帧前面。
+    /// 失败一律静默 —— 绝大多数情况只是「上次是正常退出，压根没留内核」。
+    /// </summary>
+    private static async void RestoreKeptMultiplayerAsync(EasyTierService easyTier)
+    {
+        try
+        {
+            if (!SettingsService.Current.KeepMultiplayerAlive)
+                return;
+
+            if (await easyTier.TryRestoreSessionAsync())
+            {
+                Log.Information("已接管上次退出时保留的联机内核（密钥 {Key}，IP {Ip}）",
+                    easyTier.NetworkKey, easyTier.LocalVirtualIp);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "接管上次联机会话失败（不影响启动）");
         }
     }
 

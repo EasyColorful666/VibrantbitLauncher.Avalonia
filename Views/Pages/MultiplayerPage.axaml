@@ -147,6 +147,13 @@
                                 </Button>
                             </StackPanel>
                         </Grid>
+
+                        <!--  退出后是否保留联机内核  -->
+                        <ToggleSwitch Margin="0,16,0,0"
+                                      IsChecked="{Binding KeepAliveOnExit, Mode=TwoWay}"
+                                      OnContent="退出启动器后联机继续运行"
+                                      OffContent="退出启动器时断开联机"
+                                      ToolTip.Tip="开启后可以直接关掉启动器（或收进系统托盘），虚拟网络会保留，房客不会掉线；下次打开启动器会自动接管这个会话。" />
                     </StackPanel>
                 </Border>
 

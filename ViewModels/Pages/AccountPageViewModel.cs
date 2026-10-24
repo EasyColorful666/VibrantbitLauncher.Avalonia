@@ -248,11 +248,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
         }
 
         /// <summary>
-        /// 解析头像路径：优先使用按 UUID 保存的皮肤文件，不存在则回退到默认头像。
+        /// 解析头像路径：优先使用按 UUID 保存的皮肤文件，不存在则回退到内置史蒂夫头像。
         /// </summary>
         private static string ResolveAvatarPath(string? uuid)
         {
-            var defaultAvatar = "/Assets/gravatar.png";
+            var defaultAvatar = DefaultAvatarPath();
             if (string.IsNullOrEmpty(uuid)) return defaultAvatar;
 
             var skinPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "res", $"{uuid}.png"));
@@ -264,6 +264,49 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
             return defaultAvatar;
         }
+
+        /// <summary>
+        /// 内置的史蒂夫头像。
+        ///
+        /// <para>
+        /// 内置资源是一整张 64×64 皮肤，直接当头像显示会露出四条胳膊腿，所以第一次用到时
+        /// 从里面裁出头部存到 <c>res/_steve_head.png</c>，之后直接复用这一个文件。
+        /// 裁剪失败（只读目录、资源缺失）时退回原来的通用头像，不让账户页整页挂掉。
+        /// </para>
+        /// </summary>
+        private static string DefaultAvatarPath()
+        {
+            var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "res", "_steve_head.png"));
+            if (File.Exists(path))
+                return path;
+
+            lock (SteveHeadLock)
+            {
+                if (File.Exists(path))
+                    return path;
+
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+                    using var assetStream = Avalonia.Platform.AssetLoader.Open(
+                        new Uri("avares://VibrantbitLauncher.Avalonia/Assets/steve.png"));
+                    using var ms = new MemoryStream();
+                    assetStream.CopyTo(ms);
+
+                    SkinService.WriteHeadBitmap(path, ms.ToArray());
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "生成内置史蒂夫头像失败，改用通用头像");
+                    return "/Assets/gravatar.png";
+                }
+            }
+
+            return File.Exists(path) ? path : "/Assets/gravatar.png";
+        }
+
+        private static readonly object SteveHeadLock = new();
 
         /// <summary>
         /// 解析完整皮肤路径（用于3D预览），不存在则返回空字符串。
@@ -289,7 +332,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 SkinCommand = new RelayCommand<Account>(OpenSkinManager),
                 ImagePath = imagePath,
                 FullSkinPath = fullSkinPath,
-                IsPlaceholderAvatar = type == "Offline" && !HasCustomSkin(account)
+                // 账户卡一律显示皮肤头像：没换过皮肤的离线账户用内置史蒂夫头像。
+                // 曾经在这里给「没换过皮肤」的账户切成人形轮廓占位图标，但玩家反馈认不出是哪个号，
+                // 而史蒂夫本身就是 Minecraft 的默认身份形象，所以改回去。
+                IsPlaceholderAvatar = false
             });
         }
 
@@ -658,13 +704,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private bool isPlaceholderAvatar;
 
         /// <summary>
-        /// 是否用 Win11（太阳谷）风格的默认账户图标代替头像。
+        /// 是否用系统风格的人形图标代替头像。<b>现在恒为 false</b>，账户卡一律显示皮肤头像。
         ///
         /// <para>
-        /// 离线账户本来会生成一份史蒂夫皮肤当头像，但在「账户」这个界面里，
-        /// 一排史蒂夫脸既分不清谁是谁，也和 Win11 的系统账户观感不搭。
-        /// 这里改成：<b>没换过自定义皮肤的离线账户</b>显示太阳谷账户图标，
-        /// 一旦用户真的换过皮肤（有 <c>res/&lt;uuid&gt;.custom</c> 标记）就显示真实头像。
+        /// 曾经用「没换过自定义皮肤的离线账户 → 太阳谷账户图标」来避免一排史蒂夫脸，
+        /// 但玩家反馈认不出是哪个号，而史蒂夫本来就是 Minecraft 的默认身份形象，于是改回史蒂夫头像。
+        /// 属性保留是因为换肤流程里仍会把它置 false，删掉反而要多改一处且没有收益。
         /// </para>
         /// </summary>
         public bool IsPlaceholderAvatar

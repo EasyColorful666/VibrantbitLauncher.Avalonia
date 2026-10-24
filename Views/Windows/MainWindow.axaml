@@ -112,32 +112,11 @@
 
                 子页内部 TitleBar 通过 IsInline="True" 知道自己被内嵌了：
                 不 Hook 主窗口（否则点 × 会关掉整个启动器）、隐藏最小化/最大化、× 走 InlineHost.Close()。
-            -->
-            <Panel x:Name="InlineHostLayer" Grid.Row="1" IsVisible="False" ZIndex="150">
-                <!--  遮罩独立命名：飞入时它跟着从透明淡到不透明，飞出时反向  -->
-                <Border x:Name="InlineScrim" Background="{DynamicResource AppBackgroundScrimBrush}" />
 
-                <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              Margin="16">
-                    <!--
-                        卡片是飞入 / 飞出的作用对象（缩放 + 纵向位移 + 淡入淡出）。
-                        它的 MaxWidth / MaxHeight 由 MainWindow.ShowInlineAsync 按宿主
-                        实际尺寸动态设置，小屏上不会顶出可视区域。
-                    -->
-                    <Border x:Name="InlineCard"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            RenderTransformOrigin="50%,50%"
-                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            BoxShadow="0 16 44 0 #55000000"
-                            ClipToBounds="True"
-                            CornerRadius="8">
-                        <ContentControl x:Name="InlineContentHost" />
-                    </Border>
-                </ScrollViewer>
-            </Panel>
+                遮罩 + 卡片的结构抽进了 InlineHostOverlay：首次使用向导期间主窗口是隐藏的，
+                向导里的账户按钮同样要弹这些子页，那边也挂同一个控件。
+            -->
+            <ctrl:InlineHostOverlay x:Name="InlineOverlay" Grid.Row="1" ZIndex="150" />
 
         </Grid>
 

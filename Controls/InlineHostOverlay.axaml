@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="VibrantbitLauncher.Controls.InlineHostOverlay"
+             IsVisible="False">
+
+    <!--
+        内嵌子页的浮层宿主：一层遮罩 + 居中卡片。
+
+        这份结构原本只存在于主窗口里。首次使用向导期间主窗口是隐藏的，而向导里的
+        「微软 / 外置 / 离线账户」三个按钮同样要弹这些子页 —— 浮层画在隐藏窗口里，
+        用户看到的就是「点了没反应」。所以抽成独立控件，向导窗口也挂一个。
+
+        动画作用对象是 Card（缩放 + 位移 + 淡入淡出），Scrim 同步淡入淡出。
+    -->
+    <Panel x:Name="Layer">
+
+        <Border x:Name="Scrim" Background="{DynamicResource AppBackgroundScrimBrush}" />
+
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="16">
+            <!--
+                卡片的 MaxWidth / MaxHeight 由 ShowAsync 按宿主实际尺寸设置，
+                小屏或窗口被压缩后不会顶出可视区域。
+            -->
+            <Border x:Name="Card"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    RenderTransformOrigin="50%,50%"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    BoxShadow="0 16 44 0 #55000000"
+                    ClipToBounds="True"
+                    CornerRadius="8">
+                <ContentControl x:Name="ContentHost" />
+            </Border>
+        </ScrollViewer>
+    </Panel>
+</UserControl>

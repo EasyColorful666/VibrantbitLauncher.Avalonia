@@ -56,6 +56,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private string _guestKey = string.Empty;
         private string _relayServer = EasyTierService.DefaultRelayServer;
 
+        /// <summary>退出启动器后是否保留联机内核（与设置同源，见 <see cref="KeepAliveOnExit"/>）。</summary>
+        private bool _keepAliveOnExit = true;
+
         // ===== 运行状态（由服务推送） =====
         private bool _isRunning;
         private string _localVirtualIp = string.Empty;
@@ -76,6 +79,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             _easyTierService = easyTierService;
             _easyTierService.StateChanged += OnServiceStateChanged;
+
+            // 开关初值取设置（首次运行为 true）
+            _keepAliveOnExit = SettingsService.Current.KeepMultiplayerAlive;
 
             // 成员集合增删后，依赖它的派生属性（空状态、房主是否已出现）要跟着刷新。
             Peers.CollectionChanged += (_, _) =>
@@ -307,6 +313,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             get => _relayServer;
             set => SetProperty(ref _relayServer, value);
+        }
+
+        /// <summary>
+        /// 关掉启动器之后，联机内核是否继续在后台运行（默认开）。
+        ///
+        /// 关掉它意味着「退出启动器 = 断掉虚拟网络」，房主这边一关，房客会全部掉线；
+        /// 开着则内核与启动器脱钩，窗口可以放心关掉/收进托盘。
+        /// 改动即时写回设置，不需要再点一次保存。
+        /// </summary>
+        public bool KeepAliveOnExit
+        {
+            get => _keepAliveOnExit;
+            set
+            {
+                if (!SetProperty(ref _keepAliveOnExit, value))
+                    return;
+
+                SettingsService.Current.KeepMultiplayerAlive = value;
+                SettingsService.Save();
+            }
         }
 
         public bool IsRunning
@@ -727,7 +753,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             {
                 PersistSettings();
 
-                var error = await _easyTierService.StartAsync(key, _isHostMode, RelayServer);
+                var error = await _easyTierService.StartAsync(key, _isHostMode, RelayServer, KeepAliveOnExit);
                 if (error != null)
                 {
                     _notification.Error(error, "启动失败");

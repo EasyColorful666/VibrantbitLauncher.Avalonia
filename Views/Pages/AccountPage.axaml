@@ -500,35 +500,12 @@
                                             Height="80"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
-                                            IsVisible="{Binding !CurrentUser.IsPlaceholderAvatar}"
                                             Source="{Binding CurrentUser.ImagePath, Converter={StaticResource SkinPathToImage}}"
                                             Stretch="Uniform">
                                             <Image.Clip>
                                                 <EllipseGeometry Center="40,40" RadiusX="40" RadiusY="40" />
                                             </Image.Clip>
                                         </Image>
-
-                                        <!--
-                                            Win11（太阳谷）风格的账户图标：没换过皮肤的离线账户用它代替史蒂夫头像。
-                                            圆形浅底 + 人形轮廓，和系统「设置 → 账户」里的那个是同一套观感。
-                                        -->
-                                        <Border
-                                            Width="80"
-                                            Height="80"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="40"
-                                            IsVisible="{Binding CurrentUser.IsPlaceholderAvatar}">
-                                            <ui:FASymbolIcon
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                FontSize="34"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Symbol="Contact" />
-                                        </Border>
                                     </Panel>
 
                                     <StackPanel
@@ -646,32 +623,12 @@
                                                     Height="40"
                                                     HorizontalAlignment="Center"
                                                     VerticalAlignment="Center"
-                                                    IsVisible="{Binding !IsPlaceholderAvatar}"
                                                     Source="{Binding ImagePath, Converter={StaticResource SkinPathToImage}}"
                                                     Stretch="Uniform">
                                                     <Image.Clip>
                                                         <EllipseGeometry Center="20,20" RadiusX="20" RadiusY="20" />
                                                     </Image.Clip>
                                                 </Image>
-
-                                                <!--  同 Hero：Win11 太阳谷账户图标（未换肤的离线账户）  -->
-                                                <Border
-                                                    Width="40"
-                                                    Height="40"
-                                                    HorizontalAlignment="Center"
-                                                    VerticalAlignment="Center"
-                                                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="20"
-                                                    IsVisible="{Binding IsPlaceholderAvatar}">
-                                                    <ui:FASymbolIcon
-                                                        HorizontalAlignment="Center"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="18"
-                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                        Symbol="Contact" />
-                                                </Border>
                                             </Panel>
 
                                             <StackPanel

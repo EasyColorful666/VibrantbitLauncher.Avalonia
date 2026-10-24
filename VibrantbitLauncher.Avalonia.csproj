@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.11.6</Version>
+    <Version>1.0.11.8</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
