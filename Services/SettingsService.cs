@@ -37,6 +37,20 @@ namespace VibrantbitLauncher.Services
         public string MinecraftFolder { get; set; } = "./.minecraft";
         public string JavaPath { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Java 安装根目录（用户在「Java 下载」页选的那个）。
+        ///
+        /// <para>
+        /// 以前这个路径只活在页面上的输入框里：装到 D:\Java 之后，
+        /// 下载页自己能扫到（它扫输入框），设置页 / 启动页却看不见 ——
+        /// 因为它们走的是 <c>JavaHelper.EnumerateCandidates</c> 的固定候选目录。
+        /// 用户看到的就是「装完检测不到」。持久化并纳入扫描范围后两边才一致。
+        /// </para>
+        ///
+        /// <para>空字符串表示用默认值（<c>%ProgramFiles%\Eclipse Adoptium</c>）。</para>
+        /// </summary>
+        public string JavaRuntimeRoot { get; set; } = string.Empty;
+
         // ===== 启动 · Java 虚拟机与内存 =====
         /// <summary>最大堆内存（MB），对应 JVM 的 -Xmx。</summary>
         public int MaxMemoryMb { get; set; } = 2048;

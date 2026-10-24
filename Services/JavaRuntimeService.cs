@@ -118,7 +118,21 @@ public static class JavaRuntimeService
     }
 
     /// <summary>
-    /// 某个版本在磁盘上的目录名，与 Temurin 官方安装器保持一致：
+    /// 实际使用的 Java 安装根目录：用户选过就用用户选的，否则用默认值。
+    ///
+    /// <para>
+    /// 这个值必须持久化（<see cref="AppSettings.JavaRuntimeRoot"/>）：
+    /// 否则用户把 JDK 装到 D:\Java 后，下载页还认得（它读输入框），
+    /// 设置页 / 启动页却认不出来，表现就是「装完检测不到」。
+    /// </para>
+    /// </summary>
+    public static string ResolveRuntimeRoot()
+    {
+        var configured = SettingsService.Current.JavaRuntimeRoot;
+        return string.IsNullOrWhiteSpace(configured) ? DefaultRuntimeRoot : configured;
+    }
+
+    /// <summary>某个版本在磁盘上的目录名，与 Temurin 官方安装器保持一致：
     /// <c>jdk-21.0.12.1-hotspot</c>。
     ///
     /// <para>
@@ -250,13 +264,26 @@ public static class JavaRuntimeService
 
         foreach (var release in releases)
         {
-            var binary = release.Binaries.FirstOrDefault(b =>
-                string.Equals(b.Os, os, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(b.Architecture, arch, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(b.ImageType, "jdk", StringComparison.OrdinalIgnoreCase));
+            // 同一发行版在 Windows 上会给出两条制品：package（zip）与 installer（MSI），
+            // 二者在同一个 binary 里并列。所以这里只按 os / arch / image_type 选 binary，
+            // 再分别从 package 与 installer 取压缩包和安装器。
+            var binaries = release.Binaries
+                .Where(b => string.Equals(b.Os, os, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(b.Architecture, arch, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(b.ImageType, "jdk", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            var package = binary?.Package;
-            if (package?.Link is null || string.IsNullOrWhiteSpace(package.Name))
+            if (binaries.Count == 0)
+                continue;
+
+            var zipBinary = binaries.FirstOrDefault(b =>
+                b.Package?.Link is not null && !string.IsNullOrWhiteSpace(b.Package.Name));
+
+            var installerBinary = binaries.FirstOrDefault(b =>
+                b.Installer?.Link is not null && !string.IsNullOrWhiteSpace(b.Installer.Name));
+
+            // zip 是跨平台通用路径；Windows 上即使只有 MSI 也能装
+            if (zipBinary?.Package?.Link is null && installerBinary?.Installer?.Link is null)
                 continue;
 
             var version = release.VersionData?.Semver
@@ -264,23 +291,42 @@ public static class JavaRuntimeService
                           ?? release.ReleaseName
                           ?? $"{major}";
 
+            var mainPackage = zipBinary?.Package ?? installerBinary!.Installer!;
+
             items.Add(new JavaReleaseItem
             {
                 Major = release.VersionData?.Major > 0 ? release.VersionData!.Major : major,
                 Version = version,
-                ReleaseName = release.ReleaseName ?? package.Name!,
+                ReleaseName = release.ReleaseName ?? mainPackage.Name!,
                 IsLts = string.Equals(release.VersionData?.Optional, "LTS", StringComparison.OrdinalIgnoreCase),
-                FileName = package.Name!,
-                DownloadUrl = package.Link!,
-                MirrorUrl = BuildMirrorUrl(major, arch, os, package.Name!),
-                Size = package.Size,
-                Sha256 = string.IsNullOrWhiteSpace(package.Checksum) ? null : package.Checksum!.Trim().ToLowerInvariant(),
+
+                FileName = zipBinary?.Package?.Name ?? string.Empty,
+                DownloadUrl = zipBinary?.Package?.Link ?? string.Empty,
+                MirrorUrl = zipBinary?.Package?.Name is { Length: > 0 } zipName
+                    ? BuildMirrorUrl(major, arch, os, zipName)
+                    : null,
+                Size = zipBinary?.Package?.Size ?? 0,
+                Sha256 = string.IsNullOrWhiteSpace(zipBinary?.Package?.Checksum)
+                    ? null
+                    : zipBinary!.Package!.Checksum!.Trim().ToLowerInvariant(),
+
+                InstallerFileName = installerBinary?.Installer?.Name,
+                InstallerUrl = installerBinary?.Installer?.Link,
+                InstallerMirrorUrl = installerBinary?.Installer?.Name is { Length: > 0 } msiName
+                    ? BuildMirrorUrl(major, arch, os, msiName)
+                    : null,
+                InstallerSize = installerBinary?.Installer?.Size ?? 0,
+                InstallerSha256 = string.IsNullOrWhiteSpace(installerBinary?.Installer?.Checksum)
+                    ? null
+                    : installerBinary!.Installer!.Checksum!.Trim().ToLowerInvariant(),
+
                 ReleasedAt = release.Timestamp,
                 Platform = $"{os}-{arch}",
             });
         }
 
-        Log.Information("Java {Major} 可用发行版：{Count} 个（{Platform}）", major, items.Count, $"{os}-{arch}");
+        Log.Information("Java {Major} 可用发行版：{Count} 个（{Platform}，含 MSI {WithMsi} 个）",
+            major, items.Count, $"{os}-{arch}", items.Count(i => i.HasInstaller));
         return items;
     }
 
@@ -297,19 +343,46 @@ public static class JavaRuntimeService
     // ==================== 安装 ====================
 
     /// <summary>
-    /// 下载并解压一个 JDK 到 <paramref name="targetDir"/>（解压后 <c>bin/java</c> 直接位于该目录下）。
+    /// 安装 MSI 时勾选的组件。
+    ///
+    /// <para>
+    /// 只装主程序（<c>FeatureMain</c>），**不动系统 PATH / JAVA_HOME**：
+    /// </para>
+    /// <list type="bullet">
+    /// <item>启动器自己会给每次启动指定 <c>java.exe</c> 全路径，不依赖 PATH；</item>
+    /// <item>官方安装器顺带写入的 <c>FeatureEnvironment</c> / <c>FeatureJavaHome</c> 是机器级的，
+    /// 装第二个 JDK 就会把前一个覆盖掉，用户装的 Java 8 和 Java 21 会互相打架；</item>
+    /// <item>低端机用户往往分不清「PATH 里是哪个 Java」，一旦被改坏很难自己修回来。</item>
+    /// </list>
+    ///
+    /// <para>
+    /// 需要「装完能在 cmd 里直接 java -version」时，把这里改成
+    /// <c>FeatureMain,FeatureEnvironment,FeatureJavaHome</c> 即可（安装后会提示需要重启终端）。
+    /// </para>
+    /// </summary>
+    private const string MsiFeatures = "FeatureMain";
+
+    /// <summary>
+    /// 下载并安装一个 JDK 到 <paramref name="targetDir"/>（装完后 <c>bin/java</c> 直接位于该目录下）。
+    ///
+    /// <para>
+    /// 两条路径：
+    /// </para>
+    /// <list type="number">
+    /// <item><b>Windows + 有 MSI</b>：下载官方安装包，<c>msiexec /qn</c> 静默安装
+    /// （目录结构与 Temurin 官方安装器完全一致）；</item>
+    /// <item><b>其他情况 / MSI 失败</b>：下载 zip 并解压（原本的部署方式，作为兜底）。</item>
+    /// </list>
     /// </summary>
     /// <param name="item">要安装的版本。</param>
     /// <param name="targetDir">目标目录，例如 <c>runtime/jdk-21</c>。</param>
     /// <param name="onProgress">进度回调（0-100，阶段文案）。可能从后台线程调用。</param>
-    /// <param name="ct">取消令牌。</param>
+    /// <param name="ct">取消令牌（只在下载阶段生效；安装阶段不再响应取消）。</param>
     /// <returns>java 可执行文件全路径。</returns>
     public static async Task<string> InstallAsync(
         JavaReleaseItem item, string targetDir, Action<int, string> onProgress, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
-
-        var javaExeName = OperatingSystem.IsWindows() ? "java.exe" : "java";
 
         // 已经装好了就直接返回（重装同一版本不必再下 200 MB）
         var existing = FindJavaExe(targetDir);
@@ -318,6 +391,268 @@ public static class JavaRuntimeService
             onProgress(100, $"该版本已存在于 {targetDir}");
             return existing;
         }
+
+        if (OperatingSystem.IsWindows() && item.HasInstaller)
+        {
+            try
+            {
+                return await InstallViaMsiAsync(item, targetDir, onProgress, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (ElevationCancelledException)
+            {
+                // 用户在 UAC 弹窗里点了「否」：这不是「MSI 方式不可用」，
+                // 回退到 zip 只会在 Program Files 上再撞一次权限墙，不如直接把选择权交回用户。
+                throw;
+            }
+            catch (Exception ex) when (!string.IsNullOrWhiteSpace(item.DownloadUrl))
+            {
+                // MSI 装不上（组策略禁用 Windows Installer、msiserver 服务被精简、
+                // 目标目录被占用、UAC 被拒…）不能让用户卡死 ——
+                // 回退到「下载 zip 解压」，功能完全等价，只是少一个卸载项。
+                Log.Warning(ex, "MSI 安装失败，回退到 zip 解压：{Version}", item.Version);
+                onProgress(1, "安装包方式失败，改用压缩包部署…");
+            }
+        }
+
+        return await InstallFromZipAsync(item, targetDir, onProgress, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 下载官方 MSI 并用 <c>msiexec /qn</c> 静默安装。
+    ///
+    /// <para>
+    /// <c>/qn</c> 全程无界面，进程退出即安装结束；<c>/norestart</c> 禁止安装器自己重启机器；
+    /// <c>INSTALLDIR</c> 显式指定目录，保证和 zip 方案、官方安装器三者的落地路径一致。
+    /// </para>
+    /// </summary>
+    private static async Task<string> InstallViaMsiAsync(
+        JavaReleaseItem item, string targetDir, Action<int, string> onProgress, CancellationToken ct)
+    {
+        // 注意这里**不调用** EnsureWritable：
+        // MSI 是以管理员身份跑的（见 RunMsiexecAsync 的 runas），普通权限下探测
+        // %ProgramFiles% 必然失败，会白白拦住后续的提权安装。
+        // 只有当前进程已经是管理员时才顺手探一次，提前发现「路径非法 / 磁盘满」这类与权限无关的问题。
+        if (Environment.IsPrivilegedProcess)
+        {
+            onProgress(1, "检查安装目录权限");
+            EnsureWritable(targetDir);
+        }
+
+        var msiPath = Path.Combine(Path.GetTempPath(), $"vbl-jdk-{item.Major}-{Guid.NewGuid():N}.msi");
+
+        try
+        {
+            onProgress(2, $"准备下载 JDK {item.Version} 安装包（{FormatSize(item.InstallerSize)}）");
+
+            var urls = new[] { item.InstallerUrl, item.InstallerMirrorUrl }
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Select(u => u!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var ok = await ResilientFileDownloader.DownloadAsync(
+                urls,
+                msiPath,
+                (have, total) =>
+                {
+                    var percent = total > 0 ? (int)Math.Clamp(have * 100 / total, 0, 100) : 0;
+                    var sizeText = total > 0
+                        ? $"{have / 1024d / 1024d:0.0} / {total / 1024d / 1024d:0.0} MB"
+                        : $"{have / 1024d / 1024d:0.0} MB";
+                    onProgress(Math.Clamp(percent, 0, 80), $"下载 JDK {item.Version} 安装包　{sizeText}");
+                },
+                ct).ConfigureAwait(false);
+
+            if (!ok)
+                throw new InvalidOperationException("JDK 安装包下载不完整，请重试或换个网络环境");
+
+            var actualSize = new FileInfo(msiPath).Length;
+            if (item.InstallerSize > 0 && actualSize != item.InstallerSize)
+                throw new InvalidOperationException(
+                    $"JDK 安装包大小不符（期望 {item.InstallerSize} 字节，实际 {actualSize} 字节）");
+
+            if (!string.IsNullOrEmpty(item.InstallerSha256))
+            {
+                onProgress(82, "校验 SHA256");
+                var actual = await ComputeSha256Async(msiPath, ct).ConfigureAwait(false);
+                if (!string.Equals(actual, item.InstallerSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("JDK 安装包校验失败（SHA256 不匹配），请重试");
+            }
+
+            onProgress(86, "正在静默安装…（安装期间请勿关闭启动器）");
+            var exitCode = await RunMsiexecAsync(msiPath, targetDir).ConfigureAwait(false);
+
+            // 不拿退出码当唯一判据：提权（runas）启动时 shell 中转，退出码未必原样传回；
+            // 反过来 1638「已安装同版本」也算成功。以「目标目录里到底有没有 java.exe」为准。
+            var javaPath = FindJavaExe(targetDir)
+                           ?? FindJavaExeIn(targetDir, depth: 2);
+
+            if (javaPath is null)
+                throw new InvalidOperationException(
+                    $"安装程序返回 {exitCode}（{DescribeMsiExitCode(exitCode)}），"
+                    + $"但 {targetDir} 下没有找到 bin\\java.exe。");
+
+            onProgress(100, $"JDK {item.Version} 安装完成");
+            Log.Information("JDK 安装完成（MSI 静默安装，退出码 {Code}）：{Version} → {Path}",
+                exitCode, item.Version, javaPath);
+            return javaPath;
+        }
+        finally
+        {
+            TryDelete(msiPath);
+        }
+    }
+
+    /// <summary>
+    /// 执行 <c>msiexec</c> 静默安装。
+    ///
+    /// <para>
+    /// 非管理员时用 <c>runas</c> 提权：普通权限跑 <c>/qn</c> 装进 Program Files 必然 1603，
+    /// 与其让用户对着「致命错误」发愣，不如让系统弹一次 UAC，点「是」就装完。
+    /// </para>
+    /// </summary>
+    /// <returns>msiexec 退出码（提权场景下可能不可靠，调用方应以文件落地情况为准）。</returns>
+    private static async Task<int> RunMsiexecAsync(string msiPath, string installDir)
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"vbl-msi-{Guid.NewGuid():N}.log");
+
+        var args =
+            $"/i \"{msiPath}\""
+            + " /qn /norestart"
+            + $" /l*v \"{logPath}\""
+            + $" ADDLOCAL={MsiFeatures}"
+            + $" INSTALLDIR=\"{installDir.TrimEnd(Path.DirectorySeparatorChar, '\\')}\"";
+
+        var psi = new ProcessStartInfo("msiexec.exe", args)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Path.GetTempPath(),
+        };
+
+        if (!Environment.IsPrivilegedProcess)
+        {
+            psi.UseShellExecute = true;   // runas 只能走 ShellExecute
+            psi.Verb = "runas";
+        }
+
+        Log.Information("开始静默安装 JDK：msiexec {Args}", args);
+
+        Process process;
+        try
+        {
+            process = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 msiexec.exe");
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            throw new ElevationCancelledException(
+                "已取消管理员授权，安装未进行。\n"
+                + "二选一：\n"
+                + "· 重新点一次安装，在 UAC 弹窗里选「是」；\n"
+                + "· 或把安装目录改到不需要管理员权限的位置（例如 D:\\Java）。");
+        }
+
+        using (process)
+        {
+            // 安装阶段故意不支持取消：msiexec 被强杀会留下半装状态（注册表有项、文件不全），
+            // 比多等一两分钟更难收拾。用户要中止就关掉启动器，MSI 自身会回滚。
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    "安装超时（超过 10 分钟）。可能是杀毒软件拦截了安装程序，或系统里另有安装任务在跑。");
+            }
+
+            var code = process.ExitCode;
+            var tail = TryReadLogTail(logPath, 6);
+            if (!string.IsNullOrEmpty(tail))
+                Log.Information("msiexec 日志尾部：{Tail}", tail);
+
+            TryDelete(logPath);
+            return code;
+        }
+    }
+
+    /// <summary>把 msiexec 的常见退出码翻译成人话；未知码原样展示。</summary>
+    private static string DescribeMsiExitCode(int code) => code switch
+    {
+        0 => "安装成功",
+        1602 => "用户取消了安装",
+        1603 => "系统拒绝安装（通常是权限不足，或目标目录被占用）",
+        1618 => "另一个安装程序正在运行，请稍后重试",
+        1619 => "安装包无法打开（下载不完整或被杀毒软件隔离）",
+        1625 => "安装被系统策略禁止",
+        1638 => "已经安装过同一版本",
+        3010 => "安装成功，需要重启系统后生效",
+        _ => "未知结果",
+    };
+
+    /// <summary>在目录及指定层数的子目录里找 java 可执行文件（MSI 有时会在 INSTALLDIR 下再套一层）。</summary>
+    private static string? FindJavaExeIn(string root, int depth)
+    {
+        if (depth < 0 || !Directory.Exists(root))
+            return null;
+
+        var direct = FindJavaExe(root);
+        if (direct is not null)
+            return direct;
+
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(root))
+            {
+                var found = FindJavaExeIn(dir, depth - 1);
+                if (found is not null)
+                    return found;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "搜索 Java 目录失败：{Root}", root);
+        }
+
+        return null;
+    }
+
+    /// <summary>读日志文件最后几行（msiexec 的 /l*v 日志可能很长，只要尾巴）。</summary>
+    private static string TryReadLogTail(string path, int lines)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return string.Empty;
+
+            var all = File.ReadAllLines(path);
+            return string.Join(" | ", all.Skip(Math.Max(0, all.Length - lines)));
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes > 0 ? $"{bytes / 1024d / 1024d:0} MB" : "未知体积";
+
+    /// <summary>
+    /// 下载 zip 并解压到 <paramref name="targetDir"/>（非 Windows，或 MSI 方案失败时的兜底）。
+    /// </summary>
+    private static async Task<string> InstallFromZipAsync(
+        JavaReleaseItem item, string targetDir, Action<int, string> onProgress, CancellationToken ct)
+    {
+        var javaExeName = OperatingSystem.IsWindows() ? "java.exe" : "java";
+
+        if (string.IsNullOrWhiteSpace(item.DownloadUrl))
+            throw new InvalidOperationException("这个版本没有可用的压缩包，安装失败");
 
         // 先探测可写再开始下载：默认目录在 %ProgramFiles% 下，没管理员权限时
         // 这里会立刻给出「以管理员身份运行 / 换个目录」的提示，
@@ -377,7 +712,7 @@ public static class JavaRuntimeService
                     $"解压完成但找不到 {javaExeName}，目录结构可能不符合预期：{targetDir}");
 
             onProgress(100, $"JDK {item.Version} 安装完成");
-            Log.Information("JDK 安装完成：{Version} → {Path}", item.Version, javaPath);
+            Log.Information("JDK 安装完成（zip 解压）：{Version} → {Path}", item.Version, javaPath);
             return javaPath;
         }
         finally
@@ -601,5 +936,18 @@ public static class JavaRuntimeService
         {
             // 临时文件删不掉不影响安装结果，交给系统清理
         }
+    }
+
+    /// <summary>
+    /// 用户在 UAC 弹窗里点了「否」。
+    ///
+    /// <para>
+    /// 单独一个类型是为了和「MSI 方式不可用」区分开：后者应该回退到 zip 解压，
+    /// 前者回退只会在 Program Files 上再撞一次权限墙，纯属白折腾。
+    /// </para>
+    /// </summary>
+    private sealed class ElevationCancelledException : Exception
+    {
+        public ElevationCancelledException(string message) : base(message) { }
     }
 }

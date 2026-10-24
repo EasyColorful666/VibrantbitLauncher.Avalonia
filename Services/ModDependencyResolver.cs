@@ -45,13 +45,26 @@ public sealed class ModHealthReport
     public List<MissingDependency> Missing { get; init; } = new();
     public List<ModConflict> Conflicts { get; init; } = new();
 
-    /// <summary>目录里读不出模组元数据的 jar（不是模组 / 损坏 / 未打包元数据）。</summary>
+    /// <summary>
+    /// 目录里读不出模组元数据的 jar（不是模组 / 损坏 / 未打包元数据）。
+    /// </summary>
     public List<string> Unrecognized { get; init; } = new();
+
+    /// <summary>
+    /// 加载器与实例不匹配的模组（例如 Forge 实例 mods 里的 Fabric 模组）。
+    ///
+    /// <para>
+    /// 这些 jar **不参与**依赖 / 冲突计算：游戏启动时根本不会加载它们，
+    /// 拿它们算出来的「缺 fabric-api」「两个同名模组冲突」全是噪声。
+    /// 以前就是这样误报的（用户反馈：Forge 实例体检出 Fabric 模组的问题）。
+    /// </para>
+    /// </summary>
+    public List<InstalledMod> Incompatible { get; init; } = new();
 
     public List<string> Warnings { get; init; } = new();
 
-    /// <summary>体检结论是否健康（没缺依赖、没冲突）。</summary>
-    public bool IsHealthy => Missing.Count == 0 && Conflicts.Count == 0;
+    /// <summary>体检结论是否健康（没缺依赖、没冲突、没有放错加载器的模组）。</summary>
+    public bool IsHealthy => Missing.Count == 0 && Conflicts.Count == 0 && Incompatible.Count == 0;
 
     /// <summary>一句话摘要，给通知 / 标题用。</summary>
     public string Summary()
@@ -65,6 +78,7 @@ public sealed class ModHealthReport
         var parts = new List<string>();
         if (Missing.Count > 0) parts.Add($"缺 {Missing.Count} 个依赖");
         if (Conflicts.Count > 0) parts.Add($"{Conflicts.Count} 处重复/冲突");
+        if (Incompatible.Count > 0) parts.Add($"{Incompatible.Count} 个模组加载器不匹配");
         return $"{Installed.Count} 个模组，" + string.Join("，", parts);
     }
 }
@@ -123,6 +137,14 @@ public static class ModDependencyResolver
 
         var all = ModMetadataReader.ReadAll(modsFolder);
 
+        // 按加载器分区：Forge 实例 mods 目录里放着的 Fabric 模组，游戏启动时压根不会加载它们。
+        // 拿它们去算「缺依赖 / 冲突」只会得到毫无意义的结论（Fabric 模组当然找不到 fabric-api，
+        // 也不该和同名的 Forge 版互相算冲突）—— 这就是「Forge 版本体检出 Fabric 模组」的来源。
+        var compatible = new List<InstalledMod>(all.Count);
+        var incompatible = new List<InstalledMod>();
+        foreach (var mod in all)
+            (IsLoaderCompatible(loader, mod) ? compatible : incompatible).Add(mod);
+
         var unrecognized = new List<string>();
         try
         {
@@ -139,14 +161,14 @@ public static class ModDependencyResolver
             Serilog.Log.Debug(ex, "枚举未识别 jar 失败：{Dir}", modsFolder);
         }
 
-        // 提供者表：所有已装模组的 id（归一化后）+ 内置项
+        // 提供者表：所有已装**且能在本实例加载**的模组 id（归一化后）+ 内置项
         var providers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in all)
+        foreach (var m in compatible)
             providers.Add(ModMetadataReader.NormalizeId(m.ModId));
 
         // 依赖需求表
         var needed = new Dictionary<string, MissingDependency>(StringComparer.OrdinalIgnoreCase);
-        foreach (var mod in all)
+        foreach (var mod in compatible)
         {
             foreach (var dep in mod.Dependencies)
             {
@@ -173,8 +195,8 @@ public static class ModDependencyResolver
             }
         }
 
-        // 冲突：同一 id 出现在多个 jar 里
-        var conflicts = all
+        // 冲突：同一 id 出现在多个 jar 里（只看能加载的那些）
+        var conflicts = compatible
             .GroupBy(m => ModMetadataReader.NormalizeId(m.ModId), StringComparer.OrdinalIgnoreCase)
             .Where(g => g.Key.Length > 0 && g.Count() > 1)
             .Select(g => new ModConflict { ModId = g.First().ModId, Files = g.ToList() })
@@ -187,6 +209,7 @@ public static class ModDependencyResolver
             GameVersion = TryGetGameVersion(instanceId),
             ModsFolder = modsFolder,
             Installed = all,
+            Incompatible = incompatible,
             Missing = needed.Values.OrderBy(m => m.ModId, StringComparer.OrdinalIgnoreCase).ToList(),
             Conflicts = conflicts,
             Unrecognized = unrecognized,
@@ -195,12 +218,69 @@ public static class ModDependencyResolver
         if (loader is ModLoaderKind.Vanilla)
             report.Warnings.Add("这个实例是原版（没装模组加载器），装进来的模组不会生效");
 
+        if (incompatible.Count > 0)
+        {
+            var groups = incompatible
+                .GroupBy(m => m.Loader)
+                .Select(g => $"{g.Count()} 个 {LoaderText(g.Key)}")
+                .ToList();
+
+            report.Warnings.Add(
+                $"发现 {string.Join("、", groups)} 模组，与这个 {LoaderText(loader)} 实例不匹配，已排除在依赖检查之外 —— "
+                + "它们不会生效，建议删掉或换成对应加载器的版本");
+        }
+
         Serilog.Log.Information(
-            "模组体检：实例 {Id}（{Loader}），{Count} 个模组，缺 {Missing} 个依赖，{Conflict} 处重复",
-            instanceId, report.Loader, all.Count, report.Missing.Count, conflicts.Count);
+            "模组体检：实例 {Id}（{Loader}），{Count} 个模组（{Compatible} 个可加载，{Incompatible} 个加载器不匹配），缺 {Missing} 个依赖，{Conflict} 处重复",
+            instanceId, report.Loader, all.Count, compatible.Count, incompatible.Count,
+            report.Missing.Count, conflicts.Count);
 
         return report;
     }
+
+    /// <summary>
+    /// 判断一个模组能否在指定加载器的实例里被加载。
+    ///
+    /// <para>
+    /// 判定依据是 jar 里**声明了哪些**加载器（<see cref="InstalledMod.Loaders"/>），不是文件名、
+    /// 也不是它的依赖长什么样 —— 双声明（同时带 fabric.mod.json 与 mods.toml）的 jar 两边的实例都认。
+    /// </para>
+    ///
+    /// <para>
+    /// 宽容处理：Quilt 能加载 Fabric 模组；NeoForge 早期版本（1.20.1）能加载 Forge 模组；
+    /// 原版 / 认不出加载器时不做过滤。宁可多算一个，也不要把实际能用的模组判成「不匹配」。
+    /// </para>
+    /// </summary>
+    public static bool IsLoaderCompatible(ModLoaderKind instanceLoader, InstalledMod mod)
+    {
+        var loaders = mod.Loaders.Count > 0
+            ? mod.Loaders
+            : new List<ModLoaderKind> { mod.Loader };
+
+        return instanceLoader switch
+        {
+            ModLoaderKind.Vanilla => true,
+            ModLoaderKind.Unknown => true,
+            ModLoaderKind.Fabric => loaders.Contains(ModLoaderKind.Fabric),
+            ModLoaderKind.Quilt => loaders.Contains(ModLoaderKind.Quilt) || loaders.Contains(ModLoaderKind.Fabric),
+            ModLoaderKind.Forge => loaders.Contains(ModLoaderKind.Forge),
+            ModLoaderKind.NeoForge => loaders.Contains(ModLoaderKind.NeoForge) || loaders.Contains(ModLoaderKind.Forge),
+            ModLoaderKind.LiteLoader => loaders.Contains(ModLoaderKind.LiteLoader),
+            _ => true,
+        };
+    }
+
+    /// <summary>加载器名称（给界面拼文案用）。</summary>
+    public static string LoaderText(ModLoaderKind kind) => kind switch
+    {
+        ModLoaderKind.Fabric => "Fabric",
+        ModLoaderKind.Quilt => "Quilt",
+        ModLoaderKind.Forge => "Forge",
+        ModLoaderKind.NeoForge => "NeoForge",
+        ModLoaderKind.LiteLoader => "LiteLoader",
+        ModLoaderKind.Vanilla => "原版",
+        _ => "未知加载器",
+    };
 
     /// <summary>
     /// 给一个缺失依赖找一个可下载的文件。找不到返回一个带 <see cref="DependencyCandidate.FailureReason"/> 的对象。

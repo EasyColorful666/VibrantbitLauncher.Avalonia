@@ -6,9 +6,65 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
-## [1.0.10.9] - 2026-10-23
+## [1.0.11.0] - 2026-10-24
+
+### 新增
+
+- **Java 改用官方 MSI 安装包 + 静默安装**
+
+  以前下载 zip 解压到目标目录。现在 Windows 上优先取 Adoptium 的官方安装器（MSI），
+  用 `msiexec /qn` 全程无界面装完：
+
+  ```
+  msiexec /i "<msi>" /qn /norestart /l*v "<log>" ADDLOCAL=FeatureMain INSTALLDIR="<目录>"
+  ```
+
+  | 项 | 说明 |
+  |----|------|
+  | 安装包来源 | Adoptium API 的 binary **`installer` 字段**（以前只在 `package` 里找 .msi，永远找不到） |
+  | 静默参数 | `/qn /norestart`，安装日志写 `%TEMP%\vbl-msi-*.log` |
+  | 安装目录 | 显式 `INSTALLDIR`，仍然是 `jdk-21.0.12.1-hotspot`，与官方安装器 / zip 方案三者一致 |
+  | 勾选组件 | 只 `FeatureMain`，**不动系统 PATH / JAVA_HOME**（多版本 JDK 会互相覆盖，低端机用户很难修回来） |
+  | 权限 | 非管理员时自动 `runas` 提权，弹一次 UAC；点了「否」直接说明，不会绕回去再撞一次权限墙 |
+  | 兜底 | MSI 装不上（组策略禁用 Windows Installer、msiserver 被精简 …）自动回退 zip 解压 |
+
+  退出码不会当成唯一判据：`runas` 经 shell 中转时退出码未必原样传回，`1638`（已装同版本）也算成功。
+  最终以「目标目录里到底有没有 `bin\java.exe`」为准，找不到就把退出码翻译成人话一起报出来。
 
 ### 修复
+
+- **装完的 Java 有时候检测不到（zip 与 MSI 两种装法都会）**
+
+  三个独立原因，全部修掉：
+
+  1. **安装根目录没被扫描**。用户在「Java 下载」页把根目录改成 `D:\Java` 后，这个值只活在输入框里；
+     下载页自己能扫到（它扫输入框），设置页 / 启动页走的是 `JavaHelper` 的固定候选目录 ——
+     于是「装完检测不到」。现在根目录持久化到 `JavaRuntimeRoot`，并作为扫描候选（根目录 + 两层子目录）。
+  2. **Program Files 路径硬编码成 `C:\`**。系统盘不是 C、或 Program Files 被挪到别的盘时，
+     整片候选目录全部落空。本机就是这种情况（`ProgramFiles = D:\Program Files`）：
+     用户用启动器装的 `D:\Program Files\Eclipse Adoptium\jdk-17.0.20.1-hotspot`，
+     旧代码只在 `C:\Program Files\...` 里找，永远够不着；唯一还能靠的是 PATH 里的那个 java。
+     改为从 `SpecialFolder.ProgramFiles / ProgramFilesX86` 取，并补齐 x86 与 LOCALAPPDATA 两套位置。
+  3. **同主版本去重「先到先得」**。PATH / JAVA_HOME 里的旧补丁版排在候选序列前面，
+     用户刚装的新版被当成重复项扔掉。现在同一「主版本 + 位数」内比完整版本号，留最新的。
+
+  另外补了诊断日志：`Java 查找：候选 N → 体检通过 N → 探测成功 N → 去重后 N｜列表`，
+  探测超时 / 失败也各留一条，下次再「检测不到」能直接看出卡在哪一步。
+
+- **Forge 实例体检把 Fabric 模组也算进去了**
+
+  模组体检以前把 `mods/` 里所有能读出元数据的 jar 一视同仁地拿去算「缺依赖 / 重复冲突」。
+  Forge 实例里放着的 Fabric 模组当然找不到 `fabric-api`，于是报一堆根本不存在的缺失依赖。
+
+  现在每个 jar 会记下自己声明了哪些加载器（`fabric.mod.json` / `quilt.mod.json` / `mods.toml` /
+  `neoforge.mods.toml`，跨加载器的双声明 jar 两边都算），体检先按实例加载器分区：
+
+  - 只有**能在本实例加载**的模组参与依赖与冲突计算；
+  - 不匹配的单独列为「加载器不匹配」，在已安装列表里逐条标出 `⚠ Fabric 模组，与当前实例不匹配，不会加载`，
+    并在摘要里计数。
+
+  兼容判断从宽：Quilt 认 Fabric、NeoForge 认 Forge（1.20.1 那代确实能跑）、原版 / 认不出加载器时不过滤 ——
+  宁可多算一个，也不要把实际能用的模组判成不匹配。
 
 - **「设置 → 主页」的配置不重启程序不会跟着变**
 

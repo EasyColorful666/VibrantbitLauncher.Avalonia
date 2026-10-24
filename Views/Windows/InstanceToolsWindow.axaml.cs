@@ -161,8 +161,19 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
                 .ToList();
             ConflictSection.IsVisible = report.Conflicts.Count > 0;
 
+            // 加载器不匹配的模组照样列出来，但要标清楚 —— 它们根本不会被加载，
+            // 用户看到「装了却没生效」时要能一眼找到原因。
+            var incompatiblePaths = new HashSet<string>(
+                report.Incompatible.Select(m => m.FilePath), StringComparer.OrdinalIgnoreCase);
+
             var installedLines = report.Installed
-                .Select(m => $"{m.Name} {m.Version}（{m.FileName}）")
+                .Select(m =>
+                {
+                    var name = $"{m.Name} {m.Version}（{m.FileName}）";
+                    return incompatiblePaths.Contains(m.FilePath)
+                        ? $"{name}　⚠ {ModDependencyResolver.LoaderText(m.Loader)} 模组，与当前实例不匹配，不会加载"
+                        : name;
+                })
                 .ToList();
 
             if (report.Unrecognized.Count > 0)
@@ -170,6 +181,9 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
 
             InstalledList.ItemsSource = installedLines;
             InstalledSummary.Text = $"共 {report.Installed.Count} 个可识别模组"
+                                    + (report.Incompatible.Count > 0
+                                        ? $"（其中 {report.Incompatible.Count} 个加载器不匹配）"
+                                        : string.Empty)
                                     + (report.GameVersion.Length > 0 ? $"，游戏版本 {report.GameVersion}" : string.Empty);
             InstalledSection.IsVisible = true;
 

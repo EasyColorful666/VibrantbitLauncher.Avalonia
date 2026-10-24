@@ -36,7 +36,9 @@ public partial class JavaDownloadPage : UserControl
 
     /// <summary>安装根目录（页面上的可编辑路径框）。</summary>
     private string RuntimeRoot =>
-        string.IsNullOrWhiteSpace(PathBox.Text) ? JavaRuntimeService.DefaultRuntimeRoot : PathBox.Text!;
+        string.IsNullOrWhiteSpace(PathBox.Text)
+            ? JavaRuntimeService.ResolveRuntimeRoot()
+            : PathBox.Text!;
 
     public JavaDownloadPage()
     {
@@ -46,12 +48,40 @@ public partial class JavaDownloadPage : UserControl
         InstalledList.ItemsSource = _installed;
 
         PlatformText.Text = $"当前平台　{JavaRuntimeService.PlatformText}";
-        PathBox.Text = JavaRuntimeService.DefaultRuntimeRoot;
+
+        // 回填上次选过的根目录：这个值必须持久化，
+        // 否则用户装到 D:\Java 后，设置页 / 启动页（走 JavaHelper 的候选扫描）会看不到这些 JDK。
+        PathBox.Text = JavaRuntimeService.ResolveRuntimeRoot();
+
+        // 失焦时落盘 + 重扫，让「换了目录」立刻反映到下方的已安装列表
+        PathBox.LostFocus += (_, _) => PersistRuntimeRoot();
 
         RefreshInstalled();
 
         // 页面构造发生在 UI 线程；首次拉列表放后台，避免阻塞页面切换。
         _ = LoadMajorsAsync();
+    }
+
+    /// <summary>把路径框里的根目录写进配置。空 / 非法路径时回退默认值，避免存进去一个坏路径。</summary>
+    private void PersistRuntimeRoot()
+    {
+        var text = PathBox.Text?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            // 清空 = 恢复默认
+            SettingsService.Current.JavaRuntimeRoot = string.Empty;
+            SettingsService.Save();
+            PathBox.Text = JavaRuntimeService.DefaultRuntimeRoot;
+            return;
+        }
+
+        if (!string.Equals(SettingsService.Current.JavaRuntimeRoot, text, StringComparison.OrdinalIgnoreCase))
+        {
+            SettingsService.Current.JavaRuntimeRoot = text;
+            SettingsService.Save();
+            Log.Information("Java 安装根目录已设为：{Root}", text);
+        }
     }
 
     // ==================== 列表加载 ====================
@@ -168,6 +198,9 @@ public partial class JavaDownloadPage : UserControl
 
         // 目录名与 Temurin 官方安装器保持一致（jdk-21.0.12.1-hotspot），
         // 这样别家工具按约定路径也能找到同一个 Java。
+        // 先把路径框里的根目录落盘：用户可能直接点安装、输入框还没失焦过。
+        PersistRuntimeRoot();
+
         var targetDir = System.IO.Path.Combine(
             RuntimeRoot, JavaRuntimeService.BuildInstallFolderName(item));
 

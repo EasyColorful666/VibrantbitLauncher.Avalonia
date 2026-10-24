@@ -28,6 +28,22 @@ public sealed class InstalledMod
     /// <summary>从哪个元数据文件读出来的（fabric.mod.json / mods.toml …），排错用。</summary>
     public string Source { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 这个 jar 声明的模组加载器（按命中顺序取第一个元数据文件对应的那种）。
+    /// </summary>
+    public ModLoaderKind Loader { get; init; } = ModLoaderKind.Unknown;
+
+    /// <summary>
+    /// jar 里**所有**可识别的加载器声明。
+    ///
+    /// <para>
+    /// 有些 jar 同时带 <c>fabric.mod.json</c> 和 <c>META-INF/mods.toml</c>（跨加载器的兼容层，
+    /// 或作者打了通用包）。判断「能不能在这个实例里加载」必须看这个集合，而不是只看主元数据：
+    /// 只看主元数据会把这类双声明 jar 误判成「加载器不匹配」。
+    /// </para>
+    /// </summary>
+    public List<ModLoaderKind> Loaders { get; init; } = new();
+
     /// <summary>它声明依赖的其它模组（不含 minecraft / java / 加载器这些内置项 —— 那些不参与「缺失」判定）。</summary>
     public List<ModDependency> Dependencies { get; init; } = new();
 
@@ -98,20 +114,33 @@ public static class ModMetadataReader
         {
             using var archive = ZipFile.OpenRead(jarPath);
 
-            var mod = ReadFabric(archive) ?? ReadQuilt(archive) ?? ReadToml(archive);
-            if (mod is null)
+            // 三种声明都要尝试，不再「命中第一个就返回」：
+            // 既要拿到主元数据（id / name / version / 依赖），也要知道这个 jar 支持哪些加载器。
+            var fabric = ReadFabric(archive);
+            var quilt = ReadQuilt(archive);
+            var toml = ReadToml(archive);
+
+            var primary = fabric ?? quilt ?? toml;
+            if (primary is null)
                 return null;
+
+            var loaders = new List<ModLoaderKind>(3);
+            if (fabric is not null) loaders.Add(ModLoaderKind.Fabric);
+            if (quilt is not null) loaders.Add(ModLoaderKind.Quilt);
+            if (toml is not null) loaders.Add(toml.Value.Loader);
 
             var file = new FileInfo(jarPath);
             return new InstalledMod
             {
                 FilePath = jarPath,
                 FileName = file.Name,
-                ModId = mod.Value.ModId,
-                Name = string.IsNullOrWhiteSpace(mod.Value.Name) ? mod.Value.ModId : mod.Value.Name,
-                Version = mod.Value.Version,
-                Source = mod.Value.Source,
-                Dependencies = mod.Value.Dependencies,
+                ModId = primary.Value.ModId,
+                Name = string.IsNullOrWhiteSpace(primary.Value.Name) ? primary.Value.ModId : primary.Value.Name,
+                Version = primary.Value.Version,
+                Source = primary.Value.Source,
+                Loader = primary.Value.Loader,
+                Loaders = loaders,
+                Dependencies = primary.Value.Dependencies,
                 Sha1 = TryComputeSha1(file),
                 Size = file.Length,
             };
@@ -172,7 +201,8 @@ public static class ModMetadataReader
         if (root.TryGetProperty("depends", out var depends))
             deps.AddRange(ParseFabricDeps(depends));
 
-        return new MetaResult(id, Str(root, "name"), Str(root, "version"), "fabric.mod.json", deps);
+        return new MetaResult(id, Str(root, "name"), Str(root, "version"), "fabric.mod.json",
+            ModLoaderKind.Fabric, deps);
     }
 
     /// <summary>
@@ -255,7 +285,7 @@ public static class ModMetadataReader
             }
         }
 
-        return new MetaResult(id, name, Str(ql, "version"), "quilt.mod.json", deps);
+        return new MetaResult(id, name, Str(ql, "version"), "quilt.mod.json", ModLoaderKind.Quilt, deps);
     }
 
     // ==================== Forge / NeoForge（TOML） ====================
@@ -281,8 +311,14 @@ public static class ModMetadataReader
             ? list
             : new List<ModDependency>();
 
+        // 同一个入口读两种 TOML：neoforge.mods.toml 记 NeoForge，mods.toml 记 Forge。
+        // 这条区分是「Forge 实例里混进 Fabric 模组」类误报的基础 —— 必须先知道每个 jar 到底声明了谁。
+        var loaderKind = entry.FullName.Contains("neoforge", StringComparison.OrdinalIgnoreCase)
+            ? ModLoaderKind.NeoForge
+            : ModLoaderKind.Forge;
+
         return new MetaResult(first.ModId, first.Name, first.Version,
-            entry.FullName, deps);
+            entry.FullName, loaderKind, deps);
     }
 
     /// <summary>
@@ -465,7 +501,8 @@ public static class ModMetadataReader
     }
 
     private readonly record struct MetaResult(
-        string ModId, string Name, string Version, string Source, List<ModDependency> Dependencies);
+        string ModId, string Name, string Version, string Source,
+        ModLoaderKind Loader, List<ModDependency> Dependencies);
 
     /// <summary>mods.toml 里 <c>[[mods]]</c> 一条记录。用引用类型是为了让 FirstOrDefault 能返回 null
     /// （值类型的 FirstOrDefault 会静默给出全默认值，把「没有 mods 表」伪装成「有一个空 id 的模组」）。</summary>

@@ -92,8 +92,17 @@ public sealed class AdoptiumBinary
     [JsonPropertyName("jvm_impl")]
     public string? JvmImpl { get; set; }
 
+    /// <summary>压缩包（zip / tar.gz）。</summary>
     [JsonPropertyName("package")]
     public AdoptiumPackage? Package { get; set; }
+
+    /// <summary>
+    /// 平台安装包。**Windows 的 MSI 就放在这里**，与 <see cref="Package"/> 并列，
+    /// 而不是另起一个 binary —— 早先按 package 名后缀找 .msi 是找不到的。
+    /// 其他平台（或上游没提供安装包时）为 null。
+    /// </summary>
+    [JsonPropertyName("installer")]
+    public AdoptiumPackage? Installer { get; set; }
 }
 
 /// <summary>可下载的压缩包。</summary>
@@ -144,6 +153,30 @@ public sealed class JavaReleaseItem
     /// <summary>SHA256（小写十六进制）。</summary>
     public string? Sha256 { get; init; }
 
+    // ===== 安装包（Windows 专用） =====
+    //
+    // Temurin 在 Windows 上同时发布 .zip 与 .msi；MSI 是官方安装器（WiX 打包），
+    // 可以 msiexec /qn 静默安装到指定目录，省掉「解压 + 手工摆目录」这一步。
+    // 只有 Windows 的制品才有，其他平台这些字段恒为空。
+
+    /// <summary>MSI 安装包文件名，如 <c>OpenJDK21U-jdk_x64_windows_hotspot_21.0.5_11.msi</c>。</summary>
+    public string? InstallerFileName { get; init; }
+
+    /// <summary>MSI 官方下载地址。</summary>
+    public string? InstallerUrl { get; init; }
+
+    /// <summary>MSI 的国内镜像地址，可能为空。</summary>
+    public string? InstallerMirrorUrl { get; init; }
+
+    /// <summary>MSI 字节数；0 表示上游没给。</summary>
+    public long InstallerSize { get; init; }
+
+    /// <summary>MSI 的 SHA256（小写十六进制）。</summary>
+    public string? InstallerSha256 { get; init; }
+
+    /// <summary>是否有可用的官方安装包（Windows 才有）。</summary>
+    public bool HasInstaller => !string.IsNullOrWhiteSpace(InstallerUrl);
+
     /// <summary>发布时间。</summary>
     public DateTimeOffset? ReleasedAt { get; init; }
 
@@ -161,12 +194,14 @@ public sealed class JavaReleaseItem
     {
         get
         {
-            var parts = new List<string>(4);
+            var parts = new List<string>(5);
             if (IsLts)
                 parts.Add("LTS");
             if (!string.IsNullOrEmpty(Platform))
                 parts.Add(Platform);
             parts.Add(SizeText);
+            if (HasInstaller)
+                parts.Add("MSI 安装包");
             if (!string.IsNullOrEmpty(DateText))
                 parts.Add(DateText);
 
