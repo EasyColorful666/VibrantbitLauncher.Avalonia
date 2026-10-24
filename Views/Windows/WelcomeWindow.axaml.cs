@@ -19,6 +19,20 @@ public partial class WelcomeWindow : Window
     private readonly INavigationService? _previousNavigation;
     private readonly ContentControlNavigationHost _host;
 
+    /// <summary>
+    /// 用户是否走完了向导（由「完成」页的「开始使用」置位）。
+    ///
+    /// <para>
+    /// 关闭向导有两种完全不同的含义，必须区分：点「开始使用」= 配置完成，转主界面；
+    /// 点标题栏的关闭按钮 / Alt+F4 = 放弃初始配置，整个程序应退出。
+    /// 以前两者走同一条路径，所以「第一次打开就点关闭」会把人直接丢进主界面。
+    /// </para>
+    /// </summary>
+    public bool IsCompleted { get; private set; }
+
+    /// <summary>由向导的最后一页调用，表示「配置流程已经走完」。</summary>
+    public void MarkCompleted() => IsCompleted = true;
+
     public WelcomeWindow()
     {
         InitializeComponent();
