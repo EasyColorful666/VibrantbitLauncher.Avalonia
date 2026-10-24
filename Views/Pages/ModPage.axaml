@@ -93,6 +93,15 @@
                                                IsVisible="{Binding ShowLoaderHint}"
                                                Text="{Binding LoaderHint}"
                                                TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <!--
+                                        这个文件支持哪些游戏版本。
+                                        版本多时只列前几个（否则卡片会被撑成两屏），完整清单在悬停提示里。
+                                    -->
+                                    <TextBlock Classes="caption" Margin="0,3,0,0"
+                                               IsVisible="{Binding ShowVersionHint}"
+                                               Text="{Binding VersionHint}"
+                                               ToolTip.Tip="{Binding VersionTooltip}"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                                             VerticalAlignment="Center">

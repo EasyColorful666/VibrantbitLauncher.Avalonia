@@ -296,6 +296,24 @@ public partial class ModPage : UserControl
                 });
             }
 
+            // MinecraftLaunch 的文件模型并不总能读到 game_versions（它自己也是靠文件名猜版本兜底的），
+            // 缺的时候补查一次 Modrinth 官方接口，按文件名反查 —— 否则卡片上会是一排「未标注」，
+            // 等于这个功能白加。
+            if (_modrinthModInfos.Any(info => info.GameVersions.Count == 0))
+            {
+                var fallback = await LoadGameVersionsByFileNameAsync(projectId);
+
+                foreach (var info in _modrinthModInfos.Where(info => info.GameVersions.Count == 0))
+                {
+                    if (fallback.TryGetValue(info.FileName, out var versions))
+                        info.GameVersions = versions;
+                }
+            }
+
+            // 每个文件都在卡片上标明它支持哪些游戏版本（版本多的折成「等 N 个」）。
+            foreach (var info in _modrinthModInfos)
+                ApplyVersionHint(info);
+
             if (_modrinthModInfos.Count == 0)
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
@@ -375,6 +393,85 @@ public partial class ModPage : UserControl
             return true;
 
         return ModLoaderHelper.ParseAll(item.RequiredLoaders).Contains(loader.Value);
+    }
+
+    /// <summary>
+    /// 把文件声明的游戏版本压成卡片上的一行字。
+    ///
+    /// <para>
+    /// 一个模组经常同时声明十几个版本（1.16.5 一路到最新的 1.21.x），全列出来会把卡片撑成两屏，
+    /// 所以：≤5 个全列，多了只列前 3 个 + 「等 N 个」；完整清单挂在悬停提示上。
+    /// </para>
+    ///
+    /// <para>
+    /// Modrinth 偶尔不给 <c>game_versions</c>（老项目 / 非官方上传），这时如实写「未标注」，
+    /// 而不是把这一行藏掉 —— 藏掉会让人以为「这个文件不限版本」。
+    /// </para>
+    /// </summary>
+    private static void ApplyVersionHint(ModrinthModInfo item)
+    {
+        var versions = item.GameVersions
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // 无论有没有版本号，这一行都显示：有值就列版本，没值就明说「未标注」。
+        item.ShowVersionHint = true;
+
+        if (versions.Count == 0)
+        {
+            item.VersionHint = "游戏版本：未标注";
+            item.VersionTooltip = "Modrinth 没有给出这个文件支持的游戏版本";
+            return;
+        }
+
+        const int inlineLimit = 5;
+
+        item.VersionHint = versions.Count <= inlineLimit
+            ? "游戏版本：" + string.Join(" / ", versions)
+            : "游戏版本：" + string.Join(" / ", versions.Take(3)) + $" 等 {versions.Count} 个";
+
+        item.VersionTooltip = $"支持的游戏版本（共 {versions.Count} 个）：" + string.Join("、", versions);
+    }
+
+    /// <summary>
+    /// 按文件名反查每个文件支持的游戏版本（<c>文件名 → game_versions</c>）。
+    ///
+    /// 只在 MinecraftLaunch 那边读不到版本时才调用，一次 <c>project/version</c> 请求解决整页；
+    /// 失败返回空表（卡片退化成「未标注」，不影响下载）。
+    /// </summary>
+    private static async Task<Dictionary<string, List<string>>> LoadGameVersionsByFileNameAsync(string projectId)
+    {
+        var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var versions = await ModrinthApi.GetProjectVersionsAsync(projectId);
+
+            foreach (var version in versions)
+            {
+                foreach (var file in version.Files)
+                {
+                    if (string.IsNullOrWhiteSpace(file.FileName))
+                        continue;
+
+                    if (!map.TryGetValue(file.FileName, out var list))
+                        map[file.FileName] = list = new List<string>();
+
+                    foreach (var gameVersion in version.GameVersions)
+                    {
+                        if (!list.Contains(gameVersion, StringComparer.OrdinalIgnoreCase))
+                            list.Add(gameVersion);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "补查模组文件的游戏版本失败（不影响下载）");
+        }
+
+        return map;
     }
 
     private void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -929,6 +1026,19 @@ public class ModrinthModInfo : System.ComponentModel.INotifyPropertyChanged
 
     /// <summary>是否显示加载器标注（只有模组需要，资源包 / 光影不显示）。</summary>
     public bool ShowLoaderHint { get; set; }
+
+    /// <summary>
+    /// 界面上那句「游戏版本：1.20.1 / 1.20.2 …」。
+    /// 由 <c>ModPage.ApplyVersionHint</c> 根据 <see cref="GameVersions"/> 压成一行，
+    /// 版本太多时只列前几个，完整清单在 <see cref="VersionTooltip"/> 里。
+    /// </summary>
+    public string VersionHint { get; set; } = string.Empty;
+
+    /// <summary>完整版本清单（鼠标悬停时显示），避免卡片上列成一长串。</summary>
+    public string VersionTooltip { get; set; } = string.Empty;
+
+    /// <summary>是否显示游戏版本那一行。</summary>
+    public bool ShowVersionHint { get; set; }
 
     private bool _showInstallModpackButton;
 
