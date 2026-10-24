@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -189,14 +190,46 @@ namespace VibrantbitLauncher.Services
             if (versionJson["inheritsFrom"] is null)
                 versionJson["inheritsFrom"] = mcVersion;
 
-            // 合并 install_profile.libraries：这些是跑 processor 需要的工具库，
-            // 官方 installer 也会把它们写进版本 JSON，缺了会在启动/处理器阶段报 ClassNotFound。
-            var allLibraries = new List<JsonNode>();
-            CollectLibraries(versionJson["libraries"], allLibraries);
-            CollectLibraries(profileJson["libraries"], allLibraries);
-            // 同 maven 坐标去重（版本 JSON 和 install_profile 常有重叠）
-            var deduped = DedupLibraries(allLibraries);
-            versionJson["libraries"] = new JsonArray(deduped.Select(x => x.DeepClone()).ToArray());
+            // 库要分成两份，绝不能混在一起：
+            //
+            //   · 启动库 = 加载器 version.json 自己声明的那些（官方 installer 写进版本 JSON 的也只有这些）
+            //   · 工具库 = install_profile.libraries，只给 processors 用（installertools、
+            //     ForgeAutoRenamingTool、maven-artifact、jopt-simple 6.0-alpha-3 …）
+            //
+            // 以前把两份都塞进版本 JSON，于是 tools 跟着进了启动 classpath，模块层直接爆炸。
+            // 实测两组症状：
+            //   Forge 1.20.1：Modules org.objectweb.asm.tree.analysis and ForgeAutoRenamingTool
+            //                 export package org.objectweb.asm.tree.analysis to module installertools
+            //   Forge 26.2：  Modules joptsimple and jopt.simple export package joptsimple.util
+            //                 / Module jopt.simple not found, required by cpw.mods.modlauncher
+            // 两份分开之后两者都能正常启动。
+            var launchLibraries = new List<JsonNode>();
+            CollectLibraries(versionJson["libraries"], launchLibraries);
+            launchLibraries = DedupLibraries(launchLibraries, ignoreVersion: true);
+            versionJson["libraries"] = new JsonArray(launchLibraries.Select(x => x.DeepClone()).ToArray());
+
+            var toolLibraries = new List<JsonNode>();
+            CollectLibraries(profileJson["libraries"], toolLibraries);
+            // 工具库按完整坐标去重：不同 processor 点名不同版本（asm 9.3 / 9.5），
+            // 按 artifact 去重会把高版本丢掉，处理器随即报「缺少依赖」。
+            toolLibraries = DedupLibraries(toolLibraries, ignoreVersion: false);
+
+            // 下载清单 = 启动库 + 工具库（processor 缺一个都跑不动）。
+            // 两份之间还要再按完整坐标查一次重：forge/fmlloader 这类两边都声明的库
+            // 若各下一份，会被并行下载同时写同一个文件（体积对了内容不对）。
+            var downloadLibraries = new List<JsonNode>(launchLibraries.Count + toolLibraries.Count);
+            var seenCoordinates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var lib in launchLibraries.Concat(toolLibraries))
+            {
+                var name = lib["name"]?.GetValue<string>();
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                if (!seenCoordinates.Add(NormalizeCoordinate(name!)))
+                    continue;
+
+                downloadLibraries.Add(lib);
+            }
 
             File.WriteAllText(clientJsonPath, versionJson.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             Serilog.Log.Information("{Loader} 版本文件已写入 {Path}", loaderName, clientJsonPath);
@@ -211,7 +244,7 @@ namespace VibrantbitLauncher.Services
             // 「The patched Minecraft jar is missing」。
             onProgress(22, $"下载 {loaderName} 依赖库");
             var processorOutputs = CollectProcessorOutputs(profileJson);
-            await DownloadLibrariesAsync(mcFolder, deduped, p =>
+            await DownloadLibrariesAsync(mcFolder, downloadLibraries, p =>
                 onProgress(22 + (int)(p * 0.33), $"下载 {loaderName} 依赖库"), ct, processorOutputs);
 
             // ---------- 6. 已删除：手工落 client.lzma ----------
@@ -686,18 +719,70 @@ namespace VibrantbitLauncher.Services
                 if (item is not null) into.Add(item);
         }
 
-        /// <summary>按 maven 坐标去重，保留先出现的（版本 JSON 的优先）。</summary>
-        private static List<JsonNode> DedupLibraries(List<JsonNode> libs)
+        /// <summary>
+        /// 去重，保留先出现的。
+        ///
+        /// <para>
+        /// <paramref name="ignoreVersion"/> = true：按「group:artifact:classifier」去重，版本号忽略。
+        /// 只适用于**启动库** —— 同一个 artifact 装两个版本进 classpath 会撞模块。
+        /// </para>
+        /// <para>
+        /// <paramref name="ignoreVersion"/> = false：按完整坐标（含版本号）去重。
+        /// **处理器工具库必须用这个**：不同 processor 的 classpath 会点名不同版本，
+        /// 例如 1.20.2 的 installertools 要 asm-commons <c>9.3</c>，ForgeAutoRenamingTool 要 <c>9.5</c>。
+        /// 按 artifact 去重会把 9.5 当成「重复项」丢掉，处理器随即报
+        /// 「加载器安装处理器缺少依赖：asm-commons-9.5.jar」—— 装上的是半个实例，
+        /// 启动时必然缺类崩溃。
+        /// </para>
+        /// </summary>
+        private static List<JsonNode> DedupLibraries(List<JsonNode> libs, bool ignoreVersion)
         {
+            // 按「group:artifact:classifier」去重，而不是整条 name。
+            //
+            // 整条 name 去重等于「同一个库的不同版本全都留着」。加载器恰好会在这一点上翻车：
+            // Forge 26.2 的 install_profile 带 jopt-simple 6.0-alpha-3，原版 26.2 声明 5.0.4，
+            // 两份都进 classpath 之后 ForgeBootstrap 建模块层直接报
+            //   Modules joptsimple and jopt.simple export package joptsimple.util to module JarJarMetadata
+            // —— 游戏连窗口都不出，用户只看到一闪而过。
+            //
+            // 保留先出现的：调用方先铺 versionJson（加载器自己声明的版本，权威），
+            // 再铺 install_profile（processor 工具库），冲突时听加载器的。
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<JsonNode>();
+
             foreach (var lib in libs)
             {
                 var name = lib["name"]?.GetValue<string>();
-                if (string.IsNullOrEmpty(name)) continue;
-                if (seen.Add(name!)) result.Add(lib);
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                var key = ignoreVersion ? ArtifactKey(name!) : NormalizeCoordinate(name!);
+                if (key.Length == 0)
+                {
+                    result.Add(lib);
+                    continue;
+                }
+
+                if (seen.Add(key))
+                    result.Add(lib);
             }
+
             return result;
+        }
+
+        /// <summary>
+        /// 从 maven 坐标里取「group:artifact:classifier」当作同一干活的标识。
+        /// 版本号故意忽略：同一 artifact 装两个版本只会让模块层打架。
+        /// </summary>
+        private static string ArtifactKey(string coordinate)
+        {
+            var trimmed = coordinate.Contains('@') ? coordinate[..coordinate.IndexOf('@')] : coordinate;
+            var parts = trimmed.Split(':');
+            if (parts.Length < 2)
+                return string.Empty;
+
+            var classifier = parts.Length > 3 ? parts[3] : string.Empty;
+            return string.Join(':', parts[0], parts[1], classifier);
         }
 
         /// <summary>
@@ -970,6 +1055,11 @@ namespace VibrantbitLauncher.Services
                 return;
             }
 
+            // 补丁 jar 的清单属性必须先修：FML 12（Forge 65 / NeoForge 26.x）在
+            // GameLocator 里无条件读游戏 jar 的 Minecraft-Dists 主属性，读不到直接 Fatal。
+            // 详见 EnsureDistsManifest 的注释。
+            var manifestPatched = EnsureDistsManifest(jarPath);
+
             var libraries = versionJson["libraries"] as JsonArray;
             if (libraries is null)
             {
@@ -977,7 +1067,10 @@ namespace VibrantbitLauncher.Services
                 versionJson["libraries"] = libraries;
             }
 
-            // 已经声明过就不重复加（幂等：同一实例重装时不会长出一条重复项）
+            var info = new FileInfo(jarPath);
+            var sha1 = ComputeSha1(jarPath);
+
+            // 已经声明过就只校正 size/sha1（补清单属性会让文件内容变化，旧值就过期了）
             foreach (var lib in libraries)
             {
                 var name = lib?["name"]?.GetValue<string>();
@@ -986,12 +1079,31 @@ namespace VibrantbitLauncher.Services
 
                 // name 可能带 @jar 后缀，比较时去掉
                 var normalized = name.Contains('@') ? name[..name.IndexOf('@')] : name;
-                if (string.Equals(normalized, coordinate, StringComparison.OrdinalIgnoreCase))
-                    return;
-            }
+                if (!string.Equals(normalized, coordinate, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-            var info = new FileInfo(jarPath);
-            var sha1 = ComputeSha1(jarPath);
+                if (!manifestPatched)
+                    return;
+
+                if (lib is not JsonObject obj)
+                    return;
+
+                obj["downloads"] = new JsonObject
+                {
+                    ["artifact"] = new JsonObject
+                    {
+                        ["path"] = relative,
+                        ["size"] = info.Length,
+                        ["sha1"] = sha1,
+                    },
+                };
+
+                File.WriteAllText(clientJsonPath,
+                    versionJson.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                Serilog.Log.Information("已更新 {Loader} 补丁 jar 的 size/sha1（补了清单属性）：{Path}",
+                    loaderName, relative);
+                return;
+            }
 
             libraries.Add(new JsonObject
             {
@@ -1012,6 +1124,83 @@ namespace VibrantbitLauncher.Services
 
             Serilog.Log.Information("已把 {Loader} 的 patched jar 注册进 classpath：{Coord} → {Path}",
                 loaderName, coordinate, relative);
+        }
+
+        /// <summary>
+        /// 给补丁客户端 jar 的主清单补一条 <c>Minecraft-Dists: client</c>。
+        ///
+        /// <para>
+        /// <b>为什么必须补</b>：FML 12（Forge 65 / NeoForge 26.x）启动时会走
+        /// <c>NeoForgeDevDistCleaner.getMaskedFiles(jar, dist)</c>，第一件事就是读游戏 jar
+        /// 的主清单属性 <c>Minecraft-Dists</c>；读不到就抛
+        /// <c>fml.modloadingissue.neodev_missing_dists_attribute</c>：
+        /// </para>
+        /// <code>
+        /// NeoForge dev environment Minecraft jar does not have a Minecraft-Dists
+        /// attribute in its manifest; this may be because you have an out-of-date gradle plugin
+        /// </code>
+        /// <para>
+        /// 而官方 installertools 的 <c>PROCESS_MINECRAFT_JAR</c> 只会**照抄**原版 jar 的清单
+        /// （原版只有 <c>Manifest-Version</c> + <c>Main-Class</c>），于是官方安装思路产出的补丁 jar
+        /// 天生缺这一条 —— 报错信息里那句「gradle plugin 太旧」完全是误导，跟 gradle 无关。
+        /// </para>
+        ///
+        /// <para>
+        /// 实测：给 <c>minecraft-client-patched-26.3.0.0-beta.jar</c> 补上这一条之后，
+        /// NeoForge 26.3 能一路走到主界面（Setting user → 资源加载 → 声音引擎）。
+        /// </para>
+        ///
+        /// <para>
+        /// 只有本来就有 <c>META-INF/MANIFEST.MF</c> 的 jar 才动它：1.20.1 那代 Forge 的补丁 jar
+        /// 压根没有清单，FML 1.x 也不看这个属性，硬塞一份清单属于无谓风险。
+        /// </para>
+        /// </summary>
+        /// <returns>是否真的改了文件（改了就要重算 size/sha1）。</returns>
+        private static bool EnsureDistsManifest(string jarPath)
+        {
+            try
+            {
+                using var zip = ZipFile.Open(jarPath, ZipArchiveMode.Update);
+                var entry = zip.GetEntry("META-INF/MANIFEST.MF");
+                if (entry is null)
+                    return false;
+
+                string text;
+                using (var reader = new StreamReader(entry.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+                           leaveOpen: false))
+                {
+                    text = reader.ReadToEnd();
+                }
+
+                if (text.Contains("Minecraft-Dists", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                var nl = text.Contains("\r\n") ? "\r\n" : "\n";
+                var blank = text.IndexOf(nl + nl, StringComparison.Ordinal);
+                var head = blank < 0 ? text : text[..blank];
+                var tail = blank < 0 ? string.Empty : text[blank..];
+                if (!head.EndsWith(nl, StringComparison.Ordinal))
+                    head += nl;
+
+                var updated = head + "Minecraft-Dists: client" + nl + tail;
+
+                entry.Delete();
+                var replaced = zip.CreateEntry("META-INF/MANIFEST.MF", CompressionLevel.Optimal);
+                using (var writer = new StreamWriter(replaced.Open(), new UTF8Encoding(false)))
+                {
+                    writer.Write(updated);
+                }
+
+                Serilog.Log.Information("已给补丁 jar 补 Minecraft-Dists 清单属性：{Path}", jarPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // 补不了也不能让安装失败：老版本加载器根本不需要这条属性，
+                // 真正需要它的新版本会在启动时报错，届时用户重装即可（安装日志里有这条 Warning）。
+                Serilog.Log.Warning(ex, "补 Minecraft-Dists 清单属性失败（不影响非 FML12 加载器）：{Path}", jarPath);
+                return false;
+            }
         }
 
         /// <summary>读 data 里某一项的 client 值（可能是字符串，也可能是 {client,server} 对象）。</summary>

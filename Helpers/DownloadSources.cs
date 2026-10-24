@@ -87,6 +87,29 @@ public static class DownloadSources
         => !string.Equals(ToMirror(url), url, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 该地址**本身就是镜像站**（BMCLAPI 的某个入口）。
+    ///
+    /// <para>
+    /// 用来区分「官方源慢」和「镜像慢」这两种完全不同的情况：BMCLAPI 的 <c>/maven/</c>
+    /// 会 302 到一批志愿者节点，具体落到哪个节点每次都不一样 ——
+    /// 一次下载慢只说明这次抽到的节点慢，不代表镜像站坏了。
+    /// </para>
+    /// </summary>
+    public static bool IsMirrorHost(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return false;
+
+        foreach (var (_, mirror) in Map)
+        {
+            if (url.StartsWith(mirror, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// 原版版本 JSON 的镜像地址。
     ///
     /// BMCLAPI 的对应端点是 <c>/version/&lt;id&gt;/json</c>，并不是对官方 URL 做路径前缀替换

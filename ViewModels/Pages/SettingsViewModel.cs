@@ -448,8 +448,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             try
             {
-                // 用自带实现而非 JavaUtil.EnumerableJavaAsync()：后者遇到空路径候选会整体抛异常
-                var javas = await JavaHelper.FindJavasAsync();
+                // 用自带实现而非 JavaUtil.EnumerableJavaAsync()：后者遇到空路径候选会整体抛异常。
+                // 取**全部安装**（不按主版本合并）—— 这个下拉框就是给用户挑的，
+                // 合并后会出现「装了 jdk-21.0.12 却只显示 jdk-21.0.3」的情况。
+                var javas = await JavaHelper.FindAllJavasAsync();
 
                 JavaEntries.Clear();
                 foreach (var j in javas)

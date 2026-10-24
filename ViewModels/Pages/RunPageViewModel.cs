@@ -25,6 +25,18 @@ namespace VibrantbitLauncher.ViewModels.Pages
         // 原实现在字段初始化器里同步枚举系统 Java（JavaUtil.EnumerableJavaAsync().ToBlockingEnumerable()），
         // 会在候选路径为空时抛 ArgumentException，并把 UI 线程卡住；构造函数里不能做同步 IO。
         private List<JavaEntry> asyncJavas = new();
+
+        /// <summary>
+        /// 机器上**每一个**可用 Java（不按主版本合并），只给「用户自己挑」的下拉框看。
+        ///
+        /// <para>
+        /// 和 <see cref="asyncJavas"/> 分开是因为两者用途不同：自动匹配只要「每个主版本一个」
+        /// （多的只会干扰 GetAppropriateJava），而玩家手动选择时要看到全部安装 ——
+        /// 同一台机器装 jdk-17 / jdk-21 / jdk-25 三份是常态，合并掉就选不到想要的那个。
+        /// </para>
+        /// </summary>
+        private List<JavaEntry> allJavas = new();
+
         private ObservableCollection<MinecraftEntry> minecrafts = new ObservableCollection<MinecraftEntry>();
         private ObservableCollection<LocalVersion> minecraftVersions = new ObservableCollection<LocalVersion>();
         private ObservableCollection<string> javaVersions = new ObservableCollection<string>();
@@ -73,11 +85,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// 已检测到的 Java 列表（启动页「快捷设置」的 Java 下拉框用）。
         ///
         /// <para>
-        /// 由 <see cref="LoadAsync"/> 在后台扫描后填充。扫描完成会触发一次
-        /// <c>PropertyChanged</c>，页面据此刷新下拉框 —— 否则首次进入时列表还是空的。
+        /// 这里是**全部安装**，不是「每个主版本一个」—— 下拉框的用途就是让玩家挑，
+        /// 合并过的列表会出现「明明装了 21，列表里只有 21.0.3」的情况，选不到自己那份。
+        /// 启动时自动匹配用的是另一份合并列表（<c>asyncJavas</c>）。
         /// </para>
         /// </summary>
-        public IReadOnlyList<JavaEntry> DetectedJavas => asyncJavas;
+        public IReadOnlyList<JavaEntry> DetectedJavas => allJavas;
 
         public RunPageViewModel()
         {
@@ -133,17 +146,29 @@ namespace VibrantbitLauncher.ViewModels.Pages
             {
                 try
                 {
-                    var javas = await JavaHelper.FindJavasAsync();
-                    asyncJavas = javas;
-
-                    // 将设置中的自定义 Java 也加入列表（同样要过静态体检，
-                    // 避免把 PATH 里的 Oracle 转发器当成可用 Java 存进列表）
+                    // 两份列表：合并版给自动匹配，全量版给「快捷设置 → Java」下拉框
+                    var all = await JavaHelper.FindAllJavasAsync();
                     var customJava = MainWindowViewModel.MainModel.JavaPath;
+
+                    // 设置里的自定义 Java 也要在列表里（同样要过静态体检，
+                    // 避免把 PATH 里的 Oracle 转发器当成可用 Java 存进列表）。
+                    // 手工选过的路径多半不在扫描范围内（比如 D:\Dev\jdk），漏掉的话
+                    // 下拉框会因为「当前值对不上任何一项」显示成空白 —— 看起来像没设置。
                     if (JavaHelper.IsUsableJava(customJava)
-                        && !asyncJavas.Any(j => string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
+                        && !all.Any(j => string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
                     {
-                        asyncJavas.Add(new JavaEntry { JavaPath = customJava, Is64bit = true });
+                        // 探一下版本号：下拉框第一行要显示 "21.0.3" 这种，否则只有路径、看不出是哪版
+                        var probed = await JavaHelper.ProbeJavaAsync(customJava);
+                        all.Add(probed ?? new JavaEntry { JavaPath = customJava, Is64bit = true });
                     }
+
+                    allJavas = all;
+
+                    // 自动匹配仍旧一份「每个主版本 + 位数留最新」的紧凑列表
+                    asyncJavas = all
+                        .GroupBy(j => $"{JavaHelper.MajorOf(j.JavaVersion)}|{j.Is64bit}")
+                        .Select(g => g.First())
+                        .ToList();
                 }
                 catch { }
 
@@ -329,33 +354,45 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     return;
                 }
 
-                // 匹配 Java
+                // 匹配 Java。
+                //
+                // 顺序：**玩家自己选的 > 自动匹配**。
+                // 以前不管设置里选了什么都先跑 GetAppropriateJava（它只在候选里按 MC 版本挑
+                // 「够新」的一个，完全无视用户选择），于是「快捷设置里换了 Java」看起来毫无效果，
+                // 甚至会把装了 MOD 的 1.20.1 实例丢给 JDK 27 去跑 —— 老 Forge / Mixin
+                // 在超高版本 JDK 上直接崩，用户看到的只是「异常退出（代码 1）」。
                 JavaEntry javaPath = null;
-                try
+                var configuredJava = MainWindowViewModel.MainModel.JavaPath;
+
+                if (JavaHelper.IsUsableJava(configuredJava))
                 {
-                    javaPath = selectedMinecraftEntry.GetAppropriateJava(asyncJavas);
-                    Diag($"Java matched: {javaPath?.JavaPath} (version {javaPath?.JavaVersion})");
+                    javaPath = allJavas.FirstOrDefault(j =>
+                                   string.Equals(j.JavaPath, configuredJava, StringComparison.OrdinalIgnoreCase))
+                               ?? new JavaEntry { JavaPath = configuredJava, Is64bit = true };
+                    Diag($"Using user-selected Java: {javaPath.JavaPath}");
                 }
-                catch (Exception ex)
+                else
                 {
-                    Diag($"GetAppropriateJava threw: {ex.Message}");
-                    var customJavaPath = MainWindowViewModel.MainModel.JavaPath;
-                    if (JavaHelper.IsUsableJava(customJavaPath))
+                    try
                     {
-                        javaPath = new JavaEntry { JavaPath = customJavaPath, Is64bit = true };
-                        Diag($"Using custom Java: {customJavaPath}");
+                        javaPath = selectedMinecraftEntry.GetAppropriateJava(asyncJavas);
+                        Diag($"Java matched: {javaPath?.JavaPath} (version {javaPath?.JavaVersion})");
                     }
-                    else if (asyncJavas.Count > 0)
+                    catch (Exception ex)
                     {
-                        javaPath = asyncJavas.First();
-                        Diag($"Fallback to first Java: {javaPath?.JavaPath}");
-                    }
-                    else
-                    {
-                        Diag("No Java found");
-                        ShowError("未找到匹配的 Java 版本，请在设置中选择 Java");
-                        lock (launchingVersions) { launchingVersions.Remove(McVersion); }
-                        return;
+                        Diag($"GetAppropriateJava threw: {ex.Message}");
+                        if (asyncJavas.Count > 0)
+                        {
+                            javaPath = asyncJavas.First();
+                            Diag($"Fallback to first Java: {javaPath?.JavaPath}");
+                        }
+                        else
+                        {
+                            Diag("No Java found");
+                            ShowError("未找到匹配的 Java 版本，请在设置中选择 Java");
+                            lock (launchingVersions) { launchingVersions.Remove(McVersion); }
+                            return;
+                        }
                     }
                 }
 
@@ -565,6 +602,35 @@ namespace VibrantbitLauncher.ViewModels.Pages
             string assetsIndex = "latest";
             string parentId = null;
 
+            // 同一个库装两个版本会让模块层直接崩：
+            //   Modules joptsimple and jopt.simple export package joptsimple.util to module ...
+            // （Forge 26.2 自带 jopt-simple 6.0-alpha-3，原版 26.2 声明 5.0.4，两份都在 classpath 里）
+            // 所以按 group:artifact:classifier 去重，子版本覆盖父版本。
+            var libraryIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            void AddLibrary(JsonElement lib)
+            {
+                var lp = GetLibraryPath(lib, mcFolder);
+                if (lp == null)
+                    return;
+
+                var key = ArtifactKey(lib);
+                if (key.Length > 0 && libraryIndex.TryGetValue(key, out var at))
+                {
+                    // jopt-simple 是唯一「父版本说了算」的库（见 SanitizeForgeClasspath）：
+                    // 原版自带 5.0.4（自动模块名 jopt.simple），而 Forge 安装清单里额外带了
+                    // 6.0-alpha-3（processor 工具，显式模块名 joptsimple）。按「子版本覆盖」
+                    // 的默认规则会被换成后者，modlauncher 就再也找不到 jopt.simple 模块。
+                    if (!IsJoptSimple(key))
+                        libraries[at] = lp;     // 覆盖成子版本，位置不动
+                    return;
+                }
+
+                if (key.Length > 0)
+                    libraryIndex[key] = libraries.Count;
+                libraries.Add(lp);
+            }
+
             // 处理父版本
             if (versionJson.TryGetProperty("inheritsFrom", out var inh))
             {
@@ -576,10 +642,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     var parentJson = JsonDocument.Parse(File.ReadAllText(parentPath)).RootElement;
                     if (parentJson.TryGetProperty("libraries", out var pl))
                         foreach (var lib in pl.EnumerateArray())
-                        {
-                            var lp = GetLibraryPath(lib, mcFolder);
-                            if (lp != null) libraries.Add(lp);
-                        }
+                            AddLibrary(lib);
                     if (parentJson.TryGetProperty("mainClass", out var pm))
                         mainClass = pm.GetString();
                     if (parentJson.TryGetProperty("arguments", out var pa))
@@ -599,10 +662,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             // 处理子版本（覆盖）
             if (versionJson.TryGetProperty("libraries", out var cl))
                 foreach (var lib in cl.EnumerateArray())
-                {
-                    var lp = GetLibraryPath(lib, mcFolder);
-                    if (lp != null) libraries.Add(lp);
-                }
+                    AddLibrary(lib);
             if (versionJson.TryGetProperty("mainClass", out var cm))
                 mainClass = cm.GetString();
             if (versionJson.TryGetProperty("arguments", out var ca))
@@ -654,6 +714,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 diag($"WARNING: {missing.Count} missing libraries: {string.Join(", ", missing.Take(5))}");
             }
             libraries = libraries.Where(l => File.Exists(l)).ToList();
+
+            // Forge 1.20.1 及更早分支的 classpath 清洗（见 SanitizeForgeClasspath）。
+            // 必须在拼 classpath 之前做，否则这些 jar 会原样进 -cp。
+            libraries = SanitizeForgeClasspath(libraries, jvmArgs, diag);
 
             var classpath = string.Join(";", libraries);
             diag($"Libraries: {libraries.Count}, MainClass: {mainClass}, Assets: {assetsIndex}");
@@ -759,6 +823,15 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
             }
             // 添加 JVM 参数，替换占位符，跳过 -cp ${classpath}（我们自己加）
+            //
+            // ⚠️ 这里的占位符替换必须和官方启动器同一套。少替换一个，Forge 就起不来：
+            //   1.20.1 的 jvm 参数里有
+            //     -p ${library_directory}/cpw/mods/bootstraplauncher/...${classpath_separator}...
+            //     -DignoreList=...,${version_name}.jar
+            //   这些是 **launcher 负责替换** 的宏（版本 JSON 里永远保留字面量）。
+            //   不替换 → --module-path 变成一串不存在的路径 → JVM 直接
+            //   「Module bootstraplauncher not found」，游戏窗口都不出。
+            var libraryDirectory = Path.Combine(mcFolder, "libraries");
             for (int i = 0; i < jvmArgs.Count; i++)
             {
                 var arg = jvmArgs[i];
@@ -769,9 +842,27 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
                 arg = arg
                     .Replace("${natives_directory}", nativesDir)
+                    .Replace("${library_directory}", libraryDirectory)
+                    .Replace("${classpath_separator}", Path.PathSeparator.ToString())
+                    .Replace("${version_name}", versionId)
+                    .Replace("${game_directory}", gameDir)
+                    .Replace("${assets_root}", Path.Combine(mcFolder, "assets"))
+                    .Replace("${assets_index_name}", assetsIndex)
                     .Replace("${launcher_name}", "VibrantbitLauncher")
                     .Replace("${launcher_version}", "1.0")
                     .Replace("${classpath}", classpath);
+
+                // ignoreList 的作用是「让 FML 别加载这个 jar」。
+                // 版本 JSON 里写的是 ${version_name}.jar（实例自己的 jar），
+                // 而版本隔离下的实际游戏 jar 常常是父版本那个（1.20.1.jar），
+                // 名字对不上就等于没忽略 —— 补丁 jar 和原版 jar 会同时进模块层。
+                if (arg.StartsWith("-DignoreList=", StringComparison.Ordinal))
+                {
+                    var clientJarName = Path.GetFileName(clientJar);
+                    if (!arg.Contains(clientJarName, StringComparison.OrdinalIgnoreCase))
+                        arg += "," + clientJarName;
+                }
+
                 psi.ArgumentList.Add(arg);
             }
 
@@ -902,6 +993,171 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
         }
 
+        /// <summary>
+        /// 库的「同一份工件」标识：group:artifact:classifier，**不含版本号**。
+        /// 用来在合并父/子版本时判断「这是同一个库的另一个版本」，避免两个版本同时进 classpath。
+        /// </summary>
+        private static string ArtifactKey(JsonElement lib)
+        {
+            if (!lib.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String)
+                return string.Empty;
+
+            var name = nameEl.GetString();
+            if (string.IsNullOrEmpty(name))
+                return string.Empty;
+
+            var at = name.IndexOf('@');
+            if (at > 0)
+                name = name[..at];
+
+            var parts = name.Split(':');
+            if (parts.Length < 2)
+                return string.Empty;
+
+            var classifier = parts.Length > 3 ? parts[3] : string.Empty;
+            return string.Join(':', parts[0], parts[1], classifier);
+        }
+
+        /// <summary>
+        /// 是否是 jopt-simple（modlauncher 的模块名 <c>jopt.simple</c> 就来自这个 jar）。
+        /// </summary>
+        private static bool IsJoptSimple(string key)
+            => key.StartsWith("net.sf.jopt-simple:jopt-simple", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 处理器专用工具库的文件名前缀（小写）。这些 jar 只给安装期的 processor 用，
+        /// **绝不该出现在启动 classpath 上**。
+        /// </summary>
+        private static readonly string[] ProcessorToolPrefixes =
+        {
+            "installertools-", "forgeautorenamingtool-", "jarsplitter-", "binarypatcher-",
+            "srgutils-", "lzma-java-", "javaxdelta-", "fastcsv-", "trove-", "mcp_config-",
+        };
+
+        /// <summary>
+        /// 「模块路径说了算」的库族：asm 系列。
+        /// 它同时被 modlauncher（模块层）和普通类加载器使用，版本必须与 <c>-p</c> 里点名的一致，
+        /// 多留一个旧版本就会撞包。
+        /// </summary>
+        private static readonly string[] ModuleAuthoritativePrefixes = { "asm-", "asm." };
+
+        /// <summary>
+        /// 清洗 Forge 系（有 <c>-p</c> 模块路径）的启动 classpath。
+        ///
+        /// <para>
+        /// <b>为什么需要这一步</b>：1.0.11.0 之前的安装器把 <c>install_profile.libraries</c>
+        /// （processor 的工具库：installertools / ForgeAutoRenamingTool / srgutils /
+        /// jopt-simple 6.0-alpha-3 …）也写进了实例版本 JSON。这些 jar 一旦落到 <c>-cp</c> 上，
+        /// 模块层就会当场炸掉，实测到的两种形态：
+        /// </para>
+        /// <list type="bullet">
+        /// <item><c>Module jopt.simple not found, required by cpw.mods.modlauncher</c>
+        /// —— 1.20.1 的 <c>-p</c> 里本来就没有 jopt，classpath 上那份 6.0-alpha-3 反而让
+        /// modlauncher 的模块解析找到了名字却拿不到模块。</item>
+        /// <item><c>Modules joptsimple and jopt.simple export package joptsimple.util</c>
+        /// —— 5.0.4 与 6.0-alpha-3 同时在场（原版 1.20.1 自带 5.0.4）。</item>
+        /// <item>工具库里的老 asm（9.2 / 9.6）还会按「子版本覆盖父版本」的规则
+        /// 把官方声明的 9.9.1 顶掉，模块路径与 classpath 的 asm 版本就此分叉。</item>
+        /// </list>
+        ///
+        /// <para>
+        /// <b>判据</b>：<c>-p</c>（模块路径）是唯一权威 —— 它点名了哪些 jar，classpath 上
+        /// 该库族就只留那一个；没被点名的处理器工具一律剔除。这样既修好老实例，
+        /// 又不会动到 26.x（它们没有 <c>-p</c>，会原样返回）。
+        /// </para>
+        /// </summary>
+        private static List<string> SanitizeForgeClasspath(List<string> libraries, List<string> jvmArgs, Action<string> diag)
+        {
+            // 收集模块路径里的文件名。这里只认文件名，不关心目录：
+            // 参数值里还带着未替换的 ${library_directory} 占位符，取 Basename 即可。
+            var moduleFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < jvmArgs.Count - 1; i++)
+            {
+                if (jvmArgs[i] != "-p")
+                    continue;
+
+                var raw = jvmArgs[i + 1];
+                if (string.IsNullOrEmpty(raw))
+                    continue;
+
+                // 占位符（${classpath_separator} / ${library_directory} …）先换成 ';'，
+                // 再按分隔符切开，最后每个片段取文件名 —— 目录部分本来也不需要。
+                var normalized = System.Text.RegularExpressions.Regex.Replace(raw, @"\$\{[A-Za-z_]+\}", ";");
+                foreach (var part in normalized.Split(new[] { ';', ':' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!part.Contains(".jar", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var fileName = Path.GetFileName(part.Trim());
+                    if (!string.IsNullOrEmpty(fileName))
+                        moduleFiles.Add(fileName);
+                }
+            }
+
+            // 没有模块路径 = 不是 Forge 1.20.1 那一支（26.x 走 classpath 引导），不要乱动
+            if (moduleFiles.Count == 0)
+                return libraries;
+
+            var kept = new List<string>(libraries.Count);
+            var dropped = new List<string>();
+            var joptKept = false;
+            foreach (var path in libraries)
+            {
+                var fileName = Path.GetFileName(path);
+                var lower = fileName.ToLowerInvariant();
+
+                // ① 处理器工具：直接剔除。它们只服务于安装期 processor，
+                //    留在 classpath 上只会让模块层多出一堆不该存在的包。
+                if (ProcessorToolPrefixes.Any(p => lower.StartsWith(p, StringComparison.Ordinal)))
+                {
+                    dropped.Add(fileName);
+                    continue;
+                }
+
+                // ② jopt-simple：**必须留一份**，但只能有一份。
+                //    反直觉但实测如此 —— 1.20.1 的 -p 里并没有 jopt，modlauncher 的
+                //    `requires jopt.simple` 是靠 classpath 上那份 jar 自动命名成模块来满足的
+                //    （jopt-simple-5.0.4.jar → 自动模块名 jopt.simple）。
+                //    全删掉就直接 `Module jopt.simple not found`；两份都留则
+                //    `Modules joptsimple and jopt.simple export package joptsimple.util`
+                //    （工具库那份 6.0-alpha-3 声明了显式模块名，和原版 5.0.4 撞包）。
+                //    保留第一份 —— 父版本（原版）的排在前面，正是官方启动器用的那个。
+                if (lower.StartsWith("jopt-simple-", StringComparison.Ordinal))
+                {
+                    if (joptKept)
+                    {
+                        dropped.Add(fileName);
+                        continue;
+                    }
+
+                    joptKept = true;
+                    kept.Add(path);
+                    continue;
+                }
+
+                // ③ asm：以 -p 点名的版本为准，其余版本一律剔除
+                if (ModuleAuthoritativePrefixes.Any(p => lower.StartsWith(p, StringComparison.Ordinal)))
+                {
+                    if (!moduleFiles.Contains(fileName))
+                    {
+                        dropped.Add(fileName);
+                        continue;
+                    }
+                }
+
+                kept.Add(path);
+            }
+
+            if (dropped.Count > 0)
+            {
+                Serilog.Log.Warning("[启动] 已从 classpath 剔除 {Count} 个处理器/重复库（会破坏模块层）：{Files}",
+                    dropped.Count, string.Join(", ", dropped));
+                diag($"Dropped {dropped.Count} processor/duplicate libs: {string.Join(", ", dropped)}");
+            }
+
+            return kept;
+        }
+
         private static string GetLibraryPath(JsonElement lib, string mcFolder)
         {
             if (lib.TryGetProperty("downloads", out var dl) && dl.TryGetProperty("artifact", out var art))
@@ -967,11 +1223,54 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         private void ShowSuccess(string msg) => _notification.Success(msg);
 
+        /// <summary>
+        /// 游戏输出的落地文件（启动器目录下的 log.txt）。
+        ///
+        /// <para>
+        /// 只用一把锁 + 一个长期持有的写入器。以前是每写一行 <c>new StreamWriter("log.txt", true)</c>，
+        /// 默认 <c>FileShare.Read</c> 意味着**第二个写者必然失败**：
+        /// 同时开两个实例、或者上一个游戏进程还没退干净，就会抛
+        /// <c>IOException: The process cannot access the file ... being used by another process</c>。
+        /// </para>
+        /// <para>
+        /// 这个异常是从 <c>Process.OutputDataReceived</c> 的回调线程抛出来的，
+        /// 谁都接不住 —— .NET 把它当「未处理的应用域异常」，**整个启动器直接消失**
+        /// （日志里那行「未处理的应用域异常（进程即将终止）」就是这个）。
+        /// 所以这里必须：① 用 FileShare.ReadWrite；② 任何异常都就地吞掉。
+        /// </para>
+        /// </summary>
+        private static readonly object GameLogSync = new();
+        private static StreamWriter? _gameLogWriter;
+        private static DateTime _gameLogRetryAfter = DateTime.MinValue;
+
         void writeLog(string time, string message)
         {
-            using (StreamWriter sw = new StreamWriter("log.txt", true))
+            lock (GameLogSync)
             {
-                sw.WriteLine($"{time}: {message}");
+                try
+                {
+                    if (_gameLogWriter is null)
+                    {
+                        // 上一次打开失败（文件被别的程序独占）时隔一会儿再试，
+                        // 否则每来一行输出都要撞一次异常
+                        if (DateTime.UtcNow < _gameLogRetryAfter)
+                            return;
+
+                        var path = Path.Combine(AppContext.BaseDirectory, "log.txt");
+                        var stream = new FileStream(
+                            path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                        _gameLogWriter = new StreamWriter(stream) { AutoFlush = true };
+                    }
+
+                    _gameLogWriter.WriteLine($"{time}: {message}");
+                }
+                catch (Exception ex)
+                {
+                    _gameLogWriter?.Dispose();
+                    _gameLogWriter = null;
+                    _gameLogRetryAfter = DateTime.UtcNow.AddSeconds(30);
+                    Serilog.Log.Debug(ex, "写 log.txt 失败（已忽略，游戏输出仍可在日志窗口查看）");
+                }
             }
         }
     }

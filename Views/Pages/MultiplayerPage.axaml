@@ -255,7 +255,93 @@
                     </StackPanel>
                 </Border>
 
-                <!--  ===== ③ 网络成员 =====  -->
+                <!--  ===== ③ 局域网联机模组 =====  -->
+                <Border Margin="0,12,0,0" Padding="18" Classes="card">
+                    <StackPanel>
+                        <TextBlock Classes="sectionTitle" Text="局域网联机模组" />
+                        <TextBlock Margin="0,6,0,0"
+                                   Classes="caption"
+                                   Text="原版「对局域网开放」会强制正版验证，离线账户会被直接踢掉 —— 这也是组网成功后仍然连不进来的原因。这里装的是 LAN World Plug-n-Play（mcwifipnp）：它给开房界面加上「正版验证」三档开关、端口修改和 UPnP 映射，Fabric / Quilt / Forge / NeoForge 都支持。"
+                                   TextWrapping="Wrap" />
+
+                        <!--  一个实例都没有时的引导  -->
+                        <Border Margin="0,14,0,0" Padding="12,10"
+                                IsVisible="{Binding HasNoInstances}"
+                                Background="{DynamicResource AppCautionSurfaceBrush}"
+                                CornerRadius="{StaticResource RadiusM}">
+                            <TextBlock Classes="body"
+                                       Text="还没有安装任何 Minecraft 实例，请先在「下载」页装一个带加载器的版本（Fabric / Forge / NeoForge）。"
+                                       TextWrapping="Wrap" />
+                        </Border>
+
+                        <!--  实例选择 + 一键安装  -->
+                        <Grid Margin="0,14,0,0"
+                              ColumnDefinitions="Auto,*,Auto"
+                              IsVisible="{Binding HasInstances}">
+                            <TextBlock Grid.Column="0" Margin="0,0,12,0"
+                                       VerticalAlignment="Center"
+                                       Classes="body"
+                                       Text="目标实例" />
+                            <ComboBox Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding Instances}"
+                                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="2" MinWidth="118" Margin="12,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Classes="accent"
+                                    Command="{Binding InstallLanModCommand}"
+                                    IsEnabled="{Binding CanInstallLanMod}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ui:FASymbolIcon Symbol="Download" />
+                                    <TextBlock Text="{Binding LanModButtonText}" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!--  状态行  -->
+                        <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,*">
+                            <Ellipse x:Name="lanModDot" Grid.Column="0"
+                                     Width="10" Height="10"
+                                     VerticalAlignment="Center"
+                                     Fill="{DynamicResource SystemFillColorCriticalBrush}" />
+                            <TextBlock Grid.Column="1" Margin="10,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Classes="body"
+                                       Text="{Binding LanModStatusText}"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+
+                        <TextBlock Margin="0,8,0,0"
+                                   Classes="caption"
+                                   Text="{Binding LanModDetailText}"
+                                   TextWrapping="Wrap" />
+
+                        <!--  装完之后的用法说明（这个模组改的是开房界面，必须讲清怎么点）  -->
+                        <Border Margin="0,12,0,0" Padding="12,10"
+                                IsVisible="{Binding HasLanModGuide}"
+                                Background="{DynamicResource AppSuccessSurfaceBrush}"
+                                CornerRadius="{StaticResource RadiusM}">
+                            <StackPanel>
+                                <TextBlock Classes="body"
+                                           Text="怎么用"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Classes="body"
+                                           Text="{Binding LanModGuide}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!--  ===== ④ 网络成员 =====  -->
                 <Border Margin="0,12,0,0" Padding="18" Classes="card">
                     <StackPanel>
                         <TextBlock Classes="sectionTitle" Text="网络成员" />

@@ -48,6 +48,13 @@ public partial class App : Application
             // ② 先读配置再建窗口：页面初始化会读写 SettingsService.Current
             SettingsService.Load();
 
+            // ②.5 恢复上次登录的账户。
+            //
+            // 账户以前只在打开「账户」页时才被读回来，于是启动器一开就点「启动游戏」
+            // 只会得到「请先登录一个账户」——明明配置里记着上次用的是谁。
+            // 这里放在建窗口之前做：主界面第一次绑定就已经有账户了，不需要用户先去账户页点一下。
+            AccountRestorer.Restore();
+
             // ③ 按用户配置重建日志
             LogService.Reinitialize();
             LogService.WriteStartupBanner(GetDisplayVersion());

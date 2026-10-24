@@ -131,6 +131,12 @@ namespace VibrantbitLauncher.Services
         /// <summary>上次房主侧使用的联机密钥（同时作为网络名与网络密码）。</summary>
         public string EasyTierNetworkKey { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 联机页「局域网联机模组」上次选中的实例 id。
+        /// 存 id 而不是索引 —— 实例会被装、被删、被改名，索引下次就对不上了。
+        /// </summary>
+        public string LanModInstanceId { get; set; } = string.Empty;
+
         public List<MicrosoftAccount> MicrosoftAccounts { get; set; } = new();
         public List<YggdrasilAccount> YggdrasilAccounts { get; set; } = new();
         public List<OfflineAccount> OfflineAccounts { get; set; } = new();

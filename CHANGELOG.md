@@ -6,6 +6,274 @@
 > 版本号唯一来源是 `VibrantbitLauncher.Avalonia.csproj` 的 `<Version>`（四段式 `主.次.修订.补丁`）。
 
 
+## [1.0.11.5] - 2026-10-24
+
+### 变更
+
+- **联机模组从 e4mc 换成 LAN World Plug-n-Play（`mcwifipnp`）**
+
+  「局域网联机模组」一键安装现在固定装 [LAN World Plug-n-Play](https://modrinth.com/mod/mcwifipnp)，
+  不再安装 e4mc，也不再退回 LAN Server Properties。换掉的原因有两个：
+
+  | | e4mc | LAN World Plug-n-Play |
+  |---|---|---|
+  | 加载器 | Fabric / Quilt / Forge / NeoForge | Fabric / Quilt / Forge / NeoForge |
+  | 版本覆盖 | 1.18 ~ 最新，**26.2 / 26.4 快照空缺** | 1.15 ~ 26.4 快照，**含 26.2 / 26.3 / 26.4** |
+  | 离线玩家 | 走公网中继，需额外域名 | 开房界面直接关正版验证 |
+  | 额外能力 | 无 | UUID 修复、自定义端口、UPnP 映射、PVP / MOTD / 白名单 / 封禁 |
+
+  也就是说，之前「26.2_forge_65.1.5 和 26.4-snapshot-5_fabric 没有可用联机模组」的两个实例，
+  现在都能装上了。
+
+- **开房用法（装完会在界面上显示）**：进游戏 → Esc → 对局域网开放，把新出现的「正版验证」
+  选成 **禁用 + 修复 UUID**（离线玩家能进，同时用玩家名比对上 Mojang 的 UUID，切换模式时背包不丢），
+  端口可以自己改；路由器支持 UPnP 的话在同一个界面打开就能走公网直连。
+
+- **旧模组自动替换**：装 `mcwifipnp` 时会清掉 mods 里的 `e4mc-*.jar` 和
+  `lanserverproperties-*.jar`（三者都接管「对局域网开放」界面，同时存在会互相抢 UI），
+  删掉哪些文件会写在安装结果里。反过来，如果历史实例里已经躺着手动装的 e4mc，
+  状态行会显示「已安装 e4mc（旧方案），点一键安装会换成 LAN World Plug-n-Play」。
+
+- **Fabric API 仍然自动补装**：`mcwifipnp` 的 Fabric 构建把 Fabric API 标为必需依赖，
+  缺了会静默加载失败；Forge / NeoForge 构建不需要。
+
+### 修复
+
+- **安装结果的「落盘文件」列表漏掉主模组**
+  以前只在「没补 Fabric API」时才把主模组写进 `Files`，补了 API 就只剩 API 一条。
+  现在主模组与顺带补的依赖一起列出。
+
+### 验证
+
+隔离探针（临时 `.minecraft`，不碰真实实例）逐个实跑：
+
+| 实例 | 结果 |
+|---|---|
+| Forge / 1.20.1 | `mcwifipnp-1.7.6-1.20.1-forge.jar` |
+| Forge / 26.2 | `mcwifipnp-2.1.3-26.2-forge.jar`（旧方案此处无适配） |
+| NeoForge / 26.3 | `mcwifipnp-2.1.4-26.3-neoforge.jar` |
+| Fabric / 26.4-snapshot-5 | `mcwifipnp-2.1.4-26.4-snapshot-5-fabric.jar` + `fabric-api-0.165.0+26.4.jar` |
+| Forge / 1.20.1（mods 里预置 e4mc + LAN Server Properties） | 两者被删，只剩 `mcwifipnp` |
+| 原版 / 1.20.1 | 拒绝安装，提示先装加载器，`mods/` 未创建 |
+
+
+## [1.0.11.4] - 2026-10-24
+
+### 修复
+
+- **Forge / NeoForge 安装缺工具库，装完必崩（异常退出代码 1）**
+
+  1.0.11.1 把处理器工具库从启动 classpath 里摘出去时，顺手用了「按 group:artifact:classifier
+  去重、忽略版本号」的规则 —— 而 processor 的 classpath **会点名不同版本**：
+
+  | 处理器 | 需要的 asm |
+  |---|---|
+  | `installertools` | `asm-commons:9.3` |
+  | `ForgeAutoRenamingTool` | `asm-commons:9.5` |
+
+  按 artifact 去重只留下先出现的 9.3，9.5 被当成重复项丢掉，处理器跑到一半报
+  「加载器安装处理器缺少依赖：asm-commons-9.5.jar」—— 实例停在**半装完**状态：
+  客户端 jar 没打补丁、`libraries/net/minecraft/client/...` 空缺。启动时 Forge 找不到
+  `net.minecraft.client.gui.screens.LoadingOverlay` 之类的原版类，直接
+  `NoClassDefFoundError` 退出（代码 1）。
+
+  现在工具库按**完整坐标（含版本）**去重，启动库仍按 artifact 去重；下载清单在两份之间
+  再按坐标查一次重，避免同一个库被两个线程并行写同一个文件。
+
+  实测（Forge 1.20.2-48.1.0 的 install_profile.json，45 条库）：旧口径 38 条且丢了 9.5，
+  新口径 45 条齐全。
+
+- **启动器写着写着就消失：`log.txt` 被占用**
+
+  `IOException: The process cannot access the file 'log.txt' because it is being used by another process`
+  —— 这个异常是从 `Process.OutputDataReceived` 的**回调线程**抛出来的，谁也接不住，
+  .NET 按「未处理的应用域异常」直接结束进程。根因是每写一行就 `new StreamWriter("log.txt", true)`，
+  默认 `FileShare.Read`：同时开两个实例、或上一个游戏还没退干净，第二个写者必然失败。
+
+  改成一把锁 + 一个长期持有的写入器（`FileShare.ReadWrite`），任何异常就地吞掉并写进
+  Serilog。日志内容不变，启动器不会再因为「日志写不进去」而崩溃。
+
+### 改进
+
+- **「快捷设置 → Java 运行环境」现在列出机器上每一个 Java**
+
+  以前检测结果按「主版本 + 位数」合并，同一台机器装了 `jdk-17 / 21 / 25` 时每个主版本只剩一条；
+  而且 `Program Files` 只扫系统盘，装在 `D:\Program Files\...` 的 JDK 整片扫不到。
+
+  - 新增 `JavaHelper.FindAllJavasAsync()`：按 **bin 目录**去重（同一 JDK 的 `java.exe` /
+    `javaw.exe` 只算一个安装，优先保留 `javaw.exe`），一个安装一条；
+  - 新增注册表候选：`JavaSoft\Java Development Kit`、`Eclipse Adoptium\JDK`、
+    `Microsoft\JDK`（含 `WOW6432Node`），自选目录安装的 JDK 也能找到；
+  - `Program Files` / `Program Files (x86)` 改为扫描**所有固定磁盘**；
+  - 设置页的 Java 下拉框同步改成全量列表。
+
+- **启动时真正使用你选的 Java**
+
+  以前不管设置里选了什么，启动都先跑 `GetAppropriateJava` 按 MC 版本自己挑一个，
+  用户的选择只在「挑不出来」时才生效 —— 于是「换了 Java 但没效果」。现在顺序是
+  **玩家选的 > 自动匹配**：只要所选路径可用就直接用它启动。
+
+
+## [1.0.11.3] - 2026-10-24
+
+### 新增
+
+- **联机页「局域网联机模组」一键安装**
+
+  原版「对局域网开放」会强制正版验证，离线账户一进就被踢 —— 这是 EasyTier 组网
+  成功之后仍然连不进来的真正原因。新增的这张卡片把「装模组」这件事做成一步：
+
+  1. 下拉框选择目标实例（枚举口径与「下载 → 模组 → 添加到实例」完全一致）；
+  2. 点「一键安装」先判断加载器 —— 原版实例直接拦下并给出「先装加载器」的指引，
+     不会往一个读不懂模组的版本里塞文件；
+  3. 有加载器的，按「加载器 + 原版版本号」去 Modrinth 查适配版本并下载到实例的 `mods/`。
+
+  模组选择策略（`Services/LanModInstaller.cs`）：
+
+  | 顺序 | 模组 | 覆盖 | 联机方式 |
+  |---|---|---|---|
+  | 1 | e4mc | Fabric / Quilt / Forge / NeoForge，1.18 ~ 最新 | 公网中继，聊天栏给出域名，朋友填域名直连 |
+  | 2 | LAN Server Properties | Forge / NeoForge，1.20.5+ | 给「对局域网开放」加「关闭在线模式」+ 自定义端口，配合 EasyTier 用 |
+
+  都是查 API 的 `loaders` + `game_versions` 双筛，**不猜版本**：两个候选都没有适配
+  版本时（例如 Forge 26.2）如实提示「暂无适配」，而不是塞一个版本进去让游戏崩在启动阶段。
+
+### 细节
+
+- **Fabric API 自动补装**：e4mc 的 Fabric 构建把 Fabric API 标成必需依赖，缺了会加载
+  失败但界面看不出来。安装前检查 `mods/`，缺就一并装上。
+- **清理同类旧模组**：同一个模组装两份会被游戏当成重复 mod 报错。装 e4mc 时会删掉旧的
+  LAN Server Properties（两者都接管「对局域网开放」，会抢同一个界面），并在结果里列明删了什么。
+- **记住上次选的实例**：新增设置项 `LanModInstanceId`，下次进页面自动恢复。
+  默认选择会跳过原版实例 —— 落在原版上等于默认状态就是「按钮点了没用」。
+- **装完给出用法说明**：两个模组的联机方式完全不同（域名 vs 虚拟 IP），
+  说明卡片只在安装成功后出现，避免用户装完不知道下一步做什么。
+
+实测（三个场景）：
+
+| 场景 | 结果 |
+|---|---|
+| Fabric / 1.20.1（mods 里预置了旧 LAN Server Properties） | 装入 `e4mc-fabric-6.2.3.jar` + `fabric-api-0.92.12+1.20.1.jar`，旧文件被清理并在提示里列出 |
+| 原版 / 1.20.1（无加载器） | 拒绝安装，提示先装加载器，不创建 `mods/` 目录 |
+| Forge / 26.2 | 如实提示「e4mc / LAN Server Properties 都没有适配 MC 26.2 的版本」 |
+
+## [1.0.11.2] - 2026-10-24
+
+### 修复
+
+- **1.0.11.1 之后 1.20.1 系 Forge 仍然起不来（老实例的 classpath 污染）**
+
+  1.0.11.1 修的是「安装器不再把工具库写进版本 JSON」，但**已经装坏的实例不会自我修复**：
+  `BattleArmory TACZ_forge_47.4.22` 的版本 JSON 里仍留着 24 条 processor 工具库，
+  实测报错在模块解析阶段就退出（窗口都不出）：
+
+  ```
+  Exception in thread "main" java.lang.module.FindException:
+      Module jopt.simple not found, required by cpw.mods.modlauncher
+  ```
+
+  复现并逐个确认后，启动路径新增一层 classpath 清洗（`SanitizeForgeClasspath`），
+  规则以 JVM 参数里的 `-p`（模块路径）为唯一权威：
+
+  - 处理器工具（installertools / ForgeAutoRenamingTool / jarsplitter / binarypatcher /
+    srgutils / lzma-java / javaxdelta / fastcsv / trove / mcp_config）**一律剔除**；
+  - asm 系列只保留 `-p` 点名的那几个版本，工具库带进来的 9.2 / 9.6 全部丢掉
+    （否则会把官方声明的 9.9.1 顶掉）；
+  - **jopt-simple 保留一份且只保留一份**，并且「父版本（原版）优先」——
+    这一点很反直觉：1.20.1 的 `-p` 里根本没有 jopt，modlauncher 的
+    `requires jopt.simple` 是靠 classpath 上 `jopt-simple-5.0.4.jar`
+    **自动命名**成模块 `jopt.simple` 来满足的。全删掉 → `Module jopt.simple not found`；
+    留着工具库那份 6.0-alpha-3（显式模块名 `joptsimple`）→
+    `Modules joptsimple and jopt.simple export package joptsimple.util`。
+
+  实测：不重装、不改 JSON，直接把受污染的整合包实例启动到主界面；
+  干净实例（`probe_f1201`）与 26.x（无 `-p`，走 classpath 引导，清洗自动跳过）均无回归。
+
+- **Fabric 库文件下载过慢**
+
+  根因在源健康度的记账口径：只要单个文件耗时超过 15 秒，就把**整个镜像主机**判成
+  「慢」并降级 10 分钟。而 BMCLAPI 的 `/maven/` 每次都会 302 到不同的志愿者节点 ——
+  这次抽到慢节点，下一次可能就很快；一旦整段降级，后续所有库全部退回官方源，
+  实测 `maven.fabricmc.net` 在国内只有 ~40 KB/s（同一文件镜像 1.4 秒下完）。
+  现在镜像主机只要下载成功就记 Good（清掉旧账），只有官方源才按耗时判慢。
+
+### 新增
+
+- **启动器启动后自动恢复上次登录的账户**
+
+  以前账户只在打开「账户」页时才读回来（`AccountPageViewModel.RestoreSavedAccounts`），
+  所以启动器一开就点「启动游戏」只会得到「请先登录一个账户」，
+  即使 `settings.json` 里明确记着 `SelectedAccountUuid`。
+  新增 `AccountRestorer`：在读完配置、建主窗口之前，按 uuid 在离线 / 微软 / 外置账户里
+  找回**同一个对象实例**（账户页的「当前使用」标记用 `ReferenceEquals`，必须同实例），
+  写入 `MainModel.Account` 与 `IsMicrosoftAccount`。纯本地、不联网、不拖慢启动；
+  微软账户的 access token 仍在真正启动游戏前刷新。uuid 指向已被删除的账户时清掉选中记录。
+
+## [1.0.11.1] - 2026-10-24
+
+### 修复
+
+- **所有 Forge / NeoForge 版本都起不来（四个独立根因）**
+
+  一次性把「装完启动必炸」的四个原因全找齐了，每个都有实测复现和实测修复：
+
+  1. **补丁 jar 缺 `Minecraft-Dists` 清单属性**（NeoForge 26.x 直接 Fatal）
+
+     ```
+     NeoForge dev environment Minecraft jar does not have a Minecraft-Dists
+     attribute in its manifest; this may be because you have an out-of-date gradle plugin
+     ```
+
+     FML 12 的 `GameLocator` 启动时无条件读游戏 jar 的这条主属性，读不到就抛错。
+     官方 installertools 的 `PROCESS_MINECRAFT_JAR` 只会照抄原版 jar 的清单
+     （原版只有 `Manifest-Version` + `Main-Class`），所以补丁 jar 天生缺这一条 ——
+     报错里那句「gradle plugin 太旧」纯属误导。
+     现在安装器会在补这一步时顺手补上 `Minecraft-Dists: client`，并同步更新
+     版本 JSON 里的 size/sha1。
+
+  2. **安装器工具库被塞进启动 classpath**（Forge 1.20.1 / 26.2 模块层打架）
+
+     以前把 `install_profile.libraries`（installertools、ForgeAutoRenamingTool、
+     maven-artifact、jopt-simple 6.0-alpha-3 …）和加载器自己的库合并写进版本 JSON。
+     这些只是 processor 工具，官方 installer 根本不写进启动清单。后果是同一个 artifact
+     两个版本同时躺在 classpath 上：
+
+     ```
+     Modules joptsimple and jopt.simple export package joptsimple.util to module JarJarMetadata
+     Modules org.objectweb.asm.tree.analysis and ForgeAutoRenamingTool export package ...
+     ```
+
+     现在两份彻底分开：版本 JSON 只写加载器自己声明的库，工具库只下载、只给 processor 用。
+
+  3. **JVM 参数里的启动器宏没替换**（Forge 1.20.1 连窗口都不出）
+
+     版本 JSON 中的 `${library_directory}` / `${classpath_separator}` / `${version_name}`
+     是 **launcher 负责替换** 的宏，我们以前只替换了 `${natives_directory}` 和
+     `${classpath}`。1.20.1 的 `-p ${library_directory}/...${classpath_separator}...`
+     因此变成一串不存在的路径 → Bootstraplauncher 找不到模块，接着报一串
+     看起来毫不相关的 `InaccessibleObjectException: ...IMPL_LOOKUP`。
+     现在按官方启动器那一套全部替换；另外 `-DignoreList` 会补上实际使用的客户端 jar 名
+     （版本隔离下真实 jar 常常是父版本那个，`${version_name}.jar` 对不上就等于没忽略）。
+
+  4. **库文件「长度对、内容坏」被永久跳过**（Forge 26.2 报 `zip END header not found`）
+
+     镜像断流会产生「长度与清单完全一致、尾部全被 0 填满」的坏 jar。下载内核只看体积
+     判断「已下好」，于是重装一百次也不会重下。现在判定加了两层：jar/zip/mrpack 必须能
+     读出中央目录，清单给了 sha1 就真算一遍。
+
+  实测（本机，逐项复现后验证修复）：
+  1.20.1-47.4.22、26.2-65.1.5、26.3.0.0-beta 三个实例均能进入主界面
+  （日志出现 `Setting user` / `Sound engine started`）。
+
+  > **升级提示**：1.0.11.1 之前装出来的 Forge/NeoForge 实例里，版本 JSON 还留着工具库
+  > 残留，需要**重装一次加载器**（下载中心 → 该版本 → 重装）才会拿到干净清单。
+  > 1.20.1 及其它已装实例不受影响的只有 NeoForge 26.3（它不走模块层）。
+
+- **同一 artifact 出现两个版本**
+
+  版本 JSON 与 `install_profile` 去重改为按 `group:artifact:classifier`（不含版本号），
+  启动时合并父/子版本也按同一口径去重，子版本覆盖父版本。
+
 ## [1.0.11.0] - 2026-10-24
 
 ### 新增

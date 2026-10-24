@@ -187,11 +187,18 @@ namespace VibrantbitLauncher.Views.Pages
 
                 // 用户手动指定的 Java 也要在下拉里出现，否则「当前值」对不上任何一项，
                 // ComboBox 会显示空白，看起来像没设置。
+                // 正常情况下 RunPageViewModel 已经把它探测过并放进了列表（带版本号），
+                // 这里只是最后一道兜底 —— 版本号空着会给个可读占位，别留一行空白。
                 var customJava = MainWindowViewModel.MainModel.JavaPath;
                 if (!string.IsNullOrWhiteSpace(customJava)
                     && _quickJavas.All(j => !string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
                 {
-                    _quickJavas.Add(new JavaEntry { JavaPath = customJava, Is64bit = true });
+                    _quickJavas.Add(new JavaEntry
+                    {
+                        JavaPath = customJava,
+                        JavaVersion = "（手动指定）",
+                        Is64bit = true,
+                    });
                 }
 
                 quickJavaCombo.SelectedItem = string.IsNullOrWhiteSpace(customJava)

@@ -33,9 +33,42 @@ namespace VibrantbitLauncher.Helpers
 
         public static async Task<List<JavaEntry>> FindJavasAsync()
         {
+            // 同一「主版本 + 位数」只留版本号最高的那个。
+            //
+            // 以前是「先到先得」：PATH / JAVA_HOME 里的旧补丁版排在候选序列前面，
+            // 用户刚装好的新版被当成重复项扔掉 —— 表现就是「刚装完却检测不到」。
+            // 现在同一主版本内比完整版本号，留下最新的。
+            //
+            // ⚠️ 这个列表只服务于「自动挑一个能启动的 Java」（GetAppropriateJava）。
+            // 让用户自己挑的下拉框请用 FindAllJavasAsync() —— 那边一个安装一条，
+            // 同一个主版本装了 17 / 21 / 25 也要全都列出来。
+            var all = await FindAllJavasAsync().ConfigureAwait(false);
+
+            return all
+                .GroupBy(j => $"{ParseMajor(j.JavaVersion)}|{j.Is64bit}")
+                .Select(g => g.OrderByDescending(j => VersionParts(j.JavaVersion), VersionPartComparer.Instance).First())
+                .OrderByDescending(j => ParseMajor(j.JavaVersion))
+                .ThenByDescending(j => VersionParts(j.JavaVersion), VersionPartComparer.Instance)
+                .ToList();
+        }
+
+        /// <summary>
+        /// 列出机器上**每一个**可用的 Java 安装（不按主版本合并）。
+        ///
+        /// <para>
+        /// 去重口径是「bin 目录」而不是「主版本 + 位数」：同一个 JDK 里的 java.exe 与
+        /// javaw.exe 是两个真实文件，却显然是同一个安装 —— 早期按路径去重会让下拉框里
+        /// 出现成对重复项。同一目录内优先保留 javaw.exe（启动游戏不弹控制台窗口）。
+        /// </para>
+        /// </summary>
+        public static async Task<List<JavaEntry>> FindAllJavasAsync()
+        {
             var collected = new List<JavaEntry>();
             var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var acceptedPath = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // key = bin 目录（真实路径），value = (是否为 javaw, 序号)
+            var byHome = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
             var candidateCount = 0;
             var usableCount = 0;
 
@@ -67,11 +100,27 @@ namespace VibrantbitLauncher.Helpers
                     if (info == null || string.IsNullOrWhiteSpace(info.JavaPath))
                         continue;
 
-                    // 同一份 Java 常常同时以 javaw.exe / java.exe、以及 Oracle 的 javapath shim 出现，
-                    // 这里按真实路径去重（符号链接如 ...\Java\latest 会指向同一个 java.exe）
-                    if (!acceptedPath.Add(ResolveRealPath(info.JavaPath)))
+                    var home = HomeOf(info.JavaPath);
+                    if (home.Length == 0)
                         continue;
 
+                    var isJavaw = string.Equals(
+                        Path.GetFileName(info.JavaPath), "javaw.exe", StringComparison.OrdinalIgnoreCase);
+
+                    if (byHome.TryGetValue(home, out var existing))
+                    {
+                        // 同一个安装已经收过一条：只在「原来那条是 java.exe、这条是 javaw.exe」时替换
+                        var current = collected[existing];
+                        var currentIsJavaw = string.Equals(
+                            Path.GetFileName(current.JavaPath), "javaw.exe", StringComparison.OrdinalIgnoreCase);
+
+                        if (isJavaw && !currentIsJavaw)
+                            collected[existing] = info;
+
+                        continue;
+                    }
+
+                    byHome[home] = collected.Count;
                     collected.Add(info);
                 }
                 catch (Exception ex)
@@ -82,25 +131,34 @@ namespace VibrantbitLauncher.Helpers
                 }
             }
 
-            // 同一「主版本 + 位数」只留版本号最高的那个。
-            //
-            // 以前是「先到先得」：PATH / JAVA_HOME 里的旧补丁版排在候选序列前面，
-            // 用户刚装好的新版被当成重复项扔掉 —— 表现就是「刚装完却检测不到」。
-            // 现在同一主版本内比完整版本号，留下最新的。
             var result = collected
-                .GroupBy(j => $"{ParseMajor(j.JavaVersion)}|{j.Is64bit}")
-                .Select(g => g.OrderByDescending(j => VersionParts(j.JavaVersion), VersionPartComparer.Instance).First())
                 .OrderByDescending(j => ParseMajor(j.JavaVersion))
                 .ThenByDescending(j => VersionParts(j.JavaVersion), VersionPartComparer.Instance)
+                .ThenBy(j => j.JavaPath, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             Serilog.Log.Information(
-                "Java 查找：候选 {Candidates} → 体检通过 {Usable} → 探测成功 {Collected} → 去重后 {Count}｜{List}",
+                "Java 查找：候选 {Candidates} → 体检通过 {Usable} → 探测成功 {Collected} → 安装数 {Count}｜{List}",
                 candidateCount, usableCount, collected.Count, result.Count,
                 string.Join(" | ", result.Select(j => $"{j.JavaVersion} ({j.JavaPath})")));
 
             return result;
         }
+
+        /// <summary>java.exe 所在的 bin 目录（真实路径）；取不到时返回空串。</summary>
+        private static string HomeOf(string javaPath)
+        {
+            try
+            {
+                var real = ResolveRealPath(javaPath);
+                return (Path.GetDirectoryName(real) ?? string.Empty).TrimEnd('\\', '/');
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
 
         /// <summary>
         /// 把版本号拆成可比较的数字段：<c>"21.0.12+101"</c> → [21, 0, 12, 101]。
@@ -151,6 +209,42 @@ namespace VibrantbitLauncher.Helpers
             var javas = await FindJavasAsync();
             return javas.FirstOrDefault()?.JavaPath;
         }
+
+        /// <summary>
+        /// 探测单个 java.exe：静态体检 + 跑一次 <c>-version</c>，拿到版本号等信息。
+        ///
+        /// <para>
+        /// 用于「用户手工指定的路径」。这类路径不在扫描候选里，不探测的话
+        /// 下拉框只能显示路径、版本号一栏是空的，看起来像坏数据。
+        /// 探测失败（文件不可用 / 超时 / 非 Java）返回 null，由调用方决定怎么退化。
+        /// </para>
+        /// </summary>
+        public static async Task<JavaEntry?> ProbeJavaAsync(string? exePath)
+        {
+            if (!IsUsableJava(exePath))
+                return null;
+
+            try
+            {
+                var probe = JavaUtil.GetJavaInfoAsync(exePath!);
+                if (await Task.WhenAny(probe, Task.Delay(ProbeTimeout)) != probe)
+                {
+                    Serilog.Log.Warning("Java 探测超时：{Path}", exePath);
+                    return null;
+                }
+
+                return await probe;
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "Java 探测失败：{Path}", exePath);
+                return null;
+            }
+        }
+
+        /// <summary>版本号 → 主版本（<c>1.8.0_441</c> → 8，<c>21.0.3</c> → 21）。</summary>
+        public static int MajorOf(string? version) => ParseMajor(version);
+
 
         /// <summary>
         /// 判断一个 java.exe / javaw.exe 是否来自**完整**的 Java 安装，即能不能直接拿来启动。
@@ -235,9 +329,96 @@ namespace VibrantbitLauncher.Helpers
         {
             foreach (var exe in FromJavaHome()) yield return exe;
             foreach (var exe in FromPathVariable()) yield return exe;
+            foreach (var exe in FromRegistry()) yield return exe;
             foreach (var exe in FromConfiguredRuntimeRoot()) yield return exe;
             foreach (var exe in FromCommonFolders()) yield return exe;
             foreach (var exe in FromMinecraftRuntime()) yield return exe;
+        }
+
+        /// <summary>
+        /// 从注册表读 JDK / JRE 的安装位置。
+        ///
+        /// <para>
+        /// 目录扫描只能覆盖「装在默认厂商目录下」的情况；用户把 JDK 放到
+        /// <c>D:\Dev\jdk</c> 这种自选目录时只有注册表知道。各家写的键不一样：
+        /// </para>
+        /// <list type="bullet">
+        ///   <item>Oracle / OpenJDK：<c>SOFTWARE\JavaSoft\Java Development Kit\&lt;ver&gt;\JavaHome</c></item>
+        ///   <item>Adoptium MSI：<c>SOFTWARE\Eclipse Adoptium\JDK\&lt;ver&gt;\path</c></item>
+        ///   <item>Microsoft Build of OpenJDK：<c>SOFTWARE\Microsoft\JDK\&lt;ver&gt;\JavaHome</c></item>
+        /// </list>
+        /// <para>
+        /// 注册表读不了（非 Windows、权限受限）就安静跳过 —— 这一条只是「多找到几个」，
+        /// 失败不该影响其它候选。
+        /// </para>
+        /// </summary>
+        private static IEnumerable<string> FromRegistry()
+        {
+            var results = new List<string>();
+
+            void Scan(string subKey, string valueName)
+            {
+                try
+                {
+                    using var root = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(subKey);
+                    if (root is null)
+                        return;
+
+                    foreach (var name in root.GetSubKeyNames())
+                    {
+                        using var version = root.OpenSubKey(name);
+                        var home = version?.GetValue(valueName) as string;
+                        if (string.IsNullOrWhiteSpace(home))
+                            continue;
+
+                        home = home.Trim().Trim('"');
+                        results.Add(Path.Combine(home, "bin", "javaw.exe"));
+                        results.Add(Path.Combine(home, "bin", "java.exe"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Debug(ex, "读取注册表 {Key} 失败，已跳过", subKey);
+                }
+            }
+
+            foreach (var prefix in new[] { @"SOFTWARE\", @"SOFTWARE\WOW6432Node\" })
+            {
+                Scan(prefix + @"JavaSoft\Java Development Kit", "JavaHome");
+                Scan(prefix + @"JavaSoft\Java Runtime Environment", "JavaHome");
+                Scan(prefix + @"Eclipse Adoptium\JDK", "path");
+                Scan(prefix + @"Eclipse Adoptium\JRE", "path");
+                Scan(prefix + @"Microsoft\JDK", "JavaHome");
+            }
+
+            return results;
+        }
+
+        /// <summary>所有可枚举的固定磁盘根目录（U 盘 / 光驱 / 网络盘跳过 —— 扫它们只会拖慢启动）。</summary>
+        private static IEnumerable<string> SafeFixedDrives()
+        {
+            DriveInfo[] drives;
+            try { drives = DriveInfo.GetDrives(); }
+            catch { return Array.Empty<string>(); }
+
+            var roots = new List<string>();
+
+            foreach (var drive in drives)
+            {
+                try
+                {
+                    if (drive.DriveType != DriveType.Fixed || !drive.IsReady)
+                        continue;
+
+                    roots.Add(drive.RootDirectory.FullName);
+                }
+                catch
+                {
+                    // 某个盘符不可访问（已拔出 / 权限）时跳过它
+                }
+            }
+
+            return roots;
         }
 
         /// <summary>
@@ -350,6 +531,31 @@ namespace VibrantbitLauncher.Helpers
             AddProgramFiles(Environment.SpecialFolder.ProgramFilesX86,
                 "Java", "Eclipse Adoptium", "Eclipse Foundation", "Microsoft",
                 "Zulu", "Amazon Corretto", "BellSoft");
+
+            // 所有固定磁盘的 Program Files。
+            //
+            // `Environment.SpecialFolder.ProgramFiles` 只给**系统盘**那一个目录，
+            // 而用户把 JDK 装在 D:\Program Files\... 是常态（本机就有
+            // D:\Program Files\Java\jdk-22 与 D:\Program Files\Eclipse Adoptium\jdk-25.0.4.1）。
+            // 以前这些安装整片扫不到，表现就是「装了 8 个 Java，启动器只列出 4 个」。
+            var vendors = new[]
+            {
+                "Java", "Eclipse Adoptium", "Eclipse Foundation", "Microsoft",
+                "Zulu", "Amazon Corretto", "BellSoft", "Semeru", "SapMachine", "JetBrains",
+            };
+
+            foreach (var drive in SafeFixedDrives())
+            {
+                foreach (var programFiles in new[] { "Program Files", "Program Files (x86)" })
+                {
+                    var basePath = Path.Combine(drive, programFiles);
+                    if (!Directory.Exists(basePath))
+                        continue;
+
+                    foreach (var vendor in vendors)
+                        roots.Add(Path.Combine(basePath, vendor));
+                }
+            }
 
             if (!string.IsNullOrWhiteSpace(localAppData))
                 roots.Add(Path.Combine(localAppData, "Programs", "Eclipse Adoptium"));

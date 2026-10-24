@@ -100,9 +100,19 @@ public static class FileDownloader
                     await DownloadCoreAsync(url, item, onBytes, onProgress, idleTimeout, ct).ConfigureAwait(false);
                     watch.Stop();
 
+                    // 镜像站「慢」不等于它坏了。
+                    //
+                    // BMCLAPI 的 /maven/ 每次都会 302 到不同的志愿者节点，这一次抽到慢节点，
+                    // 下一次可能就是快的。原先只要单文件耗时超过 15 秒就把整个镜像主机判成
+                    // Slow 并降级 10 分钟 —— 后面的库全部退回官方源，而
+                    // maven.fabricmc.net 在国内实测只有 ~40 KB/s，
+                    // 于是「装个 Fabric 库文件要等好几分钟」。
+                    // 所以：镜像主机只要下成功了就记 Good（清掉旧账），只有官方源才按耗时判慢。
                     DownloadSources.ReportSourceHealth(
                         url,
-                        watch.Elapsed > SlowSourceThreshold ? SourceHealth.Slow : SourceHealth.Good);
+                        watch.Elapsed > SlowSourceThreshold && !DownloadSources.IsMirrorHost(url)
+                            ? SourceHealth.Slow
+                            : SourceHealth.Good);
 
                     return true;
                 }
@@ -391,9 +401,20 @@ public static class FileDownloader
     /// 目标文件是不是「已经下好了」。
     ///
     /// <para>
-    /// 判据刻意保守：只有体积确认对得上才算数。不知道体积时只看存在性 ——
-    /// 对已经在磁盘上的文件做 sha1 全量扫描会把启动前的准备时间拖成几十秒，
-    /// 得不偿失（新下载的文件在 <see cref="VerifyAsync"/> 里已经验过了）。
+    /// 判据分三层，逐层加严：
+    /// 1. 体积：清单给了 size 就必须完全相等；
+    /// 2. 结构：jar / zip / mrpack 必须能读出中央目录；
+    /// 3. 内容：清单给了 sha1 就真算一遍。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>为什么第 2、3 层不能省</b>（实测踩过，代价很大）：镜像/socket 中断时会产生
+    /// 「长度与清单完全一致、尾部却全被 0 填满」的坏包。Forge 26.2 的
+    /// <c>forge-26.2-65.1.5-universal.jar</c> 与 <c>eventbus-7.0.5.jar</c> 就是这样 ——
+    /// 只比体积的话每次都判「已下载」直接跳过，于是重装一百次也修不好，
+    /// 启动时只看到 <c>zip END header not found</c>，用户完全猜不到是库文件坏了。
+    /// 读中央目录只要几毫秒；sha1 是顺序读，几十 MB 的 jar 在 SSD 上是百毫秒级，
+    /// 比「下完 500MB 才发现有一个坏包」便宜得多。
     /// </para>
     /// </summary>
     private static bool IsUpToDate(DownloadItem item)
@@ -408,9 +429,42 @@ public static class FileDownloader
             if (info.Length == 0)
                 return false;
 
-            return item.ExpectedSize <= 0 || info.Length == item.ExpectedSize;
+            if (item.ExpectedSize > 0 && info.Length != item.ExpectedSize)
+                return false;
+
+            if (IsArchivePath(item.TargetPath) && !IsReadableArchive(info.FullName))
+                return false;
+
+            if (string.IsNullOrWhiteSpace(item.Sha1))
+                return true;
+
+            using var stream = File.OpenRead(info.FullName);
+            var actual = Convert.ToHexString(SHA1.HashData(stream));
+            return string.Equals(actual, item.Sha1.Trim(), StringComparison.OrdinalIgnoreCase);
         }
         catch
+        {
+            // 读不了（被占用 / 权限）就当没下好，交给下载流程给出明确错误
+            return false;
+        }
+    }
+
+    /// <summary>这些扩展名的文件本质是 zip，损坏时必须能被识别出来。</summary>
+    private static bool IsArchivePath(string path) =>
+        path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".mrpack", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>能不能读出 zip 中央目录。截断包 / 错误页面在这里就会失败。</summary>
+    private static bool IsReadableArchive(string path)
+    {
+        try
+        {
+            using var archive = System.IO.Compression.ZipFile.OpenRead(path);
+            _ = archive.Entries.Count;
+            return true;
+        }
+        catch (InvalidDataException)
         {
             return false;
         }

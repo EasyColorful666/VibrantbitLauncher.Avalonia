@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Input;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.Views.Windows;
 using VibrantbitLauncher.Services;
@@ -61,6 +62,16 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private string _statusMessage = "未启动";
         private bool _isCoreInstalled;
 
+        // ===== 局域网联机模组 =====
+        private GameInstance? _selectedInstance;
+        private bool _isInstallingLanMod;
+        private string _lanModStatus = string.Empty;
+        private string _lanModStatusLevel = "Idle";
+        private string _lanModGuide = string.Empty;
+        private bool _lanModInstalled;
+        private string _lanModInstalledName = string.Empty;
+        private string _lanModFileName = string.Empty;
+
         public MultiplayerPageViewModel(EasyTierService easyTierService)
         {
             _easyTierService = easyTierService;
@@ -82,6 +93,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             PasteGuestKeyCommand = new RelayCommand(PasteGuestKey);
             DownloadCoreCommand = new RelayCommand(ShowInstallWindow);
             RestartElevatedCommand = new RelayCommand(RestartElevated);
+            InstallLanModCommand = new RelayCommand(async () => await InstallLanModAsync());
         }
 
         public RelayCommand InitializeCommand { get; }
@@ -98,8 +110,138 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>以管理员身份重新拉起启动器（EasyTier 建虚拟网卡必须要权限）。</summary>
         public RelayCommand RestartElevatedCommand { get; }
 
+        /// <summary>给选中的实例一键安装「局域网联机模组」（关卡是加载器与游戏版本）。</summary>
+        public RelayCommand InstallLanModCommand { get; }
+
         /// <summary>虚拟网络成员（含本机自己那一行）。</summary>
         public ObservableCollection<EasyTierPeer> Peers { get; } = new();
+
+        // ============================ 局域网联机模组 ============================
+
+        /// <summary>
+        /// 本地所有可启动实例。
+        ///
+        /// 与「下载 → 模组 → 添加到实例」用的是同一份枚举（<see cref="GameInstanceHelper.GetInstances"/>），
+        /// 因此加载器的判定口径完全一致 —— 不会出现「这里认成 Forge、模组页认成 Fabric」的割裂。
+        /// </summary>
+        public ObservableCollection<GameInstance> Instances { get; } = new();
+
+        /// <summary>当前要给哪个实例装联机模组。</summary>
+        public GameInstance? SelectedInstance
+        {
+            get => _selectedInstance;
+            set
+            {
+                if (!SetProperty(ref _selectedInstance, value))
+                    return;
+
+                OnPropertyChanged(nameof(CanInstallLanMod));
+                OnPropertyChanged(nameof(LanModDetailText));
+
+                RefreshLanModState();
+
+                if (value is not null)
+                    PersistLanModInstance(value.Id);
+            }
+        }
+
+        public bool HasInstances => Instances.Count > 0;
+
+        public bool HasNoInstances => Instances.Count == 0;
+
+        /// <summary>安装请求进行中（同时用来禁用按钮，避免连点触发两次下载）。</summary>
+        public bool IsInstallingLanMod
+        {
+            get => _isInstallingLanMod;
+            private set
+            {
+                if (!SetProperty(ref _isInstallingLanMod, value))
+                    return;
+
+                OnPropertyChanged(nameof(CanInstallLanMod));
+                OnPropertyChanged(nameof(LanModButtonText));
+            }
+        }
+
+        public bool CanInstallLanMod => !_isInstallingLanMod && _selectedInstance is not null;
+
+        /// <summary>已装过联机模组（按钮文案会变成「重新安装」）。</summary>
+        public bool LanModInstalled
+        {
+            get => _lanModInstalled;
+            private set
+            {
+                if (!SetProperty(ref _lanModInstalled, value))
+                    return;
+
+                OnPropertyChanged(nameof(LanModButtonText));
+                OnPropertyChanged(nameof(IsLanModMissing));
+            }
+        }
+
+        public bool IsLanModMissing => !_lanModInstalled;
+
+        public string LanModButtonText
+        {
+            get
+            {
+                if (_isInstallingLanMod) return "安装中…";
+                return _lanModInstalled ? "重新安装" : "一键安装";
+            }
+        }
+
+        /// <summary>状态行文案（未选实例 / 原版实例 / 已安装 / 待安装）。</summary>
+        public string LanModStatusText
+        {
+            get => _lanModStatus;
+            private set => SetProperty(ref _lanModStatus, value);
+        }
+
+        /// <summary>状态圆点：Ready = 已装好，Warn = 装不了，Busy = 进行中，Idle = 待安装。</summary>
+        public string LanModStatusLevel
+        {
+            get => _lanModStatusLevel;
+            private set => SetProperty(ref _lanModStatusLevel, value);
+        }
+
+        /// <summary>选中实例的加载器 + 游戏版本 + 落点，一行说明「这个模组会装到哪」。</summary>
+        public string LanModDetailText
+        {
+            get
+            {
+                var instance = _selectedInstance;
+                if (instance is null)
+                    return "没有可用的实例";
+
+                var version = InstanceIntegrityChecker.ResolveRootVersion(
+                    GameInstanceHelper.GetMinecraftFolder(), instance.Id);
+
+                var target = GameInstanceHelper.DescribeInstanceFolder(instance.Id, "mods");
+                var isolation = GameInstanceHelper.IsVersionIsolated ? "版本隔离开" : "版本隔离关";
+
+                return $"{instance.LoaderName} · MC {version} · {isolation} → {target}";
+            }
+        }
+
+        /// <summary>装完之后怎么用（每个模组的联机方式不同，装完才显示）。</summary>
+        public string LanModGuide
+        {
+            get => _lanModGuide;
+            private set
+            {
+                if (SetProperty(ref _lanModGuide, value))
+                    OnPropertyChanged(nameof(HasLanModGuide));
+            }
+        }
+
+        public bool HasLanModGuide => !string.IsNullOrWhiteSpace(_lanModGuide);
+
+        /// <summary>已装模组的文件名（界面上给出「装的是哪个 jar」，方便人工核对）。</summary>
+        public string LanModFileName
+        {
+            get => _lanModFileName;
+            private set => SetProperty(ref _lanModFileName, value);
+        }
 
         // ============================ 绑定属性 ============================
 
@@ -285,6 +427,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
             RefreshCoreState();
 
+            // 实例列表每次进页面都重新枚举：用户可能刚在「下载」页装了新版本或删了旧版本，
+            // 缓存住只会让下拉框里躺着一堆已经不存在的实例。
+            RefreshLanInstances();
+
             if (_isInitialized)
             {
                 PullStateFromService();
@@ -316,6 +462,186 @@ namespace VibrantbitLauncher.ViewModels.Pages
             _isCoreInstalled = installed;
             OnPropertyChanged(nameof(IsCoreInstalled));
             OnPropertyChanged(nameof(IsCoreMissing));
+        }
+
+        // ============================ 局域网联机模组 ============================
+
+        /// <summary>
+        /// 重新枚举本地实例并恢复上次的选择。
+        ///
+        /// <para>
+        /// 恢复优先级：本次页面的当前选择 → 配置文件里记的 id（用户上次选过的）→
+        /// 第一个「装了加载器」的实例 → 第一个实例。
+        /// 之所以不直接选第一个：原版实例装不了模组，默认落在它上面，用户点一下只会收到
+        /// 「这是原版实例」的提示，等于默认状态就是「按钮没用」。
+        /// </para>
+        /// </summary>
+        private void RefreshLanInstances()
+        {
+            var keepId = _selectedInstance?.Id;
+            if (string.IsNullOrWhiteSpace(keepId))
+                keepId = SettingsService.Current.LanModInstanceId;
+
+            var instances = GameInstanceHelper.GetInstances();
+
+            Instances.Clear();
+            foreach (var instance in instances)
+                Instances.Add(instance);
+
+            OnPropertyChanged(nameof(HasInstances));
+            OnPropertyChanged(nameof(HasNoInstances));
+
+            GameInstance? pick = null;
+            if (!string.IsNullOrWhiteSpace(keepId))
+            {
+                pick = Instances.FirstOrDefault(x =>
+                    string.Equals(x.Id, keepId, StringComparison.OrdinalIgnoreCase));
+            }
+
+            pick ??= Instances.FirstOrDefault(x =>
+                        x.Loader is not (ModLoaderKind.Vanilla or ModLoaderKind.Unknown))
+                    ?? Instances.FirstOrDefault();
+
+            // ItemsSource 被清空时 ComboBox 会把 SelectedItem 写回 null，
+            // 所以赋值必须放在重建集合之后。
+            SelectedInstance = pick;
+
+            if (pick is null)
+            {
+                LanModInstalled = false;
+                LanModFileName = string.Empty;
+                LanModStatusText = "还没有安装任何 Minecraft 实例，请先在「下载」页装一个版本";
+                LanModStatusLevel = "Warn";
+            }
+            else
+            {
+                // 选中的实例没变时 setter 不会重跑（SetProperty 判定值相同），
+                // 但 mods 目录可能刚被「下载 → 模组」页改过，这里补一次无条件刷新。
+                RefreshLanModState();
+            }
+        }
+
+        /// <summary>按「选中的实例 + 它当前 mods 目录里的文件」刷新状态行。</summary>
+        private void RefreshLanModState()
+        {
+            if (_isInstallingLanMod)
+                return;
+
+            var instance = _selectedInstance;
+            if (instance is null)
+            {
+                LanModInstalled = false;
+                LanModFileName = string.Empty;
+                LanModStatusText = "没有选择实例";
+                LanModStatusLevel = "Warn";
+                OnPropertyChanged(nameof(LanModDetailText));
+                return;
+            }
+
+            var state = LanModInstaller.Detect(instance.Id);
+            LanModInstalled = state.IsInstalled;
+            LanModFileName = state.FileName;
+
+            if (state.IsInstalled)
+            {
+                // 历史实例里可能躺着手动装的 e4mc / LAN Server Properties。
+                // 不拦着它们用，但要明确告诉玩家「不是推荐的那个，可以一键替换」。
+                LanModStatusText = state.Kind == LanModKind.McWifiPnp
+                    ? $"已安装 {state.DisplayName}，开房后按下面的说明操作即可"
+                    : $"已安装 {state.DisplayName}（旧方案），点一键安装会换成 LAN World Plug-n-Play";
+
+                LanModStatusLevel = "Ready";
+            }
+            else
+            {
+                switch (instance.Loader)
+                {
+                    case ModLoaderKind.Vanilla:
+                        LanModStatusText = "这个实例是原版，没有加载器 —— 模组装进去也不会被加载";
+                        LanModStatusLevel = "Warn";
+                        break;
+
+                    case ModLoaderKind.Unknown:
+                        LanModStatusText = "读不出这个实例的加载器（版本 JSON 可能损坏），建议先做一次体检";
+                        LanModStatusLevel = "Warn";
+                        break;
+
+                    case ModLoaderKind.LiteLoader:
+                        LanModStatusText = "LiteLoader 没有可用的局域网联机模组";
+                        LanModStatusLevel = "Warn";
+                        break;
+
+                    default:
+                        LanModStatusText = $"尚未安装（{instance.LoaderName} 实例，可以一键装好）";
+                        LanModStatusLevel = "Idle";
+                        break;
+                }
+            }
+
+            OnPropertyChanged(nameof(LanModDetailText));
+        }
+
+        /// <summary>
+        /// 一键安装。真正的加载器 / 版本判定在 <see cref="LanModInstaller"/> 里做，
+        /// 这里只负责「置忙 → 调用 → 汇报 → 刷新状态」。
+        /// </summary>
+        private async Task InstallLanModAsync()
+        {
+            if (_isInstallingLanMod)
+                return;
+
+            var instance = _selectedInstance;
+            if (instance is null)
+            {
+                _notification.Warning("请先从下拉框选择一个实例", "提示");
+                return;
+            }
+
+            IsInstallingLanMod = true;
+            LanModStatusLevel = "Busy";
+            LanModStatusText = "正在准备…";
+            LanModGuide = string.Empty;
+
+            try
+            {
+                // 进度回调在后台线程发出来，绑定属性必须在 UI 线程改
+                var result = await LanModInstaller.InstallAsync(instance, text =>
+                    Dispatcher.UIThread.Post(() => LanModStatusText = text));
+
+                if (result.Success)
+                {
+                    _notification.Success(result.Message, $"{result.Title} 已安装");
+                    LanModGuide = result.Guide;
+                }
+                else
+                {
+                    _notification.Warning(result.Message, "装不了联机模组");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _notification.Show("已取消安装", "提示");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "安装局域网联机模组时发生异常");
+                _notification.Error($"安装联机模组出错：{ex.Message}", "失败");
+            }
+            finally
+            {
+                IsInstallingLanMod = false;
+                RefreshLanModState();
+            }
+        }
+
+        /// <summary>记住用户选的实例，下次进来直接恢复。</summary>
+        private void PersistLanModInstance(string instanceId)
+        {
+            if (string.Equals(SettingsService.Current.LanModInstanceId, instanceId, StringComparison.Ordinal))
+                return;
+
+            SettingsService.Current.LanModInstanceId = instanceId;
+            SettingsService.Save();
         }
 
         private void RegenerateKey()
