@@ -11,9 +11,19 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.15.0</Version>
+    <Version>1.0.16.0</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
+    <!--
+      开源协议：AGPL-3.0。三处声明必须一致，改协议时一起改：
+        1. 这里（进程序集元数据，资源管理器「详细信息」与 NuGet 元数据都读它）
+        2. 根目录 LICENSE.txt（协议全文，随源码分发）
+        3. README.md「开源协议」一节 + 「设置 → 关于 → 开源与致谢」（玩家能看到的说法）
+      写法用 SPDX 标识的 -only：本工程只接受第 3 版，没写「或更高版本」。
+      如果以后想允许被更高版本的 AGPL 覆盖，把它、LICENSE.txt 与关于页说明一并改成 -or-later。
+    -->
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <Copyright>Copyright (C) 2026 EasyColorful666</Copyright>
     <!--
       目标平台：**默认** win-x64，但允许命令行覆盖。
 
@@ -393,6 +403,15 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!--
+      协议全文也打进程序集里（约 35 KB），供「设置 → 关于 → 查看协议」离线显示。
+
+      为什么不在发布包里单独放一份 LICENSE.txt：本工程默认发布成**单文件 exe**，
+      玩家那边往往只有一个 exe。放外部文件要么被漏拷、要么被解压工具丢在压缩包角落，
+      而 AGPL 要求协议随程序一起提供给使用者。打进程序集里，exe 到哪协议就到哪。
+      （源码仓库那边仍然保留 LICENSE.txt，两份内容必须一致。）
+    -->
+    <AvaloniaResource Include="LICENSE.txt" />
   </ItemGroup>
 
 </Project>

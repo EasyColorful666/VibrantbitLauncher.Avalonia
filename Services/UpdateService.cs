@@ -79,6 +79,12 @@ public static class UpdateService
     public static string ReleasesPageUrl => $"https://github.com/{Owner}/{Repo}/releases";
 
     /// <summary>
+    /// 仓库根地址。AGPL 第 13 条要求向使用者提供对应源码的获取方式，
+    /// 界面上的「获取源代码」就指向这里 —— 改了域名只需要动这一个地方。
+    /// </summary>
+    public static string RepositoryUrl => $"https://github.com/{Owner}/{Repo}";
+
+    /// <summary>
     /// 检查更新。
     /// </summary>
     /// <param name="includePrerelease">

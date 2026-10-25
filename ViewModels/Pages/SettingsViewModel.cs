@@ -89,6 +89,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
         public RelayCommand ApplyCustomAccentCommand { get; }
         public RelayCommand OpenWebsiteCommand { get; }
         public RelayCommand OpenRepositoryCommand { get; }
+
+        /// <summary>在主窗口内嵌打开 AGPL-3.0 协议全文（正文已打进程序集，可离线阅读）。</summary>
+        public RelayCommand OpenLicenseCommand { get; }
+
         public RelayCommand OpenChangelogCommand { get; }
         public RelayCommand OpenDocsCommand { get; }
         public RelayCommand OpenFeedbackCommand { get; }
@@ -116,7 +120,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
             ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
             ApplyCustomAccentCommand = new RelayCommand(ApplyCustomAccent);
             OpenWebsiteCommand = new RelayCommand(() => OpenUrl("https://vbl.easycolorful.cn"));
-            OpenRepositoryCommand = new RelayCommand(() => OpenUrl(UpdateService.ReleasesPageUrl));
+            // 「查看仓库」与「获取源代码」都指向仓库根：AGPL 要求提供源码获取途径，落到 releases 页算擦边。
+            OpenRepositoryCommand = new RelayCommand(() => OpenUrl(UpdateService.RepositoryUrl));
+            OpenLicenseCommand = new RelayCommand(ShowLicenseWindow);
             OpenChangelogCommand = new RelayCommand(() => OpenUrl($"{UpdateService.ReleasesPageUrl}"));
             OpenDocsCommand = new RelayCommand(() => OpenUrl("https://github.com/EasyColorful666/VibrantbitLauncher.Avalonia#readme"));
             OpenFeedbackCommand = new RelayCommand(() => OpenUrl("https://github.com/EasyColorful666/VibrantbitLauncher.Avalonia/issues"));
@@ -2248,6 +2254,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
             {
                 Serilog.Log.Warning(ex, "打开链接失败：{Url}", url);
                 AppServices.Notifications?.Error("打不开这个链接");
+            }
+        }
+
+        /// <summary>
+        /// 内嵌打开开源许可全文。
+        ///
+        /// 走 <see cref="AppLifetime.ShowDialogAsync(Avalonia.Controls.Control, string?)"/> 而不是弹窗：
+        /// 1.0.8.0 起子页统一内嵌到主窗口内容区（学 PCL2）。构造失败也要兜住 ——
+        /// 这里抛出去就是「点一下关于页就崩」，而它只是看协议。
+        /// </summary>
+        private void ShowLicenseWindow()
+        {
+            try
+            {
+                _ = AppLifetime.ShowDialogAsync(new Views.Windows.LicenseWindow());
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "打开开源许可页面失败");
+                AppServices.Notifications?.Error("打不开许可页面");
             }
         }
 

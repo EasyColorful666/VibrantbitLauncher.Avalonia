@@ -1072,11 +1072,14 @@
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="开源与致谢" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="本项目基于 MIT 协议开源；界面框架、下载引擎、认证与版本解析分别来自不同的开源项目，字体版权归各字体作者所有。" />
+                                           Text="本项目以 GNU Affero 通用公共许可证第 3 版（AGPL-3.0）开源：可以自由使用、修改、分发，修改后的版本也必须以同样的协议开放源代码。界面框架、下载引擎、认证与版本解析分别来自不同的开源项目，字体版权归各字体作者所有。" />
 
-                                <ctrl:SettingRow Header="依赖清单"
-                                                 Description="完整清单随发布包一同提供，也可在仓库的许可证页查看">
-                                    <Button Command="{Binding OpenRepositoryCommand}" Content="查看仓库" />
+                                <ctrl:SettingRow Header="开源协议"
+                                                 Description="AGPL-3.0 · 协议全文已随程序一起提供，断网也能看">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Command="{Binding OpenLicenseCommand}" Content="查看协议" />
+                                        <Button Command="{Binding OpenRepositoryCommand}" Content="获取源代码" />
+                                    </StackPanel>
                                 </ctrl:SettingRow>
 
                                 <ctrl:SettingRow Header="致谢"
