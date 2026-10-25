@@ -6,6 +6,7 @@
              xmlns:models="using:VibrantbitLauncher.Models"
              xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:ctrl="using:VibrantbitLauncher.Controls"
              mc:Ignorable="d"
              x:Class="VibrantbitLauncher.Views.Pages.SettingsPage"
              d:DesignWidth="1100"
@@ -15,189 +16,418 @@
         <helpers:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
     </UserControl.Resources>
 
+    <UserControl.Styles>
+        <!--  分组小标题：比卡片标题弱一档，只用来把一屏内容切段  -->
+        <Style Selector="TextBlock.groupLabel">
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="Margin" Value="4,0,0,8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
-        <!--  ==================== 页面标题  ====================  -->
-        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock Classes="display" Text="设置" />
-            <Border Classes="accentRule" Margin="0,10,0,0" />
-            <TextBlock Classes="caption"
-                       Margin="0,6,0,0"
-                       Text="外观、启动参数、下载与日志" />
-        </StackPanel>
+        <ctrl:PageHeader Grid.Row="0"
+                         Title="设置"
+                         Subtitle="通用 · 游戏 · 外观 · 网络 · 高级 · 关于" />
 
         <Grid Grid.Row="1" ColumnDefinitions="216,*">
 
-            <!--  ==================== 左栏：分类  ====================  -->
-            <ListBox x:Name="CategoryList"
-                     Grid.Column="0"
-                     Margin="0,0,24,0"
-                     VerticalAlignment="Top"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     SelectionChanged="CategoryList_SelectionChanged">
+            <!--  ==================== 左栏：分类  ====================
+                 与下载中心一致：分类是一组"并列选项"，装在玻璃面板里，
+                 和右侧"当前选中的内容"分成两个层。
+            -->
+            <Border Grid.Column="0"
+                    Classes="glass"
+                    Margin="0,0,20,0"
+                    Padding="6"
+                    VerticalAlignment="Top">
+                <ListBox x:Name="CategoryList"
+                         VerticalAlignment="Top"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="CategoryList_SelectionChanged">
 
-                <ListBox.Styles>
-                    <Style Selector="ListBoxItem">
-                        <Setter Property="Margin" Value="0,1" />
-                        <Setter Property="Padding" Value="12,9" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
-                    </Style>
-                </ListBox.Styles>
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Margin" Value="0,1" />
+                            <Setter Property="Padding" Value="12,9" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                        </Style>
+                    </ListBox.Styles>
 
-                <ListBoxItem IsSelected="True" Tag="0">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Home" />
-                        <TextBlock Text="主页" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-                <ListBoxItem Tag="1">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Play" />
-                        <TextBlock Text="启动" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-                <ListBoxItem Tag="2">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Edit" />
-                        <TextBlock Text="个性化" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-                <ListBoxItem Tag="3">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Globe" />
-                        <TextBlock Text="网络" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-                <ListBoxItem Tag="4">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Document" />
-                        <TextBlock Text="日志" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-                <ListBoxItem Tag="5">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <ui:FASymbolIcon Symbol="Help" />
-                        <TextBlock Text="关于" VerticalAlignment="Center" />
-                    </StackPanel>
-                </ListBoxItem>
-            </ListBox>
+                    <ListBoxItem IsSelected="True" Tag="0">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Home" />
+                            <TextBlock Text="通用" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="1">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Play" />
+                            <TextBlock Text="游戏" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="2">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Edit" />
+                            <TextBlock Text="外观" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="3">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Globe" />
+                            <TextBlock Text="网络" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="4">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Code" />
+                            <TextBlock Text="高级" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="5">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon Symbol="Help" />
+                            <TextBlock Text="关于" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+            </Border>
 
             <!--
-                右栏：三个面板叠放，切换时只改 IsVisible。
+                右栏：六个面板叠放，切换时只改 IsVisible。
                 不给 Content 反复赋值 —— 那会卸载并重建整棵视觉树。
             -->
             <Grid x:Name="PanelHost" Grid.Column="1">
 
-                <!--  ===== 主页：当前配置概览 + 快捷操作 =====  -->
-                <ScrollViewer x:Name="HomePanel"
+                <!--  ==================== 通用  ====================  -->
+                <ScrollViewer x:Name="GeneralPanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel>
 
+                        <!--  主页显示项  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="body" Margin="0,0,16,10" MinWidth="88" Text="游戏目录" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding MinecraftFolder}" TextWrapping="Wrap" />
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="主页" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="控制「启动」页显示哪些模块。关掉的模块只是不在这里出现，功能本身在别的页面仍然可达。（游戏卡片的开关在启动页的快捷设置里，账户相关的在「账户」页。）" />
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="Java 版本" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding SelectedJava.JavaVersion}" />
+                                <ctrl:SettingRow Header="显示问候语" Description="顶部一句「晚上好，某某」，带上当前账户">
+                                    <ToggleSwitch IsChecked="{Binding ShowHomeGreeting, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="Java 路径" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding JavaPathText}" TextWrapping="Wrap" />
+                                <ctrl:SettingRow Header="显示最近游玩" Description="按最近使用时间排在前面的几个实例">
+                                    <ToggleSwitch IsChecked="{Binding ShowHomeRecent, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="内存" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding MemoryHint}" TextWrapping="Wrap" />
+                                <ctrl:SettingRow Header="显示实例概览" Description="实例数量与占用的磁盘空间">
+                                    <ToggleSwitch IsChecked="{Binding ShowHomeInstanceOverview, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
 
-                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="下载源" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding DownloadSourceSummary}" TextWrapping="Wrap" />
-
-                                <TextBlock Grid.Row="5" Grid.Column="0" Classes="body" Margin="0,0,16,10" Text="当前主题" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Classes="caption" Margin="0,0,0,10"
-                                           Text="{Binding CurrentThemeText}" />
-
-                                <TextBlock Grid.Row="6" Grid.Column="0" Classes="body" Margin="0,0,16,0" Text="日志" />
-                                <TextBlock Grid.Row="6" Grid.Column="1" Classes="caption"
-                                           Text="{Binding LogSummary}" TextWrapping="Wrap" />
-                            </Grid>
+                                <ctrl:SettingRow Header="显示快捷入口" Description="装模组、装整合包的直达按钮">
+                                    <ToggleSwitch IsChecked="{Binding ShowHomeShortcuts, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+                            </StackPanel>
                         </Border>
 
-                        <Border Classes="card" Margin="0,0,16,0" Padding="20,16">
-                            <StackPanel Spacing="12">
-                                <TextBlock Classes="sectionTitle" Text="快捷操作" />
-                                <WrapPanel Orientation="Horizontal">
-                                    <Button Margin="0,0,8,8" Padding="16,8"
-                                            Command="{Binding OpenGameFolderCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ui:FASymbolIcon Symbol="OpenFile" />
-                                            <TextBlock Text="打开游戏目录" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Margin="0,0,8,8" Padding="16,8"
-                                            Command="{Binding OpenLogFolderCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ui:FASymbolIcon Symbol="OpenFile" />
-                                            <TextBlock Text="打开日志目录" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Margin="0,0,8,8" Padding="16,8"
-                                            Command="{Binding RefreshJavaCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ui:FASymbolIcon Symbol="Refresh" />
-                                            <TextBlock Text="重新检测 Java" />
-                                        </StackPanel>
-                                    </Button>
-                                </WrapPanel>
+                        <!--  窗口与更新  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="启动与更新" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="启动器自身的行为，以及版本更新的检查方式。" />
+
+                                <ctrl:SettingRow Header="关闭窗口时最小化到托盘"
+                                                 Description="点右上角 × 只是收进托盘，联机内核继续跑；真正退出走托盘菜单">
+                                    <ToggleSwitch IsChecked="{Binding MinimizeToTray, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="参与测试版"
+                                                 Description="检查更新时也看预发布版本。测试版可能不稳定，只在你愿意帮忙试的时候打开">
+                                    <ToggleSwitch IsChecked="{Binding UpdateIncludePrerelease, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="立即检查更新" Description="{Binding UpdateStatusText}">
+                                    <Button Command="{Binding CheckUpdateCommand}" Content="检查更新" />
+                                </ctrl:SettingRow>
                             </StackPanel>
                         </Border>
 
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  ===== 个性化  =====  -->
-                <ScrollViewer x:Name="PersonalizationPanel"
+                <!--  ==================== 游戏  ====================  -->
+                <ScrollViewer x:Name="GamePanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto"
                               IsVisible="False">
                     <StackPanel>
 
-                        <!--  明暗主题 / 主题色 / 渐变色  -->
+                        <!--  Java 与内存  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="Java 与内存" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="决定游戏用哪个 Java 运行、能用多少内存。改动在下次启动游戏时生效。" />
 
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="个性化" />
+                                <TextBlock Classes="groupLabel" Text="JAVA 路径" />
 
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="明暗主题" />
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,20" Spacing="16">
-                                    <RadioButton GroupName="themeSelect"
-                                                 Content="亮色"
-                                                 Command="{Binding ChangeThemeCommand}"
-                                                 CommandParameter="theme_light"
-                                                 IsChecked="{Binding CurrentTheme,
-                                                                     Converter={StaticResource EnumToBooleanConverter},
-                                                                     ConverterParameter=Light,
-                                                                     Mode=OneWay}" />
-                                    <RadioButton GroupName="themeSelect"
-                                                 Content="暗色"
-                                                 Command="{Binding ChangeThemeCommand}"
-                                                 CommandParameter="theme_dark"
-                                                 IsChecked="{Binding CurrentTheme,
-                                                                     Converter={StaticResource EnumToBooleanConverter},
-                                                                     ConverterParameter=Dark,
-                                                                     Mode=OneWay}" />
+                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+                                    <ComboBox Grid.Column="0"
+                                              Margin="0,0,8,0"
+                                              HorizontalAlignment="Stretch"
+                                              IsEnabled="{Binding !UseManualJava}"
+                                              ItemsSource="{Binding JavaEntries}"
+                                              SelectedItem="{Binding SelectedJava, Mode=TwoWay}"
+                                              ToolTip.Tip="{Binding SelectedJava.JavaPath}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding JavaVersion}" VerticalAlignment="Center" />
+                                                    <TextBlock Classes="secondary" Margin="6,0" Text="-" VerticalAlignment="Center" />
+                                                    <TextBlock Classes="caption" Text="{Binding JavaPath}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="1"
+                                            Padding="16,0"
+                                            Command="{Binding RefreshJavaCommand}"
+                                            Content="重新检测"
+                                            IsEnabled="{Binding !UseManualJava}" />
+                                </Grid>
+
+                                <ctrl:SettingRow Header="手动指定 java 可执行文件"
+                                                 Description="自动检测找不到你那份 JDK 时用这个。填 javaw.exe 或 java.exe 的完整路径">
+                                    <ToggleSwitch IsChecked="{Binding UseManualJava, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <Grid Margin="0,0,0,18" ColumnDefinitions="*,Auto" IsEnabled="{Binding UseManualJava}">
+                                    <TextBox Grid.Column="0"
+                                             Margin="0,0,8,0"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Left"
+                                             PlaceholderText="C:\Program Files\Java\jdk-21\bin\javaw.exe"
+                                             Text="{Binding ManualJavaPath, Mode=TwoWay}" />
+                                    <Button Grid.Column="1" Padding="16,0"
+                                            Click="OnSelectJavaExe"
+                                            Content="浏览…" />
+                                </Grid>
+
+                                <ctrl:SettingRow Header="按实例独立绑定 Java"
+                                                 Description="不同版本对 Java 版本要求不同。在「版本管理 → 实例设置」里为单个实例指定，优先于这里的全局设置">
+                                    <Button Command="{Binding OpenVersionManageCommand}" Content="去版本管理" />
+                                </ctrl:SettingRow>
+
+                                <TextBlock Classes="groupLabel" Margin="4,10,0,8" Text="内存分配" />
+
+                                <ctrl:SettingRow Header="自动推荐"
+                                                 Description="按本机物理内存的一半挑一档，给系统和其他程序留出余量">
+                                    <ToggleSwitch IsChecked="{Binding MemoryAutoRecommend, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <Grid Margin="0,0,0,4" ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0"
+                                            Margin="0,0,12,0"
+                                            Minimum="512"
+                                            Maximum="32768"
+                                            TickFrequency="256"
+                                            IsSnapToTickEnabled="True"
+                                            IsEnabled="{Binding !MemoryAutoRecommend}"
+                                            Value="{Binding MaxMemoryMbValue, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1"
+                                               Classes="number"
+                                               VerticalAlignment="Center"
+                                               FontSize="{DynamicResource FontSizeSubtitle}"
+                                               Text="{Binding MaxMemorySliderText}" />
+                                </Grid>
+                                <TextBlock Classes="caption" Margin="0,0,0,18" TextWrapping="Wrap"
+                                           Text="{Binding MemoryHint}" />
+
+                                <TextBlock Classes="groupLabel" Text="初始内存（-Xms）" />
+                                <ComboBox Margin="0,0,0,14"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding MinMemoryOptions}"
+                                          SelectedItem="{Binding SelectedMinMemory, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:MemoryOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding MachineMemoryText}" />
+
+                                <ui:FASettingsExpander Margin="0,16,0,0" Header="JVM 参数" IsExpanded="False">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Classes="caption" TextWrapping="Wrap"
+                                                   Text="一行一条，例如 -Dfile.encoding=UTF-8；以 # 开头的行会被忽略" />
+                                        <TextBox AcceptsReturn="True"
+                                                 Height="86"
+                                                 FontFamily="Consolas"
+                                                 TextWrapping="NoWrap"
+                                                 PlaceholderText="-Dfile.encoding=UTF-8"
+                                                 Text="{Binding JvmArgs, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </ui:FASettingsExpander>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  目录  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="目录" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="版本、存档、模组都放在游戏根目录下。" />
+
+                                <TextBlock Classes="groupLabel" Text="游戏根目录" />
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto,Auto">
+                                    <TextBox Grid.Column="0"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Left"
+                                             IsReadOnly="True"
+                                             Text="{Binding MinecraftFolder, Mode=OneWay}"
+                                             ToolTip.Tip="{Binding MinecraftFolder}" />
+                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
+                                            Click="OnSelectMinecraftFolder" Content="选择" />
+                                    <Button Grid.Column="2" Margin="8,0,0,0" Padding="16,0"
+                                            Command="{Binding OpenGameFolderCommand}" Content="打开" />
+                                </Grid>
+
+                                <ctrl:SettingRow Header="版本隔离"
+                                                 Description="开启后每个版本使用独立的 saves / mods / config，互不干扰">
+                                    <ToggleSwitch IsChecked="{Binding VersionIsolation, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <TextBlock Classes="groupLabel" Margin="4,8,0,8" Text="资源包" />
+                                <Grid Margin="0,0,0,4" ColumnDefinitions="*,Auto,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Classes="caption"
+                                               Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding ResourcePacksFolderDisplay}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" Margin="0,0,8,0"
+                                            Click="OnSelectResourcePacksFolder" Content="选择" />
+                                    <Button Grid.Column="2"
+                                            Command="{Binding ClearResourcePacksCommand}" Content="恢复默认" />
+                                </Grid>
+                                <TextBlock Classes="caption" Margin="0,0,0,14" Opacity="0.75" TextWrapping="Wrap"
+                                           Text="换到别的盘会建立目录链接，游戏仍然按原位置读取，不会丢资源包。" />
+
+                                <TextBlock Classes="groupLabel" Text="存档" />
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Classes="caption"
+                                               Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding SavesFolderDisplay}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" Margin="0,0,8,0"
+                                            Click="OnSelectSavesFolder" Content="选择" />
+                                    <Button Grid.Column="2"
+                                            Command="{Binding ClearSavesCommand}" Content="恢复默认" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  启动  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="启动" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="游戏窗口的大小，以及启动游戏时额外附加的参数。" />
+
+                                <ctrl:SettingRow Header="全屏启动" Description="开启后忽略下面的窗体大小">
+                                    <ToggleSwitch IsChecked="{Binding StartFullscreen, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <TextBlock Classes="groupLabel" Text="Minecraft 窗体大小" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16" Spacing="8"
+                                            IsEnabled="{Binding !StartFullscreen}">
+                                    <NumericUpDown Width="140" Minimum="320" Maximum="7680" Increment="10"
+                                                   Value="{Binding WindowWidth, Mode=TwoWay}" />
+                                    <TextBlock Classes="secondary" Text="×" VerticalAlignment="Center" />
+                                    <NumericUpDown Width="140" Minimum="240" Maximum="4320" Increment="10"
+                                                   Value="{Binding WindowHeight, Mode=TwoWay}" />
+                                    <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center" Text="像素" />
                                 </StackPanel>
 
-                                <TextBlock Classes="body" Margin="0,0,0,8" Text="主题色" />
-                                <ItemsControl Margin="0,0,0,20" ItemsSource="{Binding AccentPresets}">
+                                <ui:FASettingsExpander Header="高级启动参数" IsExpanded="False">
+                                    <StackPanel Spacing="14">
+                                        <ctrl:SettingRow Header="禁用 IPv6"
+                                                         Description="加 -Djava.net.preferIPv4Stack=true。IPv6 环境下连不上多人服务器时打开">
+                                            <ToggleSwitch IsChecked="{Binding DisableIpv6, Mode=TwoWay}" />
+                                        </ctrl:SettingRow>
+
+                                        <ctrl:SettingRow Header="Java 垃圾回收器"
+                                                         Description="一般保持「自动」即可；卡顿时可试 G1GC，大内存可试 ZGC">
+                                            <ComboBox Width="200"
+                                                      ItemsSource="{Binding GcModes}"
+                                                      SelectedItem="{Binding SelectedGcMode, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:SettingOption">
+                                                        <TextBlock Text="{Binding Display}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </ctrl:SettingRow>
+
+                                        <ctrl:SettingRow Header="追加自定义游戏参数"
+                                                         Description="写在官方参数之后，用于高级调试">
+                                            <ToggleSwitch IsChecked="{Binding UseCustomGameArgs, Mode=TwoWay}" />
+                                        </ctrl:SettingRow>
+
+                                        <TextBox AcceptsReturn="True"
+                                                 Height="76"
+                                                 FontFamily="Consolas"
+                                                 TextWrapping="NoWrap"
+                                                 IsEnabled="{Binding UseCustomGameArgs}"
+                                                 PlaceholderText="--width 1280 --height 720"
+                                                 Text="{Binding GameArgs, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </ui:FASettingsExpander>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!--  ==================== 外观  ====================  -->
+                <ScrollViewer x:Name="AppearancePanel"
+                              Padding="0,0,8,0"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="False">
+                    <StackPanel>
+
+                        <!--  主题  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="主题" />
+
+                                <TextBlock Classes="groupLabel" Text="明暗" />
+                                <ComboBox Margin="0,0,0,16"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding ThemeOptionList}"
+                                          SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:SettingOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Classes="groupLabel" Text="主题色" />
+                                <ItemsControl Margin="0,0,0,14" ItemsSource="{Binding AccentPresets}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <WrapPanel Orientation="Horizontal" />
@@ -218,10 +448,10 @@
                                                                 Background="Transparent"
                                                                 BorderBrush="{Binding AccentRingBrush}"
                                                                 BorderThickness="2"
-                                                                CornerRadius="20">
+                                                                CornerRadius="{StaticResource RadiusPill}">
                                                             <Border Width="28" Height="28"
                                                                     Background="{Binding SwatchBrush}"
-                                                                    CornerRadius="14" />
+                                                                    CornerRadius="{StaticResource RadiusPill}" />
                                                         </Border>
                                                     </ControlTemplate>
                                                 </Button.Template>
@@ -230,18 +460,46 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="主题渐变色" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="开启后，标题强调条等位置使用主色到终点色的渐变" />
+                                <!--  取色器：三个通道 + 实时预览，比"粘贴一个十六进制色值"直观 -->
+                                <TextBlock Classes="groupLabel" Margin="4,4,0,8" Text="取色器" />
+                                <Grid Margin="0,0,0,10" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0">
+                                        <Grid ColumnDefinitions="28,*">
+                                            <TextBlock Grid.Column="0" Classes="caption" VerticalAlignment="Center" Text="R" />
+                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding AccentR, Mode=TwoWay}" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="28,*">
+                                            <TextBlock Grid.Column="0" Classes="caption" VerticalAlignment="Center" Text="G" />
+                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding AccentG, Mode=TwoWay}" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="28,*">
+                                            <TextBlock Grid.Column="0" Classes="caption" VerticalAlignment="Center" Text="B" />
+                                            <Slider Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding AccentB, Mode=TwoWay}" />
+                                        </Grid>
                                     </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding UseAccentGradient, Mode=TwoWay}" />
+
+                                    <StackPanel Grid.Column="1" Width="150" Spacing="8" VerticalAlignment="Center">
+                                        <Border Height="48"
+                                                Background="{Binding AccentPreviewBrush}"
+                                                CornerRadius="{StaticResource RadiusM}" />
+                                        <TextBlock Classes="caption"
+                                                   HorizontalAlignment="Center"
+                                                   FontFamily="Consolas"
+                                                   Text="{Binding AccentHexText}" />
+                                        <Button HorizontalAlignment="Stretch"
+                                                Command="{Binding ApplyCustomAccentCommand}"
+                                                Content="应用这个颜色" />
+                                    </StackPanel>
                                 </Grid>
 
-                                <StackPanel Margin="0,0,0,16" IsVisible="{Binding UseAccentGradient}">
-                                    <TextBlock Classes="body" Margin="0,0,0,8" Text="渐变终点色" />
+                                <TextBlock Classes="groupLabel" Margin="4,10,0,6" Text="主题渐变色" />
+                                <ctrl:SettingRow Header="启用渐变"
+                                                 Description="开启后，标题强调条等位置使用主色到终点色的渐变">
+                                    <ToggleSwitch IsChecked="{Binding UseAccentGradient, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <StackPanel Margin="0,0,0,12" IsVisible="{Binding UseAccentGradient}">
+                                    <TextBlock Classes="caption" Margin="0,0,0,8" Text="渐变终点色" />
                                     <ItemsControl ItemsSource="{Binding AccentPresets}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -263,10 +521,10 @@
                                                                     Background="Transparent"
                                                                     BorderBrush="{Binding GradientRingBrush}"
                                                                     BorderThickness="2"
-                                                                    CornerRadius="20">
+                                                                    CornerRadius="{StaticResource RadiusPill}">
                                                                 <Border Width="28" Height="28"
                                                                         Background="{Binding GradientEndBrush}"
-                                                                        CornerRadius="14" />
+                                                                        CornerRadius="{StaticResource RadiusPill}" />
                                                             </Border>
                                                         </ControlTemplate>
                                                     </Button.Template>
@@ -274,12 +532,11 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                </StackPanel>
 
-                                <TextBlock Classes="caption" Margin="0,0,0,8" Text="预览" />
-                                <Border Height="44" Margin="0,0,0,20"
-                                        Background="{DynamicResource AppAccentGradientBrush}"
-                                        CornerRadius="{StaticResource RadiusM}" />
+                                    <Border Height="40" Margin="0,4,0,0"
+                                            Background="{DynamicResource AppAccentGradientBrush}"
+                                            CornerRadius="{StaticResource RadiusM}" />
+                                </StackPanel>
 
                                 <Button HorizontalAlignment="Left"
                                         Command="{Binding ResetAppearanceCommand}"
@@ -287,33 +544,40 @@
                             </StackPanel>
                         </Border>
 
-                        <!--  性能模式：低配电脑总开关  -->
+                        <!--  背景  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="性能模式" />
-                                <TextBlock Classes="caption" Margin="0,0,0,12" TextWrapping="Wrap"
-                                           Text="适合配置较低的电脑（尤其是 Windows 7 老机器）。开启后会关闭云母材质、壁纸、页面切换与控件动效、卡片阴影和平滑滚动，并改用软件渲染。" />
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                                        <TextBlock Classes="body" Text="开启性能模式" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="{Binding PerformanceModeHint}" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding PerformanceMode, Mode=TwoWay}" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <!--  背景图  -->
-                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="背景图" />
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="背景" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
                                            Text="{Binding BackgroundImageDisplay}" />
 
-                                <TextBlock Classes="body" Margin="0,0,0,8" Text="内置壁纸" />
+                                <TextBlock Classes="groupLabel" Text="背景类型" />
+                                <ComboBox Margin="0,0,0,16"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding BackgroundModeList}"
+                                          SelectedItem="{Binding SelectedBackgroundMode, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:SettingOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <Grid Margin="0,0,0,16" ColumnDefinitions="Auto,*">
+                                    <Border Grid.Column="0"
+                                            Width="40" Height="32"
+                                            Margin="0,0,10,0"
+                                            Background="{Binding BackgroundColorPreviewBrush}"
+                                            BorderBrush="{DynamicResource HairlineBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource RadiusS}" />
+                                    <TextBox Grid.Column="1"
+                                             FontFamily="Consolas"
+                                             PlaceholderText="#FF12161C"
+                                             Text="{Binding BackgroundColorHex, Mode=TwoWay}" />
+                                </Grid>
+
+                                <TextBlock Classes="groupLabel" Text="内置壁纸" />
                                 <ItemsControl Margin="0,0,0,8" ItemsSource="{Binding Wallpapers}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -344,223 +608,168 @@
                                     <Button Command="{Binding ClearBackgroundCommand}" Content="移除背景" />
                                 </StackPanel>
 
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="不透明度" />
+                                <TextBlock Classes="groupLabel" Text="毛玻璃强度" />
+                                <Grid Margin="0,0,0,14" ColumnDefinitions="*,Auto">
+                                    <Slider Grid.Column="0" Margin="0,0,12,0"
+                                            Minimum="0" Maximum="1"
+                                            TickFrequency="0.05"
+                                            Value="{Binding BackgroundBlur, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
+                                               Text="{Binding BackgroundBlur, StringFormat={}{0:P0}}" />
+                                </Grid>
+
+                                <TextBlock Classes="groupLabel" Text="不透明度" />
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <Slider Grid.Column="0" Width="360"
-                                            HorizontalAlignment="Left"
+                                    <Slider Grid.Column="0" Margin="0,0,12,0"
                                             Minimum="0.05" Maximum="1"
                                             TickFrequency="0.05"
                                             IsEnabled="{Binding HasBackgroundImage}"
                                             Value="{Binding BackgroundImageOpacity, Mode=TwoWay}" />
-                                    <TextBlock Grid.Column="1" Classes="caption"
-                                               Margin="12,0,0,0" VerticalAlignment="Center"
+                                    <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
                                                Text="{Binding BackgroundImageOpacity, StringFormat={}{0:P0}}" />
                                 </Grid>
-                            </StackPanel>
-                        </Border>
 
-                        <!--  主界面：启动器自身的行为  -->
-                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="主界面" />
-                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="启动游戏之后，启动器自己要做些什么。" />
+                                <ui:FASettingsExpander Margin="0,16,0,0" Header="暗角与可读性" IsExpanded="False">
+                                    <StackPanel Spacing="14">
+                                        <StackPanel>
+                                            <TextBlock Classes="body" FontWeight="SemiBold" Text="暗角" />
+                                            <TextBlock Classes="caption" Margin="0,3,0,6" TextWrapping="Wrap"
+                                                       Text="向四角压暗，把视线收拢到中间。深色壁纸上效果最明显" />
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <Slider Grid.Column="0" Margin="0,0,12,0"
+                                                        Minimum="0" Maximum="1"
+                                                        TickFrequency="0.05"
+                                                        Value="{Binding BackgroundVignette, Mode=TwoWay}" />
+                                                <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
+                                                           Text="{Binding BackgroundVignette, StringFormat={}{0:P0}}" />
+                                            </Grid>
+                                        </StackPanel>
 
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="启动游戏后" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="仅在游戏进程确实起来了之后执行（秒退时不会动启动器）" />
+                                        <ctrl:SettingRow Header="动态背景"
+                                                         Description="壁纸做极缓慢的推近拉远。低配机器建议关闭">
+                                            <ToggleSwitch IsChecked="{Binding BackgroundAnimated, Mode=TwoWay}" />
+                                        </ctrl:SettingRow>
                                     </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="200" VerticalAlignment="Center"
-                                              ItemsSource="{Binding AfterLaunchActions}"
-                                              SelectedItem="{Binding SelectedAfterLaunchAction, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate x:DataType="models:SettingOption">
-                                                <TextBlock Text="{Binding Display}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                </Grid>
+                                </ui:FASettingsExpander>
                             </StackPanel>
                         </Border>
 
-                    </StackPanel>
-                </ScrollViewer>
-
-                <!--  ===== 启动：Java 虚拟机与内存 / 游戏目录 / 高级  =====  -->
-                <ScrollViewer x:Name="LaunchPanel"
-                              Padding="0,0,8,0"
-                              HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Auto"
-                              IsVisible="False">
-                    <StackPanel>
-
-                        <!--  Java 虚拟机与内存  -->
+                        <!--  动效  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="Java 虚拟机与内存" />
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="动效" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="决定游戏用哪个 Java 运行、能用多少内存。改动在下次启动游戏时生效。" />
+                                           Text="界面里那些「浮起来」「滑进来」的效果。低配电脑建议切到精简或关闭。" />
 
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Java 版本" />
-                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
-                                    <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
-                                              ItemsSource="{Binding JavaEntries}"
-                                              SelectedItem="{Binding SelectedJava, Mode=TwoWay}"
-                                              ToolTip.Tip="{Binding SelectedJava.JavaPath}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding JavaVersion}" VerticalAlignment="Center" />
-                                                    <TextBlock Classes="secondary" Margin="6,0" Text="-" VerticalAlignment="Center" />
-                                                    <TextBlock Classes="caption" Text="{Binding JavaPath}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
-                                            Command="{Binding RefreshJavaCommand}" Content="重新检测" />
-                                </Grid>
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="最大内存（-Xmx）" />
-                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
-                                    <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
-                                              ItemsSource="{Binding MaxMemoryOptions}"
-                                              SelectedItem="{Binding SelectedMaxMemory, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate x:DataType="models:MemoryOption">
-                                                <TextBlock Text="{Binding Display}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
-                                            Command="{Binding AutoMemoryCommand}"
-                                            Content="自动推荐"
-                                            ToolTip.Tip="按本机内存的一半自动挑一档" />
-                                </Grid>
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="初始内存（-Xms）" />
-                                <ComboBox HorizontalAlignment="Stretch" Margin="0,0,0,10"
-                                          ItemsSource="{Binding MinMemoryOptions}"
-                                          SelectedItem="{Binding SelectedMinMemory, Mode=TwoWay}">
+                                <TextBlock Classes="groupLabel" Text="动画档位" />
+                                <ComboBox Margin="0,0,0,6"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding AnimationLevelList}"
+                                          SelectedItem="{Binding SelectedAnimationLevel, Mode=TwoWay}">
                                     <ComboBox.ItemTemplate>
-                                        <DataTemplate x:DataType="models:MemoryOption">
+                                        <DataTemplate x:DataType="models:SettingOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="{Binding AnimationLevelHint}" />
+
+                                <TextBlock Classes="groupLabel" Text="页面切换方式" />
+                                <ComboBox Margin="0,0,0,16"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding PageTransitionList}"
+                                          SelectedItem="{Binding SelectedPageTransition, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:SettingOption">
                                             <TextBlock Text="{Binding Display}" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
 
-                                <StackPanel Margin="0,0,0,20" Spacing="2">
-                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding MemoryHint}" />
-                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding MachineMemoryText}" />
-                                </StackPanel>
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="附加 JVM 参数" />
-                                <TextBlock Classes="caption" Margin="0,0,0,8" TextWrapping="Wrap"
-                                           Text="一行一条，例如 -Dfile.encoding=UTF-8；以 # 开头的行会被忽略" />
-                                <TextBox AcceptsReturn="True"
-                                         Height="86"
-                                         FontFamily="Consolas"
-                                         TextWrapping="NoWrap"
-                                         Watermark="-Dfile.encoding=UTF-8"
-                                         Text="{Binding JvmArgs, Mode=TwoWay}" />
-                            </StackPanel>
-                        </Border>
-
-                        <!--  游戏目录  -->
-                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="游戏目录" />
-                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="版本、存档、模组都放在这个目录下。" />
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 文件夹" />
-                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto,Auto">
-                                    <TextBox Grid.Column="0"
-                                             HorizontalAlignment="Stretch"
-                                             HorizontalContentAlignment="Left"
-                                             IsReadOnly="True"
-                                             Text="{Binding MinecraftFolder, Mode=OneWay}"
-                                             ToolTip.Tip="{Binding MinecraftFolder}" />
-                                    <Button Grid.Column="1" Margin="8,0,0,0" Padding="16,0"
-                                            Click="OnSelectMinecraftFolder" Content="选择" />
-                                    <Button Grid.Column="2" Margin="8,0,0,0" Padding="16,0"
-                                            Command="{Binding OpenGameFolderCommand}" Content="打开" />
-                                </Grid>
-
+                                <TextBlock Classes="groupLabel" Text="动画速度" />
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="版本隔离" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="开启后每个版本使用独立的 saves / mods / config，互不干扰；关闭则所有版本共用根目录" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding VersionIsolation, Mode=TwoWay}" />
+                                    <Slider Grid.Column="0" Margin="0,0,12,0"
+                                            Minimum="0.5" Maximum="2"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="True"
+                                            Value="{Binding AnimationSpeed, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Classes="number"
+                                               FontSize="{DynamicResource FontSizeSubtitle}"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding AnimationSpeedText}" />
                                 </Grid>
                             </StackPanel>
                         </Border>
 
-                        <!--  高级  -->
+                        <!--  性能模式  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="高级" />
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="性能模式" />
+                                <TextBlock Classes="caption" Margin="0,0,0,12" TextWrapping="Wrap"
+                                           Text="一键关掉所有好看但费性能的东西：壁纸、动效、卡片阴影、光斑，并改用软件渲染。适合 Windows 7 老机器。" />
+
+                                <ctrl:SettingRow Header="开启性能模式" Description="{Binding PerformanceModeHint}">
+                                    <ToggleSwitch IsChecked="{Binding PerformanceMode, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  语言与字体  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="语言与字体" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="不清楚作用就别改；改错了会表现为游戏起不来。" />
+                                           Text="界面文字用什么语言、什么字体、多大。" />
 
+                                <TextBlock Classes="groupLabel" Text="界面语言" />
+                                <ComboBox Margin="0,0,0,16"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding LanguageList}"
+                                          SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:SettingOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Classes="groupLabel" Text="界面字体" />
                                 <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="禁用 IPv6" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="加 -Djava.net.preferIPv4Stack=true。IPv6 环境下连不上多人服务器时打开" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding DisableIpv6, Mode=TwoWay}" />
+                                    <ComboBox Grid.Column="0"
+                                              Margin="0,0,8,0"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding FontFamilyList}"
+                                              SelectedItem="{Binding SelectedFontFamily, Mode=TwoWay}" />
+                                    <Button Grid.Column="1" Padding="16,0"
+                                            Click="OnSelectFontFile"
+                                            Content="从文件…" />
                                 </Grid>
 
+                                <TextBlock Classes="groupLabel" Text="字体缩放" />
                                 <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="Java 垃圾回收器（GC）" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="一般保持「自动」即可；卡顿时可试 G1GC，大内存可试 ZGC" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="200" VerticalAlignment="Center"
-                                              ItemsSource="{Binding GcModes}"
-                                              SelectedItem="{Binding SelectedGcMode, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate x:DataType="models:SettingOption">
-                                                <TextBlock Text="{Binding Display}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
+                                    <Slider Grid.Column="0" Margin="0,0,12,0"
+                                            Minimum="80" Maximum="150"
+                                            TickFrequency="5"
+                                            IsSnapToTickEnabled="True"
+                                            Value="{Binding FontScalePercent, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Classes="number"
+                                               FontSize="{DynamicResource FontSizeSubtitle}"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding FontScaleText}" />
                                 </Grid>
 
-                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="全屏启动" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="开启后忽略下面的窗体大小" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding StartFullscreen, Mode=TwoWay}" />
-                                </Grid>
-
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="Minecraft 窗体大小" />
-                                <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding !StartFullscreen}">
-                                    <NumericUpDown Width="140" Minimum="320" Maximum="7680" Increment="10"
-                                                   Value="{Binding WindowWidth, Mode=TwoWay}" />
-                                    <TextBlock Classes="secondary" Text="×" VerticalAlignment="Center" />
-                                    <NumericUpDown Width="140" Minimum="240" Maximum="4320" Increment="10"
-                                                   Value="{Binding WindowHeight, Mode=TwoWay}" />
-                                    <TextBlock Classes="caption" Margin="8,0,0,0" VerticalAlignment="Center" Text="像素" />
-                                </StackPanel>
+                                <ctrl:SettingRow Header="高对比度模式"
+                                                 Description="正文与次要文字拉到纯黑 / 纯白，分割线加深。视力不佳或在强光下使用时有帮助">
+                                    <ToggleSwitch IsChecked="{Binding HighContrast, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
                             </StackPanel>
                         </Border>
 
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  ===== 网络：下载  =====  -->
+                <!--  ==================== 网络  ====================  -->
                 <ScrollViewer x:Name="NetworkPanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
@@ -572,96 +781,123 @@
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="下载" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
-                                           Text="下载源、并发与分块。下载慢或频繁失败时，先换成镜像试试。" />
+                                           Text="{Binding DownloadSourceSummary}" />
 
-                                <Grid Margin="0,0,0,20" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="使用 BMCLAPI 镜像" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="{Binding DownloadSourceText}" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding UseBmclMirror, Mode=TwoWay}" />
-                                </Grid>
+                                <TextBlock Classes="groupLabel" Text="下载源" />
+                                <ComboBox Margin="0,0,0,6"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding DownloadSourceList}"
+                                          SelectedItem="{Binding SelectedDownloadSource, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:SettingOption">
+                                            <TextBlock Text="{Binding Display}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="「自动测速」下，同一个文件的不同分片会从多个源并行取，某个源被限流只会降权，不会永久禁用。" />
 
-                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="同时下载文件数" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="批量下载时同时下几个文件（1~16）。总连接数 ≈ 并发数 × 分块数；镜像频繁 403 时先调低这项" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
-                                              ItemsSource="{Binding DownloadConcurrencyOptionsList}"
-                                              SelectedItem="{Binding DownloadConcurrency, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding StringFormat={}{0} 个文件}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                </Grid>
-
-                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="单文件分块数" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="每个文件切成几块并行下载（1~16，1 表示不分块、单连接）。大文件提速主要靠它；小文件或镜像限流时调低" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
-                                              ItemsSource="{Binding DownloadChunkOptionsList}"
-                                              SelectedItem="{Binding DownloadChunkCount, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding StringFormat={}{0} 块}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                </Grid>
-
+                                <TextBlock Classes="groupLabel" Text="速度限制" />
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="失败重试次数" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="单个文件下载失败后的重试上限" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="140" VerticalAlignment="Center"
-                                              ItemsSource="{Binding DownloadRetryOptionsList}"
-                                              SelectedItem="{Binding DownloadRetryCount, Mode=TwoWay}">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding StringFormat={}{0} 次}" />
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
+                                    <Slider Grid.Column="0" Margin="0,0,12,0"
+                                            Minimum="0" Maximum="20480"
+                                            TickFrequency="512"
+                                            IsSnapToTickEnabled="True"
+                                            Value="{Binding DownloadSpeedLimitKb, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
+                                               Text="{Binding DownloadSpeedLimitText}" />
                                 </Grid>
+                                <TextBlock Classes="caption" Margin="0,0,0,4" Opacity="0.75" TextWrapping="Wrap"
+                                           Text="拖到最左为不限速。限的是整个文件的总速度，分块下载时不会被放大。" />
+
+                                <ui:FASettingsExpander Margin="0,16,0,0" Header="下载引擎参数" IsExpanded="False">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Classes="caption" TextWrapping="Wrap"
+                                                   Text="并发度默认按 CPU 核数与实测带宽自适应，一般不需要动。只有镜像频繁报错时才需要调低。" />
+
+                                        <ctrl:SettingRow Header="同时下载文件数"
+                                                         Description="批量下载时同时下几个文件。总连接数 ≈ 并发 × 分块">
+                                            <ComboBox Width="140"
+                                                      ItemsSource="{Binding DownloadConcurrencyOptionsList}"
+                                                      SelectedItem="{Binding DownloadConcurrency, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat={}{0} 个}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </ctrl:SettingRow>
+
+                                        <ctrl:SettingRow Header="单文件分块数"
+                                                         Description="每个文件切成几块并行下载。1 表示不分块，小文件时更快">
+                                            <ComboBox Width="140"
+                                                      ItemsSource="{Binding DownloadChunkOptionsList}"
+                                                      SelectedItem="{Binding DownloadChunkCount, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat={}{0} 块}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </ctrl:SettingRow>
+
+                                        <ctrl:SettingRow Header="失败重试次数" Description="单个文件下载失败后的重试上限">
+                                            <ComboBox Width="140"
+                                                      ItemsSource="{Binding DownloadRetryOptionsList}"
+                                                      SelectedItem="{Binding DownloadRetryCount, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat={}{0} 次}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </ctrl:SettingRow>
+
+                                        <ctrl:SettingRow Header="连接超时"
+                                                         Description="多久收不到数据就判定这条连接卡死并重试。网慢就调大">
+                                            <ComboBox Width="140"
+                                                      ItemsSource="{Binding DownloadTimeoutList}"
+                                                      SelectedItem="{Binding DownloadTimeoutSeconds, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat={}{0} 秒}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </ctrl:SettingRow>
+                                    </StackPanel>
+                                </ui:FASettingsExpander>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="联机" />
+                                <TextBlock Classes="caption" TextWrapping="Wrap"
+                                           Text="局域网联机模组、虚拟局域网这些功能目前放在「多人」页。P2P 直连与中继服务器设置会在后续版本并入这里。" />
                             </StackPanel>
                         </Border>
 
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  ===== 日志  =====  -->
-                <ScrollViewer x:Name="LogPanel"
+                <!--  ==================== 高级  ====================  -->
+                <ScrollViewer x:Name="AdvancedPanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto"
                               IsVisible="False">
                     <StackPanel>
 
-                        <!--  日志  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="日志" />
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="日志与诊断" />
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
                                            Text="启动失败、下载出错时，把等级调到「调试」再复现一次，然后导出日志即可提供给开发者定位。" />
 
-                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="记录等级" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="等级越低越详细；日常使用保持「信息」即可" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="180" VerticalAlignment="Center"
+                                <ctrl:SettingRow Header="记录等级"
+                                                 Description="等级越低越详细；日常使用保持「信息」即可">
+                                    <ComboBox Width="180"
                                               ItemsSource="{Binding LogLevels}"
                                               SelectedItem="{Binding SelectedLogLevel, Mode=TwoWay}">
                                         <ComboBox.ItemTemplate>
@@ -670,15 +906,10 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                </Grid>
+                                </ctrl:SettingRow>
 
-                                <Grid Margin="0,0,0,12" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="保留天数" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="超期的日志文件会自动清理" />
-                                    </StackPanel>
-                                    <ComboBox Grid.Column="1" Width="180" VerticalAlignment="Center"
+                                <ctrl:SettingRow Header="保留天数" Description="超期的日志文件会自动清理">
+                                    <ComboBox Width="180"
                                               ItemsSource="{Binding LogRetentionOptions}"
                                               SelectedItem="{Binding SelectedLogRetention, Mode=TwoWay}">
                                         <ComboBox.ItemTemplate>
@@ -687,25 +918,21 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                </Grid>
+                                </ctrl:SettingRow>
 
-                                <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="输出到调试器" />
-                                        <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
-                                                   Text="同时在 Visual Studio 输出窗口显示（仅调试版有效）" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsChecked="{Binding LogToDebugOutput, Mode=TwoWay}" />
-                                </Grid>
+                                <ctrl:SettingRow Header="输出到调试器"
+                                                 Description="同时在 Visual Studio 输出窗口显示（仅调试版有效）">
+                                    <ToggleSwitch IsChecked="{Binding LogToDebugOutput, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
 
-                                <TextBlock Classes="body" Margin="0,0,0,6" Text="日志目录" />
+                                <TextBlock Classes="groupLabel" Text="日志目录" />
                                 <TextBox IsReadOnly="True"
                                          Text="{Binding LogDirectory, Mode=OneWay}"
                                          ToolTip.Tip="{Binding LogDirectory}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,4" Spacing="8">
-                                    <Button Command="{Binding OpenLogFolderCommand}" Content="打开日志目录" />
-                                    <Button Click="OnExportLog" Content="导出日志" />
+                                    <Button Command="{Binding OpenLogFolderCommand}" Content="打开目录" />
+                                    <Button Click="OnExportLogArchive" Content="导出日志包" />
+                                    <Button Click="OnExportLog" Content="导出单个文件" />
                                     <Button Command="{Binding ClearLogsCommand}" Content="清空日志" />
                                 </StackPanel>
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
@@ -713,7 +940,7 @@
 
                                 <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Classes="body" Text="最近日志" />
+                                        <TextBlock Classes="body" FontWeight="SemiBold" Text="最近日志" />
                                         <TextBlock Classes="caption" Margin="0,2,0,0" TextWrapping="Wrap"
                                                    Text="{Binding LogSummary}" />
                                     </StackPanel>
@@ -791,10 +1018,28 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="崩溃与重置" />
+
+                                <ctrl:SettingRow Header="崩溃日志自动上传"
+                                                 Description="游戏异常退出时，把崩溃报告一并记录，方便后续排查">
+                                    <ToggleSwitch IsChecked="{Binding CrashReportAutoUpload, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="重置设置"
+                                                 Description="外观、启动参数、下载与日志恢复默认。账户、游戏目录、Java 路径、存档与模组都会保留">
+                                    <Button Classes="danger"
+                                            Command="{Binding ResetSettingsCommand}"
+                                            Content="恢复默认设置" />
+                                </ctrl:SettingRow>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
 
-                <!--  ===== 关于  =====  -->
+                <!--  ==================== 关于  ====================  -->
                 <ScrollViewer x:Name="AboutPanel"
                               Padding="0,0,8,0"
                               HorizontalScrollBarVisibility="Disabled"
@@ -802,19 +1047,74 @@
                               IsVisible="False">
                     <StackPanel>
 
-                        <!--  关于  -->
-                        <Border Classes="card" Margin="0,0,16,0" Padding="20,16">
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
-                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="关于 VibrantbitLauncher" />
-                                <TextBlock Classes="secondary" TextWrapping="Wrap">
-                                    <Run Text="{Binding AppVersion, Mode=OneWay}" />
-                                    <LineBreak />
-                                    <Run Text="一款基于 Avalonia / .NET 的 Minecraft Java 版启动器：支持多账户登录、版本下载与启动、模组浏览与一键联机。" />
-                                </TextBlock>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="版本与更新" />
+                                <TextBlock Classes="display" Margin="0,4,0,2" Text="{Binding AppVersion}" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="一款跨平台的 Minecraft Java 版启动器：多账户登录、版本下载与启动、模组浏览、一键联机。" />
 
-                                <TextBlock Classes="sectionTitle" Margin="0,24,0,12" Text="致谢" />
-                                <TextBlock Classes="secondary" TextWrapping="Wrap"
-                                           Text="UI 参考 dream-pep；感谢 叶冷、3443**** 协助修复 bug。" />
+                                <ctrl:SettingRow Header="检查更新" Description="{Binding UpdateStatusText}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Command="{Binding CheckUpdateCommand}" Content="立即检查" />
+                                        <Button Command="{Binding OpenChangelogCommand}" Content="更新日志" />
+                                    </StackPanel>
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="参与测试版"
+                                                 Description="检查更新时也包含预发布版本">
+                                    <ToggleSwitch IsChecked="{Binding UpdateIncludePrerelease, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="开源与致谢" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="本项目基于 MIT 协议开源；界面框架、下载引擎、认证与版本解析分别来自不同的开源项目，字体版权归各字体作者所有。" />
+
+                                <ctrl:SettingRow Header="依赖清单"
+                                                 Description="完整清单随发布包一同提供，也可在仓库的许可证页查看">
+                                    <Button Command="{Binding OpenRepositoryCommand}" Content="查看仓库" />
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="致谢"
+                                                 Description="UI 参考 dream-pep；感谢 叶冷 与各位反馈问题的玩家">
+                                    <TextBlock Classes="caption" VerticalAlignment="Center" Text="谢谢" />
+                                </ctrl:SettingRow>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,12" Text="链接" />
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Margin="0,0,8,8" Padding="16,8" Command="{Binding OpenWebsiteCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Globe" />
+                                            <TextBlock Text="官网" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Margin="0,0,8,8" Padding="16,8" Command="{Binding OpenDocsCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Document" />
+                                            <TextBlock Text="用户文档" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Margin="0,0,8,8" Padding="16,8" Command="{Binding OpenFeedbackCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Help" />
+                                            <TextBlock Text="问题反馈" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Margin="0,0,8,8" Padding="16,8" Command="{Binding OpenSponsorCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ui:FASymbolIcon Symbol="Favorite" />
+                                            <TextBlock Text="赞助支持" />
+                                        </StackPanel>
+                                    </Button>
+                                </WrapPanel>
                             </StackPanel>
                         </Border>
 

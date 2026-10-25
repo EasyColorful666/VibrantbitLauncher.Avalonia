@@ -7,7 +7,7 @@
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
     xmlns:ui="using:FluentAvalonia.UI.Controls"
     FontFamily="{StaticResource AppFont}"
-    FontSize="{StaticResource FontSizeBody}"
+    FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
     Width="820"
@@ -46,15 +46,15 @@
 
                         <StackPanel Orientation="Horizontal" Spacing="14">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ui:FASymbolIcon FontSize="12" Symbol="Globe" />
+                                <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}" Symbol="Globe" />
                                 <TextBlock Classes="caption" Text="{Binding GameVersionText}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ui:FASymbolIcon FontSize="12" Symbol="Code" />
+                                <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}" Symbol="Code" />
                                 <TextBlock Classes="caption" Text="{Binding LoaderText}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ui:FASymbolIcon FontSize="12" Symbol="Library" />
+                                <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}" Symbol="Library" />
                                 <TextBlock Classes="caption" Text="{Binding InstanceIdText}" />
                             </StackPanel>
                         </StackPanel>
@@ -112,19 +112,19 @@
                                     <Grid Margin="0,0,0,12" ColumnDefinitions="Auto,*">
                                         <!--  状态图标：四种状态各一个，靠 IsVisible 切换（避免写 converter）  -->
                                         <Panel Grid.Column="0" Width="20" VerticalAlignment="Top" Margin="0,1,8,0">
-                                            <ui:FASymbolIcon FontSize="13"
+                                            <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}"
                                                              Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                                              IsVisible="{Binding IsPending}"
                                                              Symbol="Clock" />
-                                            <ui:FASymbolIcon FontSize="13"
+                                            <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}"
                                                              Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                                              IsVisible="{Binding IsActive}"
                                                              Symbol="Download" />
-                                            <ui:FASymbolIcon FontSize="13"
+                                            <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}"
                                                              Foreground="{DynamicResource AppSuccessBrush}"
                                                              IsVisible="{Binding IsDone}"
                                                              Symbol="Accept" />
-                                            <ui:FASymbolIcon FontSize="13"
+                                            <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}"
                                                              Foreground="{DynamicResource AppCriticalBrush}"
                                                              IsVisible="{Binding IsFailed}"
                                                              Symbol="Alert" />
@@ -188,19 +188,19 @@
                                 <DataTemplate>
                                     <Grid Margin="0,3" ColumnDefinitions="Auto,*,Auto">
                                         <Panel Grid.Column="0" Width="20" Margin="0,0,8,0">
-                                            <ui:FASymbolIcon FontSize="12"
+                                            <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}"
                                                              Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                                              IsVisible="{Binding IsPending}"
                                                              Symbol="Clock" />
-                                            <ui:FASymbolIcon FontSize="12"
+                                            <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}"
                                                              Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                                              IsVisible="{Binding IsDownloading}"
                                                              Symbol="Download" />
-                                            <ui:FASymbolIcon FontSize="12"
+                                            <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}"
                                                              Foreground="{DynamicResource AppSuccessBrush}"
                                                              IsVisible="{Binding IsCompleted}"
                                                              Symbol="Accept" />
-                                            <ui:FASymbolIcon FontSize="12"
+                                            <ui:FASymbolIcon FontSize="{DynamicResource FontSizeCaption}"
                                                              Foreground="{DynamicResource AppCriticalBrush}"
                                                              IsVisible="{Binding IsFailed}"
                                                              Symbol="Alert" />
@@ -212,10 +212,10 @@
                                                        TextTrimming="CharacterEllipsis" />
                                             <TextBlock Classes="caption"
                                                        Opacity="0.6"
-                                                       FontSize="11"
+                                                       FontSize="{StaticResource IconSizeCaption}"
                                                        Text="{Binding Folder}" />
                                             <TextBlock Classes="caption"
-                                                       FontSize="11"
+                                                       FontSize="{StaticResource IconSizeCaption}"
                                                        Foreground="{DynamicResource AppCriticalBrush}"
                                                        IsVisible="{Binding IsFailed}"
                                                        Text="{Binding Detail}"
@@ -254,7 +254,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Classes="caption"
-                                           FontSize="11"
+                                           FontSize="{StaticResource IconSizeCaption}"
                                            Foreground="{DynamicResource AppCautionBrush}"
                                            Text="{Binding}"
                                            TextWrapping="Wrap" />

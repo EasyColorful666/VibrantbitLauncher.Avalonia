@@ -3,6 +3,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
+
+             xmlns:ctrl="using:VibrantbitLauncher.Controls"
              xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
              mc:Ignorable="d"
              x:Class="VibrantbitLauncher.Views.Pages.MultiplayerPage"
@@ -13,14 +15,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  ===== 页头 =====  -->
-        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock Classes="display" Text="多人联机" />
-            <Border Margin="0,10,0,0" Classes="accentRule" />
-            <TextBlock Margin="0,6,0,0"
-                       Classes="caption"
-                       Text="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连即可加入"
-                       TextWrapping="Wrap" />
-        </StackPanel>
+        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连即可加入" />
 
         <ScrollViewer Grid.Row="1" Margin="0,16,0,0"
                       HorizontalScrollBarVisibility="Disabled"
@@ -44,7 +39,7 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <ui:FASymbolIcon VerticalAlignment="Center"
-                                                     FontSize="16"
+                                                     FontSize="{StaticResource IconSizeBody}"
                                                      Foreground="{DynamicResource AppCautionBrush}"
                                                      Symbol="Alert" />
                                     <TextBlock Margin="8,0,0,0"
@@ -73,7 +68,7 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <ui:FASymbolIcon VerticalAlignment="Center"
-                                                     FontSize="16"
+                                                     FontSize="{StaticResource IconSizeBody}"
                                                      Foreground="{DynamicResource AppCautionBrush}"
                                                      Symbol="ContactInfo" />
                                     <TextBlock Margin="8,0,0,0"

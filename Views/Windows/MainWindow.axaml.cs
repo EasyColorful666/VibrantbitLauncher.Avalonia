@@ -158,14 +158,34 @@ public partial class MainWindow : FAAppWindow
     /// </summary>
     private void ApplyPerformanceModeVisuals()
     {
+        // 动效档位挂成类名，样式表据此决定是否播放（样式里按 .performanceMode 收口）。
+        // 「精简」与「关闭」共用同一套 CSS 池：前者只砍装饰性动效，后者全砍。
+        ApplyMotionClasses();
+
         if (!SettingsService.Current.PerformanceMode)
             return;
-
-        Classes.Add("performanceMode");
 
         // 标题栏图标 + 壁纸都改走低开销插值
         RenderOptions.SetBitmapInterpolationMode(BackgroundImageLayer, BitmapInterpolationMode.LowQuality);
     }
+
+    private void ApplyMotionClasses()
+    {
+        Classes.Remove("performanceMode");
+        Classes.Remove("motionReduced");
+
+        var level = MotionSettings.Level;
+        if (level == "Off")
+            Classes.Add("performanceMode");
+        else if (level == "Reduced")
+            Classes.Add("motionReduced");
+    }
+
+    /// <summary>
+    /// 用户在设置里改了动效档位 / 性能模式后调用：类名是本地的，
+    /// 不会因为改了资源就自动换掉，必须重新挂一次。
+    /// </summary>
+    public void RefreshMotionClasses() => ApplyMotionClasses();
 
     /// <summary>
     /// 点窗口的关闭按钮 → 收进系统托盘，而不是退出程序。

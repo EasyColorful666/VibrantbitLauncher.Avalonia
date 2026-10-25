@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VibrantbitLauncher.Controls.AuroraBackground"
+             IsHitTestVisible="False">
+
+    <!--
+        ============================================================================
+        极光背景（整窗唯一的环境材质）
+        ============================================================================
+
+        三块巨大的径向渐变叠在画布上：左上主色、右下暖色、右上冷色。
+        每块的边缘都淡到全透明，所以看不到任何圆形轮廓，只感觉到"这一块更亮"。
+
+        为什么不做位移动画：
+        三块 700~900px 的径向渐变如果每帧换位置，Avalonia 会整层重绘，
+        低端核显上能吃掉 10%~20% 的 GPU 时间 —— 而它表达的信息量为零。
+        背景的职责是"垫出一层空气感"，动的东西应该是用户手指碰到的那个控件。
+
+        透明度刻意压得很低（中心 20%~30%）：它必须在任何主题、
+        任何壁纸、任何内容之上都不抢戏。觉得不明显是对的，它就该不明显。
+    -->
+
+    <Panel ClipToBounds="True">
+        <Ellipse Width="960"
+                 Height="960"
+                 Margin="-340,-420,0,0"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Top"
+                 Fill="{DynamicResource AppAccentAuroraBrush}" />
+
+        <Ellipse Width="780"
+                 Height="780"
+                 Margin="0,0,-260,-320"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Bottom"
+                 Fill="{DynamicResource AuroraWarmBlobBrush}" />
+
+        <Ellipse Width="620"
+                 Height="620"
+                 Margin="0,-260,-160,0"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Top"
+                 Fill="{DynamicResource AuroraCoolBlobBrush}" />
+
+        <Ellipse Width="520"
+                 Height="520"
+                 Margin="-140,0,0,-180"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Bottom"
+                 Fill="{DynamicResource AuroraColdBlobBrush}" />
+    </Panel>
+</UserControl>

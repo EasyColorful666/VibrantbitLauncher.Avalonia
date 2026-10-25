@@ -132,7 +132,7 @@
                                         </Border>
 
                                         <ui:FASymbolIcon Margin="12,0,0,0" VerticalAlignment="Center"
-                                                         FontSize="14" Symbol="Download" />
+                                                         FontSize="{DynamicResource FontSizeBody}" Symbol="Download" />
                                         <TextBlock Classes="caption" Margin="4,0,0,0" VerticalAlignment="Center"
                                                    Text="{Binding Downloads}" />
                                         <TextBlock Classes="caption" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -164,7 +164,7 @@
                         IsHitTestVisible="False"
                         IsVisible="False"
                         Orientation="Horizontal">
-                <ui:FASymbolIcon VerticalAlignment="Center" FontSize="16" Symbol="Refresh" />
+                <ui:FASymbolIcon VerticalAlignment="Center" FontSize="{StaticResource IconSizeBody}" Symbol="Refresh" />
                 <TextBlock Classes="caption" Margin="8,0,0,0" Text="正在加载更多…" />
             </StackPanel>
 
@@ -176,7 +176,7 @@
                         Spacing="10">
                 <ui:FASymbolIcon x:Name="emptyIcon"
                                  HorizontalAlignment="Center"
-                                 FontSize="28"
+                                 FontSize="{DynamicResource FontSizeTitle}"
                                  Symbol="ZoomInFilled" />
                 <TextBlock x:Name="emptyText"
                            Classes="secondary"

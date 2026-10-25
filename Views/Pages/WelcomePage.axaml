@@ -8,7 +8,7 @@
     <Grid Background="Transparent">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
             <ui:FASymbolIcon HorizontalAlignment="Center"
-                             FontSize="64"
+                             FontSize="{StaticResource IconSizeJumbo}"
                              Foreground="{DynamicResource SystemAccentColorBrush}"
                              Symbol="Play" />
             <TextBlock Classes="display"

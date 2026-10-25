@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VibrantbitLauncher.Controls.PageHeader">
+
+    <!--
+        ============================================================================
+        页头（所有一级页面共用）
+        ============================================================================
+
+        结构固定为四行：眉标 → 大标题 → 28×2 主色短横 → 说明。
+        右侧留一个 Actions 槽，放「刷新 / 新建 / 筛选」这类页级操作。
+
+        为什么把页头抽成控件：
+        之前 15 个页面各写一遍「display + accentRule + caption」，
+        结果字号、间距、短横长度各自漂移了三个版本。
+        抽出来之后改一次全站生效 —— 这是"体系"和"随手写"的分界线。
+
+        ⚠️ 这里不用 {Binding} 也不用 {TemplateBinding}：
+        UserControl 的 x:Name 进不了同名 namescope，ElementName / $parent 这类
+        反射绑定一旦失效是**静默**的 —— 表现就是"所有页面标题凭空消失"，还查不出原因。
+        文案由代码在属性变更时直接写进控件，行为完全确定。
+    -->
+
+    <Grid Margin="0,0,0,24" ColumnDefinitions="*,Auto">
+
+        <StackPanel Grid.Column="0" Spacing="6">
+            <TextBlock x:Name="PART_Eyebrow" Classes="eyebrow" IsVisible="False" />
+            <TextBlock x:Name="PART_Title" Classes="display" />
+            <Border Classes="accentRule" Margin="0,2,0,2" />
+            <TextBlock x:Name="PART_Subtitle"
+                       Classes="caption"
+                       MaxWidth="760"
+                       TextWrapping="Wrap"
+                       IsVisible="False" />
+        </StackPanel>
+
+        <ContentPresenter x:Name="PART_Actions"
+                          Grid.Column="1"
+                          Margin="24,0,0,4"
+                          VerticalAlignment="Bottom"
+                          HorizontalAlignment="Right" />
+    </Grid>
+</UserControl>

@@ -178,7 +178,14 @@ public static class DownloadSources
             return Array.Empty<string>();
 
         var mirror = ToMirror(url);
-        var preferMirror = SettingsService.Current.UseBmclMirror;
+        var mode = SettingsService.DownloadSourceMode;
+
+        // 「固定镜像」：只走镜像，不做官方兜底。
+        // 给的是「我确定这台机器连不上 Mojang，别浪费时间试官方」这种场景。
+        if (mode == "Mirror")
+            return string.IsNullOrEmpty(mirror) ? new[] { url } : new[] { mirror };
+
+        var preferMirror = mode != "Official";
 
         var first = preferMirror ? mirror : url;
         var second = preferMirror ? url : mirror;

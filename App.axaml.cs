@@ -26,10 +26,28 @@ public partial class App : Application
 
     public override void Initialize()
     {
+        RegisterTransformAnimator();
         AvaloniaXamlLoader.Load(this);
 
         if (Design.IsDesignMode)
             RequestedThemeVariant = ThemeVariant.Light;
+    }
+
+    /// <summary>
+    /// 给 <see cref="Visual.RenderTransform"/> 补一个动画器。
+    ///
+    /// 控件的 <c>RenderTransform</c> 是接口类型 <see cref="Avalonia.Media.ITransform"/>，
+    /// 框架自带的动画器只在属性类型是具体类型时才命中，接口匹配不上 ——
+    /// 结果就是「关键帧里只要写了 RenderTransform，整个窗口都挂不起来」。
+    /// 细节见 <see cref="Helpers.TransformOperationsAnimator"/>。
+    ///
+    /// 必须早于任何窗口加载，因此放在 Initialize 最前面。
+    /// </summary>
+    private static void RegisterTransformAnimator()
+    {
+        Avalonia.Animation.Animation.RegisterCustomAnimator<
+            Avalonia.Media.ITransform,
+            Helpers.TransformOperationsAnimator>();
     }
 
     public override void OnFrameworkInitializationCompleted()

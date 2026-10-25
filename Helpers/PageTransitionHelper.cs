@@ -21,12 +21,35 @@ namespace VibrantbitLauncher.Helpers
             if (element is not Control control)
                 return;
 
+            var mode = MotionSettings.PageTransition;
+
+            // 关闭动效：直接落到终态。不播动画也必须归位，否则上一次动画没跑完就切走，
+            // 元素会停在「半透明 + 偏移」的中间态。
+            if (mode == "None")
+            {
+                AnimationHelper.ApplyEndState(control, 1d, 1d, 0d);
+                return;
+            }
+
+            // 「渐变」与「精简」都只做透明度：两者要表达的都是「换了一屏」，
+            // 位移只是锦上添花，去掉之后反而更快更稳。
+            if (mode == "Fade" || MotionSettings.Reduced)
+            {
+                _ = AnimationHelper.AnimateAsync(
+                    control,
+                    fromOpacity: 0d, toOpacity: 1d,
+                    fromScale: 1d, toScale: 1d,
+                    fromOffsetY: 0d, toOffsetY: 0d,
+                    MotionSettings.Scale(TimeSpan.FromMilliseconds(180)));
+                return;
+            }
+
             _ = AnimationHelper.AnimateAsync(
                 control,
                 fromOpacity: 0d, toOpacity: 1d,
                 fromScale: 0.985d, toScale: 1d,
                 fromOffsetY: 18d, toOffsetY: 0d,
-                TimeSpan.FromMilliseconds(260));
+                MotionSettings.Scale(TimeSpan.FromMilliseconds(260)));
         }
 
         /// <summary>
@@ -40,12 +63,18 @@ namespace VibrantbitLauncher.Helpers
             if (element is not Control control)
                 return;
 
+            if (!MotionSettings.Enabled || MotionSettings.Reduced)
+            {
+                AnimationHelper.ApplyEndState(control, 1d, 1d, 0d);
+                return;
+            }
+
             _ = AnimationHelper.AnimateAsync(
                 control,
                 fromOpacity: 0d, toOpacity: 1d,
                 fromScale: 0.985d, toScale: 1d,
                 fromOffsetY: 10d, toOffsetY: 0d,
-                TimeSpan.FromMilliseconds(360));
+                MotionSettings.Scale(TimeSpan.FromMilliseconds(360)));
         }
     }
 }

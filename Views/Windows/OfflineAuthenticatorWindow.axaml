@@ -6,7 +6,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
     FontFamily="{StaticResource AppFont}"
-    FontSize="{StaticResource FontSizeBody}"
+    FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
     Width="380"

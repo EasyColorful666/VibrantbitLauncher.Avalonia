@@ -8,6 +8,12 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/AppTheme.axaml" />
+                <!--
+                    材质层（随明暗主题切换的玻璃 / 卡片 / 细线 / 极光色）。
+                    单独一个文件是因为它必须用 ThemeDictionaries：
+                    写进 AppTheme 的平铺键就没法跟着主题变。
+                -->
+                <ResourceInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Surfaces.axaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!--  全局转换器：皮肤路径 → Bitmap（绕过 Avalonia 的 URI 图片缓存）  -->

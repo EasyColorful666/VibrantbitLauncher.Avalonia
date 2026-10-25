@@ -11,7 +11,14 @@ namespace VibrantbitLauncher.Models
     /// ImagePath 为空表示恢复纯 Mica 底；可以是本地绝对路径，也可以是内置壁纸的资源 URI。
     /// Opacity 为 0.05 ~ 1.0 的显示不透明度。
     /// </summary>
-    public sealed record BackgroundChangedMessage(string? ImagePath, double Opacity);
+    public sealed record BackgroundChangedMessage(
+        string? ImagePath,
+        double Opacity,
+        string Mode = "Image",
+        string ColorHex = "#FF12161C",
+        double Blur = 0,
+        double Vignette = 0,
+        bool Animated = false);
 
     /// <summary>
     /// 本地实例列表发生变化（装了整合包 / 装了新版本 / 删了版本）。

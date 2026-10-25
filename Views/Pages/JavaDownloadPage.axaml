@@ -4,6 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="using:VibrantbitLauncher.Models"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
+
+             xmlns:ctrl="using:VibrantbitLauncher.Controls"
              mc:Ignorable="d"
              x:Class="VibrantbitLauncher.Views.Pages.JavaDownloadPage"
              d:DesignWidth="800"
@@ -16,12 +18,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto">
 
         <!--  标题  -->
-        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock Classes="display" Text="Java 运行环境" />
-            <Border Classes="accentRule" Margin="0,10,0,0" />
-            <TextBlock Classes="caption" Margin="0,6,0,0"
-                       Text="从 Eclipse Adoptium 获取 Temurin JDK，装好后可直接用于启动游戏" />
-        </StackPanel>
+        <ctrl:PageHeader Grid.Row="0" Title="Java 运行环境" Subtitle="从 Eclipse Adoptium 获取 Temurin JDK，装好后可直接用于启动游戏" />
 
         <!--  参数栏  -->
         <Border Grid.Row="1" Classes="card" Padding="16,12" Margin="0,0,0,12">
@@ -101,7 +98,7 @@
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Classes="subtitle" Text="{Binding Version}" />
                                             <Border Background="{DynamicResource AppAccentSurfaceBrush}"
-                                                    CornerRadius="4" Padding="6,1"
+                                                    CornerRadius="{StaticResource RadiusS}" Padding="6,1"
                                                     IsVisible="{Binding IsLts}"
                                                     VerticalAlignment="Center">
                                                 <TextBlock Classes="caption"

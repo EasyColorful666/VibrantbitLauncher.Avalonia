@@ -130,6 +130,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
             AuthenticateYggdrasilCommand = new RelayCommand(AuthenticateYggdrasilAsync);
             AuthenticateOfflineCommand = new RelayCommand(AuthenticateOffline);
             LoadCommand = new RelayCommand(Load);
+
+            // 「自动登录上次账户」直接读写配置：这是账户页的行为开关，
+            // 不属于外观/启动参数，放这里比塞进设置页更顺手。
+            _autoLoginLastAccount = SettingsService.Current.AutoLoginLastAccount;
+        }
+
+        private bool _autoLoginLastAccount = true;
+
+        /// <summary>启动器启动时自动恢复上次登录的账户。</summary>
+        public bool AutoLoginLastAccount
+        {
+            get => _autoLoginLastAccount;
+            set
+            {
+                if (!SetProperty(ref _autoLoginLastAccount, value))
+                    return;
+
+                SettingsService.Current.AutoLoginLastAccount = value;
+                SettingsService.Save();
+            }
         }
 
         private void NewOfflineAccountProfile(string name)
@@ -250,7 +270,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>
         /// 解析头像路径：优先使用按 UUID 保存的皮肤文件，不存在则回退到内置史蒂夫头像。
         /// </summary>
-        private static string ResolveAvatarPath(string? uuid)
+        public static string ResolveAvatarPath(string? uuid)
         {
             var defaultAvatar = DefaultAvatarPath();
             if (string.IsNullOrEmpty(uuid)) return defaultAvatar;
@@ -274,7 +294,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// 裁剪失败（只读目录、资源缺失）时退回原来的通用头像，不让账户页整页挂掉。
         /// </para>
         /// </summary>
-        private static string DefaultAvatarPath()
+        public static string DefaultAvatarPath()
         {
             var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "res", "_steve_head.png"));
             if (File.Exists(path))

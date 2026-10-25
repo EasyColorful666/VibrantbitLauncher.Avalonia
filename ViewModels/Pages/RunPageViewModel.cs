@@ -92,11 +92,213 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// </summary>
         public IReadOnlyList<JavaEntry> DetectedJavas => allJavas;
 
+        // ===== 主页模块（问候语 / 启动卡 / 最近游玩 / 实例概览 / 快捷入口） =====
+        //
+        // 这些开关都在「设置 → 通用 → 主页」里，页面本身只负责按开关显示或隐藏。
+        // 每次导航进来都要重新读一遍配置：用户可能刚在设置里关掉某一项。
+
+        public bool ShowGreeting => SettingsService.Current.ShowHomeGreeting;
+        public bool ShowRecent => SettingsService.Current.ShowHomeRecent;
+        public bool ShowInstanceOverview => SettingsService.Current.ShowHomeInstanceOverview;
+        public bool ShowShortcuts => SettingsService.Current.ShowHomeShortcuts;
+
+        private bool showLaunchCard = true;
+
+        /// <summary>是否显示「游戏卡片」（版本列表 + 启动按钮）。开关在本页的快捷设置里。</summary>
+        public bool ShowLaunchCard
+        {
+            get => showLaunchCard;
+            set
+            {
+                if (!SetProperty(ref showLaunchCard, value))
+                    return;
+
+                SettingsService.Current.ShowHomeLaunchCard = value;
+                SettingsService.Save();
+            }
+        }
+
+        private string greetingText = string.Empty;
+        private string instanceCountText = string.Empty;
+        private string instanceSizeText = string.Empty;
+
+        /// <summary>问候语（按时间段 + 当前账户）。</summary>
+        public string GreetingText
+        {
+            get => greetingText;
+            private set => SetProperty(ref greetingText, value);
+        }
+
+        public string InstanceCountText
+        {
+            get => instanceCountText;
+            private set => SetProperty(ref instanceCountText, value);
+        }
+
+        public string InstanceSizeText
+        {
+            get => instanceSizeText;
+            private set => SetProperty(ref instanceSizeText, value);
+        }
+
+        /// <summary>最近玩过的几个实例（按版本目录的修改时间排）。</summary>
+        public ObservableCollection<RecentInstance> RecentInstances { get; } = new();
+
+        public bool HasRecent => RecentInstances.Count > 0;
+
+        public RelayCommand<string> SelectRecentCommand { get; }
+        public RelayCommand OpenModDownloadCommand { get; }
+        public RelayCommand OpenModpackDownloadCommand { get; }
+
+        /// <summary>重新计算首页四个模块要用的数据。刷新版本列表之后调用。</summary>
+        private void RefreshHomeSections()
+        {
+            ShowLaunchCard = SettingsService.Current.ShowHomeLaunchCard;
+
+            OnPropertyChanged(nameof(ShowGreeting));
+            OnPropertyChanged(nameof(ShowRecent));
+            OnPropertyChanged(nameof(ShowInstanceOverview));
+            OnPropertyChanged(nameof(ShowShortcuts));
+
+            GreetingText = BuildGreeting();
+            InstanceCountText = $"{MinecraftVersions.Count} 个实例";
+
+            var root = SettingsService.ResolveMinecraftFolder();
+            var versionsDir = Path.Combine(root, "versions");
+
+            RecentInstances.Clear();
+            foreach (var item in MinecraftVersions
+                         .Select(v => (Id: v.Version, Time: SafeLastWrite(Path.Combine(versionsDir, v.Version))))
+                         .OrderByDescending(t => t.Time)
+                         .Take(3))
+            {
+                RecentInstances.Add(new RecentInstance
+                {
+                    Id = item.Id,
+                    TimeText = RelativeTime(item.Time),
+                    Command = SelectRecentCommand
+                });
+            }
+
+            OnPropertyChanged(nameof(HasRecent));
+
+            if (!SettingsService.Current.ShowHomeInstanceOverview)
+                return;
+
+            // 占用空间要遍历几万个文件，绝不能放在 UI 线程上算
+            InstanceSizeText = "正在统计…";
+            _ = Task.Run(() =>
+            {
+                var bytes = SumDirectory(root, maxDepth: 4, skipNames: new[] { "logs", "crash-reports" });
+                var text = bytes <= 0 ? "—" : FormatSize(bytes);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => InstanceSizeText = $"占用 {text}");
+            });
+        }
+
+        private static string BuildGreeting()
+        {
+            var hour = DateTime.Now.Hour;
+            var period = hour switch
+            {
+                < 6 => "凌晨好",
+                < 11 => "早上好",
+                < 14 => "中午好",
+                < 18 => "下午好",
+                _ => "晚上好"
+            };
+
+            var name = MainWindowViewModel.MainModel.Account?.Name;
+            return string.IsNullOrWhiteSpace(name)
+                ? $"{period}，先登录一个账户再开始"
+                : $"{period}，{name}";
+        }
+
+        private static DateTime SafeLastWrite(string path)
+        {
+            try
+            {
+                return Directory.Exists(path) ? Directory.GetLastWriteTime(path) : DateTime.MinValue;
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
+        }
+
+        private static string RelativeTime(DateTime time)
+        {
+            if (time == DateTime.MinValue)
+                return "从未启动";
+
+            var span = DateTime.Now - time;
+            if (span.TotalMinutes < 1) return "刚刚";
+            if (span.TotalHours < 1) return $"{span.TotalMinutes:0} 分钟前";
+            if (span.TotalDays < 1) return $"{span.TotalHours:0} 小时前";
+            if (span.TotalDays < 30) return $"{span.TotalDays:0} 天前";
+            return time.ToString("yyyy-MM-dd");
+        }
+
+        /// <summary>
+        /// 粗略统计目录占用。限制深度并跳过日志目录 —— 目的是「大概占了多少」，
+        /// 精确到字节没有意义，扫太久反而会让首页看起来卡住。
+        /// </summary>
+        private static long SumDirectory(string path, int maxDepth, IReadOnlyCollection<string> skipNames)
+        {
+            try
+            {
+                if (!Directory.Exists(path))
+                    return 0;
+
+                long total = 0;
+                foreach (var file in Directory.EnumerateFiles(path))
+                {
+                    try { total += new FileInfo(file).Length; } catch { /* 被占用 / 无权限 */ }
+                }
+
+                if (maxDepth <= 1)
+                    return total;
+
+                foreach (var dir in Directory.EnumerateDirectories(path))
+                {
+                    var name = Path.GetFileName(dir);
+                    if (skipNames.Any(s => string.Equals(s, name, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    total += SumDirectory(dir, maxDepth - 1, skipNames);
+                }
+
+                return total;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static string FormatSize(long bytes) => bytes switch
+        {
+            < 1024 => $"{bytes} B",
+            < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+            < 1024L * 1024 * 1024 => $"{bytes / 1024.0 / 1024:F1} MB",
+            _ => $"{bytes / 1024.0 / 1024 / 1024:F1} GB"
+        };
+
         public RunPageViewModel()
         {
             IsLoaded = false;
             LoadCommand = new RelayCommand(Load);
             RefreshCommand = new RelayCommand(Refresh);
+
+            SelectRecentCommand = new RelayCommand<string>(id =>
+            {
+                if (!string.IsNullOrEmpty(id))
+                    SelectedVersion = id;
+            });
+
+            OpenModDownloadCommand = new RelayCommand(() =>
+                AppNavigation.Navigate(typeof(DownloadHubPage)));
+            OpenModpackDownloadCommand = new RelayCommand(() =>
+                AppNavigation.Navigate(typeof(DownloadHubPage)));
         }
 
         private static List<string> GetLocalVersionIds()
@@ -242,7 +444,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     Interlocked.Exchange(ref refreshing, 0);
                     // 注意要在 UI 线程复位：集合的 Clear/Add 也在 UI 线程，
                     // 顺序上先填完列表、再落下「扫描结束」，页面就不会看到中间态。
-                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() => IsRefreshing = false);
+                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() =>
+                    {
+                        IsRefreshing = false;
+                        RefreshHomeSections();
+                    });
                 }
             });
         }
@@ -1274,6 +1480,14 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
         }
     }
+    /// <summary>启动页「最近游玩」里的一行。</summary>
+    public class RecentInstance
+    {
+        public string Id { get; init; } = string.Empty;
+        public string TimeText { get; init; } = string.Empty;
+        public RelayCommand<string>? Command { get; init; }
+    }
+
     public class LocalVersion
     {
         public string Version { get; set; }

@@ -18,23 +18,111 @@
         MinHeight="720"
         Background="{DynamicResource AppWindowBackgroundBrush}"
         FontFamily="{StaticResource AppFont}"
-        FontSize="{StaticResource FontSizeBody}"
+        FontSize="{DynamicResource FontSizeBody}"
         WindowStartupLocation="CenterScreen">
 
+    <Window.Resources>
+        <!--
+            导航内容区透出底层极光。
+            这个键是 FANavigationView 的内容宿主底色；改成全透明后，
+            页面与窗口之间只隔着一层极光和（可选的）壁纸。
+            SettingsService 只在设置壁纸时才写这个键，所以这里补一个窗口级的，
+            保证"没设壁纸"的默认状态同样能看到极光。
+        -->
+        <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+
+        <!--
+            导航栏底板同样透出底色：Fluent 的现代做法是"导航与内容同底"，
+            靠选中项的胶囊和字重区分层级，而不是靠一条色块把窗口切开。
+            （键名沿用 WinUI 的官方资源名；FluentAvalonia 若没有这一版键，
+            这两条就是无害的空定义，导航栏会回到默认底色。）
+        -->
+        <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+    </Window.Resources>
+
     <Grid>
-        <!--  背景层：设置里选了壁纸才有内容，未设置时保持纯 Mica 底  -->
+        <!--
+            ==================== 第 0 层：画布 ====================
+            不透明底色。Mica 不可用时它就是整窗的底，Mica 可用时它被透明窗口盖住，
+            两者都不出现"整窗穿透到桌面"。
+        -->
+        <Border Background="{DynamicResource SurfaceCanvasBrush}" />
+
+        <!--
+            ==================== 第 0.5 层：纯色背景 ====================
+            「背景 → 纯色」选出来的底色。和壁纸互斥：两个 IsVisible 不会同时为真。
+        -->
+        <Border Background="{Binding BackgroundColorBrush}"
+                IsHitTestVisible="False"
+                IsVisible="{Binding HasBackgroundColor}">
+            <Border.Transitions>
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.20" Easing="CubicEaseOut" />
+                </Transitions>
+            </Border.Transitions>
+        </Border>
+
+        <!--
+            ==================== 第 1 层：用户壁纸 ====================
+            设置里选了壁纸才有内容；切换壁纸时用 300ms 透明度过渡淡入淡出，
+            而不是"啪"地换掉。
+
+            Effect 由「毛玻璃强度」驱动：为 null 时不做离屏渲染（0 模糊不花钱），
+            开了才走一次模糊通道 —— 全窗口大图模糊在核显上不便宜，所以默认是关的。
+        -->
         <Image x:Name="BackgroundImageLayer"
+               Classes.bgAnimated="{Binding BackgroundAnimated}"
+               Effect="{Binding BackgroundEffect}"
                IsHitTestVisible="False"
                Opacity="{Binding BackgroundImageOpacity}"
                RenderOptions.BitmapInterpolationMode="HighQuality"
+               RenderTransformOrigin="50%,50%"
                Source="{Binding BackgroundImage}"
-               Stretch="UniformToFill" />
+               Stretch="UniformToFill">
+            <Image.RenderTransform>
+                <ScaleTransform />
+            </Image.RenderTransform>
+            <Image.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.30" Easing="CubicEaseOut" />
+                </Transitions>
+            </Image.Transitions>
+        </Image>
 
-        <!--  可读性遮罩：随明暗主题换色，半透明压在壁纸上；未设置壁纸时不显示  -->
+        <!--  可读性遮罩：压在壁纸上，保证任何一张图上的文字都读得清  -->
         <Border Background="{DynamicResource AppBackgroundScrimBrush}"
                 IsHitTestVisible="False"
                 IsVisible="{Binding HasBackgroundImage}" />
 
+        <!--
+            ==================== 第 1.5 层：暗角 ====================
+            中心全透明、四角压暗。作用是把视线收拢到中间的内容上，
+            同时也是"图片边缘直接顶到窗口边框"这个观感的解药。
+        -->
+        <Border IsHitTestVisible="False"
+                IsVisible="{Binding HasBackgroundVignette}"
+                Opacity="{Binding BackgroundVignetteOpacity}">
+            <Border.Background>
+                <RadialGradientBrush Center="50%,45%"
+                                     GradientOrigin="50%,45%"
+                                     RadiusX="75%"
+                                     RadiusY="75%">
+                    <GradientStop Offset="0.45" Color="#00000000" />
+                    <GradientStop Offset="1" Color="#FF000000" />
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!--
+            ==================== 第 2 层：极光 ====================
+            主色光斑 + 两枚冷暖光斑。它是"高级感"的来源之一：
+            整窗不再是均匀的灰，而是有一处更亮、一处更冷，
+            眼睛会自然地从亮处开始看内容。
+        -->
+        <ctrl:AuroraBackground />
+
+        <!--  ==================== 第 3 层：应用本体  ====================  -->
         <Grid x:Name="AppRoot" RowDefinitions="Auto,*" RenderTransformOrigin="50%,50%">
             <!--  自定义标题栏（控件自带最小化 / 最大化 / 关闭，见 Controls/TitleBar.cs）  -->
             <ctrl:TitleBar x:Name="AppTitleBar"
@@ -106,13 +194,6 @@
             <!--
                 内嵌子页宿主（1.0.8.2 起：窗口原样嵌进来，不做任何改装）。
 
-                这里**不做标题栏、不做换页**：子页自己带着原来那个窗口的标题栏、边框和关闭按钮，
-                我们只负责给它一块半透明遮罩 + 居中位置 + 投影，看起来就是
-                「那个窗口浮在主界面上」，与 PCL2 一致。
-
-                子页内部 TitleBar 通过 IsInline="True" 知道自己被内嵌了：
-                不 Hook 主窗口（否则点 × 会关掉整个启动器）、隐藏最小化/最大化、× 走 InlineHost.Close()。
-
                 遮罩 + 卡片的结构抽进了 InlineHostOverlay：首次使用向导期间主窗口是隐藏的，
                 向导里的账户按钮同样要弹这些子页，那边也挂同一个控件。
             -->
@@ -133,19 +214,20 @@
                     Background="{DynamicResource AppDropPanelBrush}"
                     BorderBrush="{DynamicResource AppAccentBrush}"
                     BorderThickness="2"
-                    CornerRadius="12">
+                    CornerRadius="{StaticResource RadiusL}"
+                    BoxShadow="0 24 60 0 #40000000">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                     <ui:FASymbolIcon HorizontalAlignment="Center"
-                                     FontSize="40"
+                                     FontSize="{StaticResource IconSizeHero}"
                                      Symbol="Download" />
                     <TextBlock x:Name="DropOverlayTitle"
                                HorizontalAlignment="Center"
-                               FontSize="{StaticResource FontSizeBodyLarge}"
+                               Classes="subtitle"
                                FontWeight="SemiBold"
                                Text="松开即可安装整合包" />
                     <TextBlock x:Name="DropOverlayHint"
                                HorizontalAlignment="Center"
-                               Classes="secondary"
+                               Classes="caption"
                                TextAlignment="Center"
                                TextWrapping="Wrap"
                                Text="支持 Modrinth (.mrpack) 与 CurseForge (.zip) 整合包" />

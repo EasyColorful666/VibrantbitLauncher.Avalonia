@@ -33,7 +33,7 @@
                             Background="{DynamicResource ControlFillColorSecondaryBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="2"
-                            CornerRadius="99">
+                            CornerRadius="{StaticResource RadiusPill}">
                         <ContentPresenter Name="PART_ContentPresenter"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -101,13 +101,13 @@
 
         <!--  胶囊内文字：选中态转白（数量用次级白，保持主次）  -->
         <Style Selector="TextBlock.chipLabel">
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
         <Style Selector="TextBlock.chipCount">
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="MinWidth" Value="22" />
             <Setter Property="TextAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -179,7 +179,7 @@
                     Classes="accent"
                     Click="OnSearchClick">
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <ui:FASymbolIcon Symbol="Find" FontSize="14" />
+                    <ui:FASymbolIcon Symbol="Find" FontSize="{DynamicResource FontSizeBody}" />
                     <TextBlock Text="搜索" />
                 </StackPanel>
             </Button>
@@ -278,7 +278,7 @@
                                 <!--  右侧仅作视觉提示：进入箭头  -->
                                 <ui:FASymbolIcon Grid.Column="2" Margin="12,0,0,0"
                                                  VerticalAlignment="Center"
-                                                 FontSize="16"
+                                                 FontSize="{StaticResource IconSizeBody}"
                                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                  Symbol="Forward" />
                             </Grid>

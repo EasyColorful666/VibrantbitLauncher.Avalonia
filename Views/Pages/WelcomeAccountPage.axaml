@@ -55,7 +55,7 @@
                             Margin="0,4,0,0"
                             HorizontalAlignment="Center">
                     <ui:FASymbolIcon HorizontalAlignment="Center"
-                                     FontSize="40"
+                                     FontSize="{StaticResource IconSizeHero}"
                                      Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                      Symbol="Add" />
                     <TextBlock Classes="subtitle" Margin="0,14,0,0"

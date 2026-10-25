@@ -6,7 +6,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
     FontFamily="{StaticResource AppFont}"
-    FontSize="{StaticResource FontSizeBody}"
+    FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
     Width="720"
@@ -46,7 +46,7 @@
                     MinHeight="120"
                     AcceptsReturn="True"
                     FontFamily="Consolas, Cascadia Mono, monospace"
-                    FontSize="{StaticResource FontSizeCaption}"
+                    FontSize="{DynamicResource FontSizeCaption}"
                     TextWrapping="Wrap"
                     Watermark="在这里粘贴配装码（VBL1- 开头，一长串字母数字），也支持直接粘贴分享码里的 JSON"
                     TextChanged="OnCodeChanged" />

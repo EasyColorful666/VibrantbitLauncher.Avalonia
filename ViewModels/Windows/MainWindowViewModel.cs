@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
 
@@ -50,6 +51,75 @@ namespace VibrantbitLauncher.ViewModels.Windows
             set => SetProperty(ref backgroundImageOpacity, value);
         }
 
+        private bool hasBackgroundColor;
+        private IBrush? backgroundColorBrush;
+        private double backgroundBlurRadius;
+        private double backgroundVignetteOpacity;
+        private bool backgroundAnimated;
+
+        /// <summary>是否使用纯色背景（设置里选了「纯色」）。</summary>
+        public bool HasBackgroundColor
+        {
+            get => hasBackgroundColor;
+            private set => SetProperty(ref hasBackgroundColor, value);
+        }
+
+        /// <summary>纯色背景的画刷。</summary>
+        public IBrush? BackgroundColorBrush
+        {
+            get => backgroundColorBrush;
+            private set => SetProperty(ref backgroundColorBrush, value);
+        }
+
+        /// <summary>背景图模糊半径（0 表示不模糊）。由「毛玻璃强度」换算而来。</summary>
+        public double BackgroundBlurRadius
+        {
+            get => backgroundBlurRadius;
+            private set
+            {
+                if (SetProperty(ref backgroundBlurRadius, value))
+                    OnPropertyChanged(nameof(HasBackgroundBlur));
+            }
+        }
+
+        public bool HasBackgroundBlur => backgroundBlurRadius > 0.1;
+
+        private IEffect? backgroundEffect;
+
+        /// <summary>
+        /// 背景图的模糊效果；为 null 表示不做离屏模糊。
+        ///
+        /// <para>
+        /// 必须是「null 或实例」而不是「半径 0 的实例」：<c>Effect</c> 非空就会让整层
+        /// 走一次离屏渲染，半径设 0 也一样要付这笔钱。
+        /// </para>
+        /// </summary>
+        public IEffect? BackgroundEffect
+        {
+            get => backgroundEffect;
+            private set => SetProperty(ref backgroundEffect, value);
+        }
+
+        /// <summary>暗角强度（0~1），叠在背景最上层。</summary>
+        public double BackgroundVignetteOpacity
+        {
+            get => backgroundVignetteOpacity;
+            private set
+            {
+                if (SetProperty(ref backgroundVignetteOpacity, value))
+                    OnPropertyChanged(nameof(HasBackgroundVignette));
+            }
+        }
+
+        public bool HasBackgroundVignette => backgroundVignetteOpacity > 0.001;
+
+        /// <summary>背景图是否缓慢缩放（动态背景）。</summary>
+        public bool BackgroundAnimated
+        {
+            get => backgroundAnimated;
+            private set => SetProperty(ref backgroundAnimated, value);
+        }
+
         /// <summary>导航服务：由 MainWindow 注入，负责实际页面切换。</summary>
         public INavigationService? Navigation { get; set; }
 
@@ -76,14 +146,37 @@ namespace VibrantbitLauncher.ViewModels.Windows
         /// </summary>
         private void ApplyBackground(BackgroundChangedMessage message)
         {
-            if (SettingsService.Current.PerformanceMode)
+            // 纯色模式与图片模式互斥：选了纯色就不再解码任何图片。
+            HasBackgroundColor = message.Mode == "Color";
+            BackgroundColorBrush = HasBackgroundColor && SettingsService.TryParseColor(message.ColorHex, out var color)
+                ? new SolidColorBrush(color)
+                : null;
+
+            if (SettingsService.Current.PerformanceMode || message.Mode == "None")
             {
                 BackgroundImage = null;
+                BackgroundBlurRadius = 0;
+                BackgroundEffect = null;
+                BackgroundVignetteOpacity = 0;
+                BackgroundAnimated = false;
                 return;
             }
 
-            BackgroundImage = LoadBackgroundImage(message.ImagePath);
+            BackgroundImage = message.Mode == "Image" ? LoadBackgroundImage(message.ImagePath) : null;
             BackgroundImageOpacity = Math.Clamp(message.Opacity, 0.05, 1.0);
+
+            // 毛玻璃强度映射成模糊半径：0~1 → 0~48px。
+            // 半径再大下去收益几乎没有，而大图模糊的渲染成本是随半径线性涨的。
+            BackgroundBlurRadius = Math.Clamp(message.Blur, 0, 1) * 48;
+            BackgroundEffect = BackgroundBlurRadius > 0.1
+                ? new BlurEffect { Radius = BackgroundBlurRadius }
+                : null;
+
+            // 暗角只在不影响主体可读的前提下才叠，最多 60% —— 再深就是「灯全关了」。
+            BackgroundVignetteOpacity = Math.Clamp(message.Vignette, 0, 1) * 0.6;
+
+            // 动态背景本质是缓慢的呼吸缩放；关掉动效时退回静态，省电也省帧。
+            BackgroundAnimated = message.Animated && MotionSettings.Enabled && !MotionSettings.Reduced;
         }
 
         /// <summary>

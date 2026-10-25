@@ -17,7 +17,11 @@
     -->
     <Panel x:Name="Layer">
 
-        <Border x:Name="Scrim" Background="{DynamicResource AppBackgroundScrimBrush}" />
+        <!--
+            遮罩：Fluent 的 Smoke 层（深色压暗），而不是"白色蒙一层"。
+            浅色主题下用白罩会把下面的界面洗成一片灰白，弹窗的层级反而更弱。
+        -->
+        <Border x:Name="Scrim" Background="{DynamicResource ScrimBrush}" />
 
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
@@ -30,11 +34,12 @@
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     RenderTransformOrigin="50%,50%"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Background="{DynamicResource SurfaceGlassStrongBrush}"
+                    BorderBrush="{DynamicResource HairlineStrongBrush}"
                     BorderThickness="1"
-                    BoxShadow="0 16 44 0 #55000000"
+                    BoxShadow="0 24 64 0 #40000000"
                     ClipToBounds="True"
-                    CornerRadius="8">
+                    CornerRadius="{StaticResource RadiusL}">
                 <ContentControl x:Name="ContentHost" />
             </Border>
         </ScrollViewer>

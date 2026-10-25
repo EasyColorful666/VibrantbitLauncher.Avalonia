@@ -5,6 +5,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="using:FluentAvalonia.UI.Controls"
+
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
     d:DesignHeight="620"
     d:DesignWidth="1000"
     mc:Ignorable="d">
@@ -47,7 +49,7 @@
 
         <Style Selector="TextBlock.eyebrow">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -55,7 +57,7 @@
 
         <Style Selector="TextBlock.heroName">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeHero}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeHero}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="Margin" Value="0,2,0,0" />
@@ -72,14 +74,14 @@
         </Style>
 
         <Style Selector="Border.typeChip TextBlock">
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
         <!--  幽灵按钮：换肤这类次级动作，描边 + 主色字，悬停只加深一点点  -->
         <Style Selector="Button.ghost">
             <Setter Property="Padding" Value="14,6" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Background" Value="Transparent" />
@@ -89,8 +91,8 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.10" />
+                    <BrushTransition Property="Background" Duration="0:0:0.10" />
                 </Transitions>
             </Setter>
         </Style>
@@ -136,8 +138,8 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+                    <BrushTransition Property="Background" Duration="0:0:0.10" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.10" />
                 </Transitions>
             </Setter>
         </Style>
@@ -154,7 +156,7 @@
 
         <Style Selector="TextBlock.rowName">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -169,7 +171,7 @@
             <Setter Property="Opacity" Value="0" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.20" />
                 </Transitions>
             </Setter>
         </Style>
@@ -191,7 +193,7 @@
         <Style Selector="Button.rowGhost">
             <Setter Property="Padding" Value="10,4" />
             <Setter Property="MinHeight" Value="28" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
@@ -230,7 +232,7 @@
         <Style Selector="Button.rowSwitch">
             <Setter Property="Padding" Value="12,4" />
             <Setter Property="MinHeight" Value="28" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -238,7 +240,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.10" />
                 </Transitions>
             </Setter>
         </Style>
@@ -315,7 +317,7 @@
             <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                    <BrushTransition Property="Background" Duration="0:0:0.10" />
                 </Transitions>
             </Setter>
         </Style>
@@ -344,8 +346,8 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+                    <BrushTransition Property="Background" Duration="0:0:0.10" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.10" />
                 </Transitions>
             </Setter>
         </Style>
@@ -365,7 +367,7 @@
 
         <Style Selector="TextBlock.identityTitle">
             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-            <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
         </Style>
@@ -375,8 +377,8 @@
             <Setter Property="Opacity" Value="0.5" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" Easing="CubicEaseOut" />
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.14" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
                 </Transitions>
             </Setter>
         </Style>
@@ -425,14 +427,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  ==================== 页头  ====================  -->
-        <StackPanel Grid.Row="0" Margin="{StaticResource PageHeaderMargin}">
-            <TextBlock Classes="display" Text="账户" />
-            <Border Margin="0,10,0,0" Classes="accentRule" />
-            <TextBlock
-                Margin="0,8,0,0"
-                Classes="caption"
-                Text="管理启动游戏时使用的身份：微软正版、外置验证服务器，或一个离线名字" />
-        </StackPanel>
+        <ctrl:PageHeader Grid.Row="0" Title="账户" Subtitle="管理启动游戏时使用的身份：微软正版、外置验证服务器，或一个离线名字" />
 
         <!--  ==================== 主体  ====================  -->
         <Grid Grid.Row="1" ColumnDefinitions="*,24,288">
@@ -451,7 +446,7 @@
                         <ui:FASymbolIcon
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            FontSize="32"
+                            FontSize="{DynamicResource FontSizeDisplay}"
                             Foreground="{DynamicResource AccentFillColorDefaultBrush}"
                             Symbol="Contact" />
                     </Panel>
@@ -564,7 +559,7 @@
                                     <ui:FASymbolIcon
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
-                                        FontSize="18"
+                                        FontSize="{DynamicResource FontSizeSubtitle}"
                                         Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                         Symbol="Contact" />
                                 </Panel>
@@ -658,7 +653,7 @@
                                                     Command="{Binding DeleteCommand}"
                                                     CommandParameter="{Binding Account}"
                                                     ToolTip.Tip="从列表中移除这个账户">
-                                                    <ui:FASymbolIcon FontSize="13" Symbol="Delete" />
+                                                    <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}" Symbol="Delete" />
                                                 </Button>
 
                                                 <Button
@@ -710,7 +705,7 @@
                                     <ui:FASymbolIcon
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
-                                        FontSize="15"
+                                        FontSize="{DynamicResource FontSizeBody}"
                                         Symbol="Cloud" />
                                 </Border>
                                 <StackPanel
@@ -721,7 +716,7 @@
                                     <TextBlock Classes="caption" Text="正版登录 · 需联网" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Classes="chevron" VerticalAlignment="Center">
-                                    <ui:FASymbolIcon FontSize="11" Symbol="ChevronRight" />
+                                    <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}" Symbol="ChevronRight" />
                                 </Border>
                             </Grid>
                         </Button>
@@ -735,7 +730,7 @@
                                     <ui:FASymbolIcon
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
-                                        FontSize="15"
+                                        FontSize="{DynamicResource FontSizeBody}"
                                         Symbol="Globe" />
                                 </Border>
                                 <StackPanel
@@ -746,7 +741,7 @@
                                     <TextBlock Classes="caption" Text="第三方验证服务器" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Classes="chevron" VerticalAlignment="Center">
-                                    <ui:FASymbolIcon FontSize="11" Symbol="ChevronRight" />
+                                    <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}" Symbol="ChevronRight" />
                                 </Border>
                             </Grid>
                         </Button>
@@ -760,7 +755,7 @@
                                     <ui:FASymbolIcon
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
-                                        FontSize="15"
+                                        FontSize="{DynamicResource FontSizeBody}"
                                         Symbol="Contact" />
                                 </Border>
                                 <StackPanel
@@ -771,7 +766,7 @@
                                     <TextBlock Classes="caption" Text="无需联网" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Classes="chevron" VerticalAlignment="Center">
-                                    <ui:FASymbolIcon FontSize="11" Symbol="ChevronRight" />
+                                    <ui:FASymbolIcon FontSize="{StaticResource IconSizeCaption}" Symbol="ChevronRight" />
                                 </Border>
                             </Grid>
                         </Button>
@@ -781,6 +776,22 @@
                         Height="1"
                         Margin="0,16,0,12"
                         Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+
+                    <!--  ── 登录行为 ──  -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                            <TextBlock Classes="body" FontWeight="SemiBold" Text="自动登录上次账户" />
+                            <TextBlock
+                                Classes="caption"
+                                Margin="0,3,0,0"
+                                Text="关闭后每次打开启动器都要先来这里选一次"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding AutoLoginLastAccount, Mode=TwoWay}" />
+                    </Grid>
 
                     <TextBlock
                         Classes="caption"

@@ -2,75 +2,153 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:FluentAvalonia.UI.Controls">
 
-    <!--  ==================== 文本样式  ====================  -->
+    <!--
+        ============================================================================
+        Fluent 2 控件层
+        ============================================================================
+
+        本文件只负责「长什么样」；动效全部在 Animations.axaml（一个属性只有一处
+        Transitions 设置，避免两个文件抢同一个属性时后加载的静默覆盖前一个）。
+
+        设计约束（改之前先读）：
+          · 圆角只有 4 / 8 / 12 / 胶囊 四档，不得新增；
+          · 字号只取 AppTheme 里那 5 档，不得写裸数字；
+          · 细线恒为 1px，只用来「分」，不用来「框」；
+          · 强调色只出现在主操作、选中指示、1 处短横，面积 < 8%。
+
+        控件外观一律走 FluentAvalonia 的语义键（TextFillColor* / CardBackground* /
+        ControlFillColor*），明暗主题与强调色由 SettingsService 统一覆盖，
+        这里不再出现任何硬编码品牌色。
+    -->
+
+    <!--  ==================== 1. 文本  ====================  -->
 
     <Style Selector="TextBlock.display">
         <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeDisplay}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeDisplay}" />
+        <Setter Property="LineHeight" Value="{StaticResource LineHeightDisplay}" />
+        <!--  大字必须收字距：字号越大，默认字距在眼里越"散"  -->
+        <Setter Property="LetterSpacing" Value="-0.6" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.title">
         <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeTitle}" />
+        <Setter Property="LetterSpacing" Value="-0.3" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
+    <!--
+        分区标题：比正文大 3px 就够，靠字重和留白拉开距离。
+        再大就会和页标题争视觉重心。
+    -->
     <Style Selector="TextBlock.sectionTitle">
         <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeSubtitle}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeSubtitle}" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="-0.1" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.subtitle">
         <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeSubtitle}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeSubtitle}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.body">
         <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.secondary">
         <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.caption">
         <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
+        <!--  小字必须放字距，否则一坨黑  -->
+        <Setter Property="LetterSpacing" Value="0.1" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!--  ==================== 按钮  ====================  -->
+    <!--
+        眉标（eyebrow）：页标题上方的一行小字，用来交代"这是哪一区"。
+        全大写在中文里没有意义，所以只做「字距放宽 + 强调色」，
+        文案仍由页面写中文，不靠大小写制造层级。
+    -->
+    <Style Selector="TextBlock.eyebrow">
+        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="1.2" />
+        <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
 
-    <!--  强调按钮：主色实心底 + 白字。FluentAvalonia 的 Button 无 Appearance 属性，
-          这里用类样式统一表达「Primary 按钮」。  -->
+    <!--  数字：等宽，避免进度百分比跳动时左右抖  -->
+    <Style Selector="TextBlock.number">
+        <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeDisplay}" />
+        <Setter Property="LetterSpacing" Value="-1" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <!--  ==================== 2. 按钮  ====================  -->
+
+    <!--
+        几何统一交给样式，颜色留给 FluentAvalonia 的状态机：
+        它把 hover / pressed / disabled 写在模板内的 ContentPresenter 上，
+        我们只调外形（高度 / 内边距 / 圆角 / 字重），两边不会互相覆盖。
+    -->
+    <Style Selector="Button">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!--  主操作：主色渐变 + 白字 + 极轻的投影（只有这一种按钮带投影）  -->
     <Style Selector="Button.accent">
-        <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentGradientBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
+    <!--  模板内的底色在 hover 时会被 ControlTheme 覆盖成纯色，这里强制回到渐变  -->
     <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentGradientBrush}" />
     </Style>
 
     <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AccentFillColorTertiaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentGradientBrush}" />
     </Style>
 
-    <!--  危险按钮：删除类操作用红色前景提示风险  -->
+    <!--  危险按钮：只染前景和描边，不染底色 —— 别引导用户去点  -->
     <Style Selector="Button.danger">
         <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCriticalBrush}" />
     </Style>
 
     <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -78,51 +156,192 @@
         <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCriticalBrush}" />
     </Style>
 
-    <!--  ==================== 容器 / 卡片  ====================  -->
+    <!--  低权重按钮：无底无边，只靠悬停底色表达可点  -->
+    <Style Selector="Button.subtle">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Padding" Value="10,5" />
+    </Style>
 
+    <Style Selector="Button.subtle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <!--  胶囊按钮：只给"一次性的强调操作"，不要满页面撒  -->
+    <Style Selector="Button.pill">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        <Setter Property="Padding" Value="20,7" />
+    </Style>
+
+    <!--  ==================== 3. 容器  ====================  -->
+
+    <!--
+        卡片：实心面 + 1px 细线 + 双层投影。
+        双层投影是"看起来轻轻浮起来"的关键：一层贴边 1~2px（定义边缘），
+        一层散开 8~16px（定义离地高度）。单层大模糊会糊成一团灰。
+    -->
     <Style Selector="Border.card">
-        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
+        <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000, 0 4 14 0 #0A000000" />
     </Style>
 
-    <!--  图片卡片：悬停时弹性放大 + 边框高亮 + 阴影抬升  -->
+    <!--  可点卡片：悬停时阴影抬高（动效在 Animations.axaml）  -->
     <Style Selector="Border.hoverCard">
-        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
-        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-        <Setter Property="Transitions">
-            <Transitions>
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.28" Easing="BackEaseOut" />
-                <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.28" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
+        <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000, 0 4 14 0 #0A000000" />
+        <Setter Property="ClipToBounds" Value="True" />
     </Style>
 
-    <Style Selector="Border.hoverCard:pointerover">
-        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorBrush}" />
-        <Setter Property="RenderTransform" Value="scale(1.06)" />
-        <Setter Property="BoxShadow" Value="0 10 26 0 #33000000" />
-        <Setter Property="ZIndex" Value="10" />
+    <!--  玻璃面板：浮层 / 侧栏 / 底部状态条。比卡片更透，靠细线定形  -->
+    <Style Selector="Border.glass">
+        <Setter Property="Background" Value="{DynamicResource SurfaceGlassBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+        <Setter Property="BoxShadow" Value="0 8 28 0 #1F000000" />
     </Style>
 
-    <!--  ==================== 标题 / 强调  ====================  -->
+    <!--  下沉面：输入区 / 列表底 / 代码块  -->
+    <Style Selector="Border.sunken">
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+    </Style>
+
+    <!--  强调色短横：页标题下唯一的一处主色，28×2 就够  -->
 
     <Style Selector="Border.accentRule">
-        <Setter Property="Width" Value="44" />
-        <Setter Property="Height" Value="4" />
-        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="2" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
         <Setter Property="HorizontalAlignment" Value="Left" />
-        <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
     </Style>
 
+    <!--  强调横幅：只有下载完成 / 首次引导这类"值得庆祝"的时刻才用  -->
     <Style Selector="Border.accentBanner">
         <Setter Property="Padding" Value="24,20" />
         <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
         <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
+        <Setter Property="BoxShadow" Value="0 8 24 0 #33000000" />
+    </Style>
+
+    <!--  ==================== 4. 输入控件  ====================  -->
+
+    <Style Selector="TextBox">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <Style Selector="ComboBox">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  ==================== 5. 列表 / 导航  ====================  -->
+
+    <!--
+        列表项选中态用「主色 12% 底 + 左侧 3px 主色条」。
+        不整行染色：整行染会把一屏列表染成一片色块，主色面积立刻超标。
+        ListBoxItem 的模板里没有左侧条，所以这里只做底色与圆角，
+        左侧条由页面自己用 Border 画（需要时再加）。
+    -->
+    <Style Selector="ListBoxItem">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  导航项（FANavigationViewItem 派生自 ListBoxItem）加大呼吸空间  -->
+    <Style Selector="ui|FANavigationViewItem">
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  ==================== 6. FluentAvalonia 专属控件  ====================  -->
+
+    <!--
+        FASettingsExpander：设置页的"一栏一事"。
+        它是 Fluent 2 设置页的标准骨架（标题 + 描述 + 右侧控件 + 展开更多），
+        比自己用 Border 拼卡片更接近系统设置的手感。
+    -->
+    <Style Selector="ui|FASettingsExpander">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+    </Style>
+
+    <Style Selector="ui|FASettingsExpanderItem">
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  FAInfoBar：页内提示条，圆角与细线跟卡片对齐  -->
+    <Style Selector="ui|FAInfoBar">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  FATabView：多视图页面（下载中心 / 模组 / 实例工具）  -->
+    <Style Selector="ui|FATabViewItem">
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    </Style>
+
+    <!--  Expander（Avalonia 内置）：分组折叠  -->
+    <Style Selector="Expander">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!--  ProgressBar：胶囊端头，2px 细身  -->
+    <Style Selector="ProgressBar">
+        <Setter Property="MinHeight" Value="4" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+    </Style>
+
+    <!--  ToolTip：小圆角 + 细线，避免默认的大黑块  -->
+    <Style Selector="ToolTip">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
+        <Setter Property="Padding" Value="10,6" />
+    </Style>
+
+    <!--  ==================== 7. 滚动条  ====================  -->
+
+    <!--
+        滚动条默认 12px 宽、常驻可见，是最"旧"的视觉信号之一。
+        这里收窄到 8px 并做成悬浮细条：不滚动时几乎看不见，滚动时才浮现。
+    -->
+    <Style Selector="ScrollBar:vertical">
+        <Setter Property="Width" Value="8" />
+    </Style>
+
+    <Style Selector="ScrollBar:horizontal">
+        <Setter Property="Height" Value="8" />
+    </Style>
+
+    <!--  ==================== 8. 页面骨架  ====================  -->
+
+    <!--
+        所有页面的根容器都挂这个类：统一内边距与入场位移的起点。
+        内边距 32,28,32,32 是"窗口边到内容"的距离，
+        上方少 4px 是因为标题栏本身已经提供了呼吸感。
+    -->
+    <Style Selector="Grid.page">
+        <Setter Property="Margin" Value="{StaticResource PagePadding}" />
+        <Setter Property="RowSpacing" Value="0" />
     </Style>
 
 </Styles>

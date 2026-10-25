@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
     FontFamily="{StaticResource AppFont}"
-    FontSize="{StaticResource FontSizeBody}"
+    FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
     Width="740"
@@ -72,10 +72,10 @@
                     <Border
                         Padding="8,2"
                         Background="{DynamicResource SystemAccentColor}"
-                        CornerRadius="10">
+                        CornerRadius="{StaticResource RadiusM}">
                         <TextBlock
                             x:Name="accountTypeText"
-                            FontSize="12"
+                            FontSize="{DynamicResource FontSizeCaption}"
                             Foreground="White" />
                     </Border>
                     <TextBlock

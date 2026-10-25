@@ -63,6 +63,17 @@
     <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1F0078D4" />
     <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#330078D4" />
 
+    <!--
+        强调色光晕：主色向外衰减到全透明。
+        只给"全应用唯一的主角"用（启动页的主按钮），页面里别处不要引用 ——
+        一旦光晕出现两次，主角就不成立了。
+    -->
+    <RadialGradientBrush x:Key="AppAccentHaloBrush" Center="50%,50%" GradientOrigin="50%,50%" RadiusX="50%" RadiusY="50%">
+        <GradientStop Offset="0" Color="#8C0078D4" />
+        <GradientStop Offset="1" Color="#000078D4" />
+    </RadialGradientBrush>
+    <SolidColorBrush x:Key="AppAccentHairlineBrush" Color="#730078D4" />
+
     <!--  拖入整合包时的整窗提示层：半透明压暗 + 内嵌面板跟随主题  -->
     <SolidColorBrush x:Key="AppDropOverlayBrush" Color="#66000000" />
     <SolidColorBrush x:Key="AppDropPanelBrush" Color="#F2FFFFFF" />
@@ -73,16 +84,38 @@
     <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI</FontFamily>
     <FontFamily x:Key="AppDisplayFont">avares://VibrantbitLauncher.Avalonia/Assets#HarmonyOS Sans Black</FontFamily>
 
-    <!--  ==================== 字号阶梯  ====================  -->
+    <!--  ==================== 字号阶梯（严格 5 档）  ====================
 
-    <x:Double x:Key="FontSizeDisplay">34</x:Double>
-    <!--  页内 Hero（账户页的「当前身份」名）专用一档：34 是页标题，22 是区块标题，中间缺一级  -->
-    <x:Double x:Key="FontSizeHero">26</x:Double>
+        32 / 22 / 17 / 14 / 12 —— 相邻级差 1.45x ~ 1.45x，是"看得见的台阶"。
+        再多一档就会变成"随便调了几次大小"，层级立刻塌掉。
+
+        FontSizeHero / FontSizeBodyLarge 是历史别名，值并入相邻档位，
+        老页面引用这两个键不会挂，但视觉上不再多出第 6、第 7 档。
+    -->
+
+    <x:Double x:Key="FontSizeDisplay">32</x:Double>
+    <x:Double x:Key="FontSizeHero">22</x:Double>
     <x:Double x:Key="FontSizeTitle">22</x:Double>
     <x:Double x:Key="FontSizeSubtitle">17</x:Double>
-    <x:Double x:Key="FontSizeBodyLarge">15</x:Double>
+    <x:Double x:Key="FontSizeBodyLarge">14</x:Double>
     <x:Double x:Key="FontSizeBody">14</x:Double>
     <x:Double x:Key="FontSizeCaption">12</x:Double>
+
+    <!--  行高：跟字号成对出现，正文 1.55 倍行距是中文长文本的舒适区  -->
+    <x:Double x:Key="LineHeightDisplay">42</x:Double>
+    <x:Double x:Key="LineHeightSubtitle">26</x:Double>
+    <x:Double x:Key="LineHeightBody">22</x:Double>
+
+    <!--
+        图标尺寸单独一套，不参与文字阶梯。
+        图标是"形状"，它的视觉重量取决于笔画占比，和文字的字号没有可比性。
+    -->
+    <x:Double x:Key="IconSizeCaption">12</x:Double>
+    <x:Double x:Key="IconSizeBody">16</x:Double>
+    <x:Double x:Key="IconSizeLarge">24</x:Double>
+    <x:Double x:Key="IconSizeDisplay">32</x:Double>
+    <x:Double x:Key="IconSizeHero">44</x:Double>
+    <x:Double x:Key="IconSizeJumbo">64</x:Double>
 
     <!--  ==================== 间距  ====================  -->
 
@@ -97,11 +130,22 @@
     <Thickness x:Key="PageHeaderMargin">0,0,0,24</Thickness>
     <Thickness x:Key="CardGap">0,0,16,16</Thickness>
 
-    <!--  ==================== 圆角  ====================  -->
+    <!--  ==================== 圆角（严格 4 档）  ====================
 
+        4  控件（按钮 / 输入框 / 标签）
+        8  卡片
+        12 面板（浮层 / 大块容器）
+        ∞  胶囊（只在"一次性的强调控件"上用：启动按钮 / 分段选择 / 计数徽标）
+
+        圆角越大越"圆润"，但大面积 12 会显得软塌；所以 12 只给浮层这类
+        "临时浮起来的东西"，日常卡片恒为 8。
+    -->
+
+    <CornerRadius x:Key="RadiusNone">0</CornerRadius>
     <CornerRadius x:Key="RadiusS">4</CornerRadius>
     <CornerRadius x:Key="RadiusM">8</CornerRadius>
     <CornerRadius x:Key="RadiusL">12</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
     <CornerRadius x:Key="CardRadius">8</CornerRadius>
 
 </ResourceDictionary>

@@ -1,6 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using VibrantbitLauncher.Helpers;
 using CommunityToolkit.Mvvm.Input;
+using MinecraftLaunch.Base.Models.Authentication;
 using MinecraftLaunch.Base.Models.Game;
 using MinecraftLaunch.Utilities;
 using System;
@@ -12,6 +13,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 
 using System.Windows.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Serilog.Events;
 using VibrantbitLauncher.Models;
@@ -78,6 +80,22 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>按本机内存自动挑一档最大内存。</summary>
         public RelayCommand AutoMemoryCommand { get; }
 
+        // ===== 通用 / 关于 / 高级 的命令 =====
+        public RelayCommand OpenAccountPageCommand { get; }
+        public RelayCommand SignOutCommand { get; }
+        public RelayCommand OpenVersionManageCommand { get; }
+        public AsyncRelayCommand CheckUpdateCommand { get; }
+        public AsyncRelayCommand ResetSettingsCommand { get; }
+        public RelayCommand ApplyCustomAccentCommand { get; }
+        public RelayCommand OpenWebsiteCommand { get; }
+        public RelayCommand OpenRepositoryCommand { get; }
+        public RelayCommand OpenChangelogCommand { get; }
+        public RelayCommand OpenDocsCommand { get; }
+        public RelayCommand OpenFeedbackCommand { get; }
+        public RelayCommand OpenSponsorCommand { get; }
+        public RelayCommand ClearResourcePacksCommand { get; }
+        public RelayCommand ClearSavesCommand { get; }
+
         public SettingsPageViewModel()
         {
             ChangeThemeCommand = new RelayCommand<string>(OnChangeTheme);
@@ -89,6 +107,22 @@ namespace VibrantbitLauncher.ViewModels.Pages
             SelectAccentCommand = new RelayCommand<AccentPreset>(SelectAccent);
             SelectGradientEndCommand = new RelayCommand<AccentPreset>(SelectGradientEnd);
             AutoMemoryCommand = new RelayCommand(AutoConfigureMemory);
+
+            // ===== 通用 / 关于 / 高级 =====
+            OpenAccountPageCommand = new RelayCommand(() => AppNavigation.Navigate(typeof(Views.Pages.AccountPage)));
+            SignOutCommand = new RelayCommand(SignOut);
+            OpenVersionManageCommand = new RelayCommand(() => AppNavigation.Navigate(typeof(Views.Pages.VersionManagePage)));
+            CheckUpdateCommand = new AsyncRelayCommand(CheckUpdateAsync);
+            ResetSettingsCommand = new AsyncRelayCommand(ResetSettingsAsync);
+            ApplyCustomAccentCommand = new RelayCommand(ApplyCustomAccent);
+            OpenWebsiteCommand = new RelayCommand(() => OpenUrl("https://vbl.easycolorful.cn"));
+            OpenRepositoryCommand = new RelayCommand(() => OpenUrl(UpdateService.ReleasesPageUrl));
+            OpenChangelogCommand = new RelayCommand(() => OpenUrl($"{UpdateService.ReleasesPageUrl}"));
+            OpenDocsCommand = new RelayCommand(() => OpenUrl("https://github.com/EasyColorful666/VibrantbitLauncher.Avalonia#readme"));
+            OpenFeedbackCommand = new RelayCommand(() => OpenUrl("https://github.com/EasyColorful666/VibrantbitLauncher.Avalonia/issues"));
+            OpenSponsorCommand = new RelayCommand(() => OpenUrl("https://vbl.easycolorful.cn"));
+            ClearResourcePacksCommand = new RelayCommand(() => ResourcePacksFolder = string.Empty);
+            ClearSavesCommand = new RelayCommand(() => SavesFolder = string.Empty);
 
             RefreshLogsCommand = new RelayCommand(RefreshLogs);
             ClearLogsCommand = new RelayCommand(ClearLogs);
@@ -223,6 +257,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             // 以前这些改动只有重启程序才会出现在这里，用户看到的就是
             // 「设置主页的配置不重启就不跟着变」。
             SyncOverviewFromSettings();
+            FillExtendedSettings();
             RefreshLogs();
             await LoadJavaAsync();
         }
@@ -432,6 +467,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     _suppressLogApply = false;
                 }
 
+                FillExtendedSettings();
+                LoadFontFamilies();
+
                 RefreshLogs();
 
                 _ = LoadJavaAsync();
@@ -463,6 +501,21 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 SelectedJava = !string.IsNullOrEmpty(saved)
                     ? JavaEntries.FirstOrDefault(j => j.JavaPath == saved)
                     : JavaEntries.FirstOrDefault();
+
+                // 配置里的路径不在检测结果里 → 说明是手动填的，把「手动指定」打开，
+                // 否则界面上会显示成「自动检测」，用户改回自动时也找不到那个路径。
+                var manual = !string.IsNullOrWhiteSpace(saved) && JavaEntries.All(j => j.JavaPath != saved);
+                if (manual != _useManualJava)
+                {
+                    _useManualJava = manual;
+                    OnPropertyChanged(nameof(UseManualJava));
+                }
+
+                if (manual)
+                {
+                    _manualJavaPath = saved!;
+                    OnPropertyChanged(nameof(ManualJavaPath));
+                }
             }
             catch
             {
@@ -985,6 +1038,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 SettingsService.ApplyPerformanceMode();
                 SettingsService.ApplyBackground();
                 SettingsService.Save();
+                RefreshWindowMotion();
 
                 OnPropertyChanged(nameof(PerformanceModeHint));
             }
@@ -1098,6 +1152,1103 @@ namespace VibrantbitLauncher.ViewModels.Pages
             SettingsService.ApplyAccentChange();
             SettingsService.ApplyBackground();
             SettingsService.Save();
+        }
+
+        // ===== 通用 =====
+
+        private bool _autoLoginLastAccount = true;
+        private bool _minimizeToTray = true;
+        private bool _updateIncludePrerelease;
+        private string _updateStatusText = string.Empty;
+        private string _currentAccountName = "未登录";
+        private string _currentAccountTypeText = "在「账户」页登录后即可启动游戏";
+        private string _currentAccountAvatar = string.Empty;
+        private bool _hasAccount;
+
+        private bool _showHomeGreeting = true;
+        private bool _showHomeLaunchCard = true;
+        private bool _showHomeRecent = true;
+        private bool _showHomeInstanceOverview = true;
+        private bool _showHomeShortcuts = true;
+
+        /// <summary>启动时自动恢复上次登录的账户。</summary>
+        public bool AutoLoginLastAccount
+        {
+            get => _autoLoginLastAccount;
+            set
+            {
+                if (!SetProperty(ref _autoLoginLastAccount, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.AutoLoginLastAccount = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>点窗口关闭按钮时收进系统托盘。</summary>
+        public bool MinimizeToTray
+        {
+            get => _minimizeToTray;
+            set
+            {
+                if (!SetProperty(ref _minimizeToTray, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.MinimizeToTray = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>检查更新时是否包含测试版。</summary>
+        public bool UpdateIncludePrerelease
+        {
+            get => _updateIncludePrerelease;
+            set
+            {
+                if (!SetProperty(ref _updateIncludePrerelease, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.UpdateIncludePrerelease = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>上一次检查更新的结果说明。</summary>
+        public string UpdateStatusText
+        {
+            get => _updateStatusText;
+            private set => SetProperty(ref _updateStatusText, value);
+        }
+
+        public string CurrentAccountName
+        {
+            get => _currentAccountName;
+            private set => SetProperty(ref _currentAccountName, value);
+        }
+
+        public string CurrentAccountTypeText
+        {
+            get => _currentAccountTypeText;
+            private set => SetProperty(ref _currentAccountTypeText, value);
+        }
+
+        public string CurrentAccountAvatar
+        {
+            get => _currentAccountAvatar;
+            private set => SetProperty(ref _currentAccountAvatar, value);
+        }
+
+        public bool HasAccount
+        {
+            get => _hasAccount;
+            private set => SetProperty(ref _hasAccount, value);
+        }
+
+        public bool ShowHomeGreeting
+        {
+            get => _showHomeGreeting;
+            set => SetHomeFlag(ref _showHomeGreeting, value,
+                v => SettingsService.Current.ShowHomeGreeting = v, nameof(ShowHomeGreeting));
+        }
+
+        public bool ShowHomeLaunchCard
+        {
+            get => _showHomeLaunchCard;
+            set => SetHomeFlag(ref _showHomeLaunchCard, value,
+                v => SettingsService.Current.ShowHomeLaunchCard = v, nameof(ShowHomeLaunchCard));
+        }
+
+        public bool ShowHomeRecent
+        {
+            get => _showHomeRecent;
+            set => SetHomeFlag(ref _showHomeRecent, value,
+                v => SettingsService.Current.ShowHomeRecent = v, nameof(ShowHomeRecent));
+        }
+
+        public bool ShowHomeInstanceOverview
+        {
+            get => _showHomeInstanceOverview;
+            set => SetHomeFlag(ref _showHomeInstanceOverview, value,
+                v => SettingsService.Current.ShowHomeInstanceOverview = v, nameof(ShowHomeInstanceOverview));
+        }
+
+        public bool ShowHomeShortcuts
+        {
+            get => _showHomeShortcuts;
+            set => SetHomeFlag(ref _showHomeShortcuts, value,
+                v => SettingsService.Current.ShowHomeShortcuts = v, nameof(ShowHomeShortcuts));
+        }
+
+        private void SetHomeFlag(ref bool field, bool value, Action<bool> write, string propertyName)
+        {
+            if (!SetProperty(ref field, value, propertyName) || _suppressSettingApply)
+                return;
+
+            write(value);
+            SettingsService.Save();
+        }
+
+        // ===== 游戏 · Java =====
+
+        private bool _useManualJava;
+        private string _manualJavaPath = string.Empty;
+
+        /// <summary>是否使用手动指定的 Java（而不是从检测列表里挑）。</summary>
+        public bool UseManualJava
+        {
+            get => _useManualJava;
+            set
+            {
+                if (!SetProperty(ref _useManualJava, value) || _suppressSettingApply)
+                    return;
+
+                if (value)
+                {
+                    // 打开时把当前生效的路径填进输入框，用户只需改不对的那一段
+                    ManualJavaPath = MainWindowViewModel.MainModel.JavaPath ?? string.Empty;
+                }
+                else
+                {
+                    // 关掉时退回「自动检测」—— 不能把路径清空，
+                    // 否则下次启动会因为找不到 Java 而报错，用户还以为设置坏了。
+                    SelectedJava = JavaEntries.FirstOrDefault();
+                }
+            }
+        }
+
+        /// <summary>手动指定的 java 可执行文件路径。</summary>
+        public string ManualJavaPath
+        {
+            get => _manualJavaPath;
+            set
+            {
+                if (!SetProperty(ref _manualJavaPath, value ?? string.Empty) || _suppressSettingApply)
+                    return;
+
+                if (!_useManualJava || string.IsNullOrWhiteSpace(_manualJavaPath))
+                    return;
+
+                MainWindowViewModel.MainModel.JavaPath = _manualJavaPath;
+                SettingsService.Current.JavaPath = _manualJavaPath;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(JavaPathText));
+            }
+        }
+
+        // ===== 游戏 · 内存滑块 =====
+
+        private double _maxMemoryMbValue = 2048;
+
+        /// <summary>
+        /// 最大内存的滑块值（MB）。
+        ///
+        /// 直接对着 MB 拖，而不是从固定档位里选：档位跨度太大（4G 到 6G 之间就断了），
+        /// 8G 机器想给 5G 只能二选一。落盘时仍按整数 MB 记，和旧的档位配置天然兼容。
+        /// </summary>
+        public double MaxMemoryMbValue
+        {
+            get => _maxMemoryMbValue;
+            set
+            {
+                var rounded = Math.Round(value / 256) * 256;   // 256 MB 一档，拖动时手感更稳
+                if (!SetProperty(ref _maxMemoryMbValue, rounded))
+                    return;
+
+                OnPropertyChanged(nameof(MaxMemorySliderText));
+
+                if (_suppressSettingApply)
+                    return;
+
+                SettingsService.Current.MaxMemoryMb = (int)rounded;
+                SettingsService.Save();
+
+                // 弹窗/概览用的是档位对象，滑条改了要一起对齐，否则 -Xmx 提示还是旧值
+                _selectedMaxMemory = MemoryOptions.LastOrDefault(o => o.Mb <= (int)rounded) ?? MemoryOptions[0];
+                OnPropertyChanged(nameof(SelectedMaxMemory));
+                OnPropertyChanged(nameof(MemoryHint));
+
+                // 拖滑块等于手动指定，自动推荐的勾要自己掉下来
+                if (_memoryAutoRecommend)
+                {
+                    _memoryAutoRecommend = false;
+                    OnPropertyChanged(nameof(MemoryAutoRecommend));
+                    SettingsService.Current.MemoryAutoRecommend = false;
+                    SettingsService.Save();
+                }
+            }
+        }
+
+        public string MaxMemorySliderText => $"{_maxMemoryMbValue / 1024:0.#} GB（{_maxMemoryMbValue:0} MB）";
+
+        private bool _memoryAutoRecommend = true;
+
+        /// <summary>内存是否按本机容量自动推荐。</summary>
+        public bool MemoryAutoRecommend
+        {
+            get => _memoryAutoRecommend;
+            set
+            {
+                if (!SetProperty(ref _memoryAutoRecommend, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.MemoryAutoRecommend = value;
+                SettingsService.Save();
+
+                if (value)
+                    AutoConfigureMemory();
+            }
+        }
+
+        // ===== 游戏 · 高级参数 =====
+
+        private bool _useCustomGameArgs;
+        private string _gameArgs = string.Empty;
+        private string _resourcePacksFolder = string.Empty;
+        private string _savesFolder = string.Empty;
+        private bool _crashReportAutoUpload;
+
+        /// <summary>是否追加自定义游戏参数。</summary>
+        public bool UseCustomGameArgs
+        {
+            get => _useCustomGameArgs;
+            set
+            {
+                if (!SetProperty(ref _useCustomGameArgs, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.UseCustomGameArgs = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>自定义游戏参数，一行一条。</summary>
+        public string GameArgs
+        {
+            get => _gameArgs;
+            set
+            {
+                if (!SetProperty(ref _gameArgs, value ?? string.Empty) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.GameArgs = _gameArgs;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>资源包目录的自定义位置（空 = 游戏目录下的 resourcepacks）。</summary>
+        public string ResourcePacksFolder
+        {
+            get => _resourcePacksFolder;
+            set
+            {
+                if (!SetProperty(ref _resourcePacksFolder, value ?? string.Empty) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.ResourcePacksFolder = _resourcePacksFolder;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(ResourcePacksFolderDisplay));
+            }
+        }
+
+        /// <summary>存档目录的自定义位置（空 = 游戏目录下的 saves）。</summary>
+        public string SavesFolder
+        {
+            get => _savesFolder;
+            set
+            {
+                if (!SetProperty(ref _savesFolder, value ?? string.Empty) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.SavesFolder = _savesFolder;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(SavesFolderDisplay));
+            }
+        }
+
+        public string ResourcePacksFolderDisplay => string.IsNullOrWhiteSpace(_resourcePacksFolder)
+            ? $"默认：{Path.Combine(MinecraftFolder, "resourcepacks")}"
+            : _resourcePacksFolder;
+
+        public string SavesFolderDisplay => string.IsNullOrWhiteSpace(_savesFolder)
+            ? $"默认：{Path.Combine(MinecraftFolder, "saves")}"
+            : _savesFolder;
+
+        /// <summary>崩溃日志自动上传（目前只记本地，开关位留给后续接入）。</summary>
+        public bool CrashReportAutoUpload
+        {
+            get => _crashReportAutoUpload;
+            set
+            {
+                if (!SetProperty(ref _crashReportAutoUpload, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.CrashReportAutoUpload = value;
+                SettingsService.Save();
+            }
+        }
+
+        // ===== 外观 · 主题 =====
+
+        private SettingOption _selectedThemeOption = ThemeOptions[0];
+
+        public static readonly IReadOnlyList<SettingOption> ThemeOptions = new[]
+        {
+            new SettingOption("Light", "亮色"),
+            new SettingOption("Dark", "暗色"),
+            new SettingOption("System", "跟随系统"),
+        };
+
+        public IReadOnlyList<SettingOption> ThemeOptionList => ThemeOptions;
+
+        /// <summary>明暗主题（三态，含跟随系统）。</summary>
+        public SettingOption SelectedThemeOption
+        {
+            get => _selectedThemeOption;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedThemeOption, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.Theme = value.Key;
+                SettingsService.ApplyTheme();
+                SettingsService.ApplyHighContrast();
+                SettingsService.Save();
+
+                _currentTheme = value.Key == "Dark" ? AppThemeMode.Dark : AppThemeMode.Light;
+                OnPropertyChanged(nameof(CurrentTheme));
+                OnPropertyChanged(nameof(CurrentThemeText));
+            }
+        }
+
+        // ===== 外观 · 自定义主题色 =====
+
+        private double _accentR;
+        private double _accentG;
+        private double _accentB;
+
+        public double AccentR
+        {
+            get => _accentR;
+            set { if (SetProperty(ref _accentR, value)) OnAccentChannelChanged(); }
+        }
+
+        public double AccentG
+        {
+            get => _accentG;
+            set { if (SetProperty(ref _accentG, value)) OnAccentChannelChanged(); }
+        }
+
+        public double AccentB
+        {
+            get => _accentB;
+            set { if (SetProperty(ref _accentB, value)) OnAccentChannelChanged(); }
+        }
+
+        /// <summary>取色器的实时预览色块。</summary>
+        public IBrush AccentPreviewBrush
+        {
+            get
+            {
+                var color = Color.FromRgb((byte)_accentR, (byte)_accentG, (byte)_accentB);
+                return new SolidColorBrush(color);
+            }
+        }
+
+        public string AccentHexText =>
+            $"#{((byte)_accentR):X2}{((byte)_accentG):X2}{((byte)_accentB):X2}";
+
+        private void OnAccentChannelChanged()
+        {
+            OnPropertyChanged(nameof(AccentPreviewBrush));
+            OnPropertyChanged(nameof(AccentHexText));
+        }
+
+        // ===== 外观 · 背景 =====
+
+        private SettingOption _selectedBackgroundMode = BackgroundModeOptions[0];
+        private string _backgroundColorHex = "#FF12161C";
+        private double _backgroundBlur;
+        private double _backgroundVignette;
+        private bool _backgroundAnimated;
+
+        public static readonly IReadOnlyList<SettingOption> BackgroundModeOptions = new[]
+        {
+            new SettingOption("None", "无（只保留光斑）"),
+            new SettingOption("Color", "纯色"),
+            new SettingOption("Image", "图片 / 内置壁纸"),
+        };
+
+        public IReadOnlyList<SettingOption> BackgroundModeList => BackgroundModeOptions;
+
+        /// <summary>背景类型：无 / 纯色 / 图片。</summary>
+        public SettingOption SelectedBackgroundMode
+        {
+            get => _selectedBackgroundMode;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedBackgroundMode, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.BackgroundMode = value.Key;
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>纯色背景的十六进制色值。</summary>
+        public string BackgroundColorHex
+        {
+            get => _backgroundColorHex;
+            set
+            {
+                if (!SetProperty(ref _backgroundColorHex, value ?? string.Empty))
+                    return;
+
+                OnPropertyChanged(nameof(BackgroundColorPreviewBrush));
+
+                if (_suppressSettingApply)
+                    return;
+
+                if (!SettingsService.TryParseColor(_backgroundColorHex, out _))
+                    return;
+
+                SettingsService.Current.BackgroundColor = _backgroundColorHex;
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+            }
+        }
+
+        public IBrush BackgroundColorPreviewBrush =>
+            SettingsService.TryParseColor(_backgroundColorHex, out var color)
+                ? new SolidColorBrush(color)
+                : new SolidColorBrush(Colors.Transparent);
+
+        /// <summary>毛玻璃强度 0~1（0 = 不模糊）。</summary>
+        public double BackgroundBlur
+        {
+            get => _backgroundBlur;
+            set
+            {
+                if (!SetProperty(ref _backgroundBlur, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.BackgroundBlur = value;
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>暗角强度 0~1。</summary>
+        public double BackgroundVignette
+        {
+            get => _backgroundVignette;
+            set
+            {
+                if (!SetProperty(ref _backgroundVignette, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.BackgroundVignette = value;
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>背景图是否缓慢缩放（动态背景）。</summary>
+        public bool BackgroundAnimated
+        {
+            get => _backgroundAnimated;
+            set
+            {
+                if (!SetProperty(ref _backgroundAnimated, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.BackgroundAnimated = value;
+                SettingsService.ApplyBackground();
+                SettingsService.Save();
+            }
+        }
+
+        // ===== 外观 · 动效 =====
+
+        private SettingOption _selectedAnimationLevel = AnimationLevelOptions[0];
+        private SettingOption _selectedPageTransition = PageTransitionOptions[0];
+        private double _animationSpeed = 1.0;
+
+        public static readonly IReadOnlyList<SettingOption> AnimationLevelOptions = new[]
+        {
+            new SettingOption("Full", "完整"),
+            new SettingOption("Reduced", "精简"),
+            new SettingOption("Off", "关闭"),
+        };
+
+        public static readonly IReadOnlyList<SettingOption> PageTransitionOptions = new[]
+        {
+            new SettingOption("Slide", "滑动（上浮淡入）"),
+            new SettingOption("Fade", "渐变（只改透明度）"),
+            new SettingOption("None", "无（直接切换）"),
+        };
+
+        public IReadOnlyList<SettingOption> AnimationLevelList => AnimationLevelOptions;
+        public IReadOnlyList<SettingOption> PageTransitionList => PageTransitionOptions;
+
+        /// <summary>动画档位：完整 / 精简 / 关闭。</summary>
+        public SettingOption SelectedAnimationLevel
+        {
+            get => _selectedAnimationLevel;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedAnimationLevel, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.AnimationLevel = value.Key;
+                SettingsService.ApplyMotion();
+                SettingsService.Save();
+                RefreshWindowMotion();
+                OnPropertyChanged(nameof(AnimationLevelHint));
+            }
+        }
+
+        public string AnimationLevelHint => _selectedAnimationLevel.Key switch
+        {
+            "Off" => "所有过渡与入场动画停止，界面变成「点了就变」。",
+            "Reduced" => "保留颜色与明暗反馈，去掉位移和缩放，老机器上更跟手。",
+            _ => "所有动效开启。低配电脑可切到「精简」或「关闭」。"
+        };
+
+        /// <summary>页面切换方式。</summary>
+        public SettingOption SelectedPageTransition
+        {
+            get => _selectedPageTransition;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedPageTransition, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.PageTransition = value.Key;
+                SettingsService.ApplyMotion();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>动画速度倍率 0.5（慢）~ 2（快）。</summary>
+        public double AnimationSpeed
+        {
+            get => _animationSpeed;
+            set
+            {
+                if (!SetProperty(ref _animationSpeed, value))
+                    return;
+
+                OnPropertyChanged(nameof(AnimationSpeedText));
+
+                if (_suppressSettingApply)
+                    return;
+
+                SettingsService.Current.AnimationSpeed = value;
+                SettingsService.ApplyMotion();
+                SettingsService.Save();
+            }
+        }
+
+        public string AnimationSpeedText => $"{_animationSpeed:0.0}×";
+        /// <summary>
+        /// 动效档位变了之后，主窗口根节点挂的类名要重挂一次。
+        /// 类是本地的，改资源不会自动跟着变。
+        /// </summary>
+        private static void RefreshWindowMotion()
+        {
+            if (AppLifetime.MainWindow is Views.Windows.MainWindow window)
+                window.RefreshMotionClasses();
+        }
+
+        /// <summary>把取色器调出来的主色写进配置并立即应用。</summary>
+        private void ApplyCustomAccent()
+        {
+            var color = Color.FromRgb((byte)_accentR, (byte)_accentG, (byte)_accentB);
+            SettingsService.Current.AccentColor = SettingsService.ColorToString(color);
+
+            // 自定义色不属于任何一个预设，选中环要全部熄灭
+            _selectedAccent = null;
+            UpdatePresetSelection();
+            OnPropertyChanged(nameof(SelectedAccent));
+
+            SettingsService.ApplyAccentChange();
+            SettingsService.Save();
+            AppServices.Notifications?.Success($"主题色已应用 {AccentHexText}");
+        }
+
+        /// <summary>登出当前账户（只清选中状态，账户本身留在列表里，下次能直接切回来）。</summary>
+        private void SignOut()
+        {
+            MainWindowViewModel.MainModel.Account = null;
+            SettingsService.SetSelectedAccount(string.Empty);
+            RefreshAccountCard();
+            AppServices.Notifications?.Show("已登出，可随时在「账户」页切回来");
+        }
+
+        /// <summary>刷新首页的账户卡片（进设置页、切账户后都要对一次）。</summary>
+        private void RefreshAccountCard()
+        {
+            var account = MainWindowViewModel.MainModel.Account;
+            HasAccount = account is not null;
+
+            if (account is null)
+            {
+                CurrentAccountName = "未登录";
+                CurrentAccountTypeText = "在「账户」页登录后即可启动游戏";
+                CurrentAccountAvatar = AccountPageViewModel.DefaultAvatarPath();
+                return;
+            }
+
+            CurrentAccountName = string.IsNullOrWhiteSpace(account.Name) ? "未知账户" : account.Name;
+            CurrentAccountTypeText = account switch
+            {
+                MicrosoftAccount => "微软账户",
+                YggdrasilAccount => "第三方认证（Yggdrasil）",
+                OfflineAccount => "离线账户",
+                _ => "账户"
+            };
+
+            CurrentAccountAvatar = AccountPageViewModel.ResolveAvatarPath(account.Uuid.ToString());
+        }
+
+        /// <summary>
+        /// 回填「通用 / 游戏 / 外观 / 网络 / 高级」这几组新设置的控件状态。
+        ///
+        /// 只写字段 + 通知，不走 setter：setter 会逐项落盘，还会在中途触发
+        /// ApplyTheme / ApplyMotion 这类副作用，把还没读完的配置冲掉。
+        /// </summary>
+        private void FillExtendedSettings()
+        {
+            _suppressSettingApply = true;
+            try
+            {
+                var s = SettingsService.Current;
+
+                // 通用
+                _autoLoginLastAccount = s.AutoLoginLastAccount;
+                _minimizeToTray = s.MinimizeToTray;
+                _updateIncludePrerelease = s.UpdateIncludePrerelease;
+                _showHomeGreeting = s.ShowHomeGreeting;
+                _showHomeLaunchCard = s.ShowHomeLaunchCard;
+                _showHomeRecent = s.ShowHomeRecent;
+                _showHomeInstanceOverview = s.ShowHomeInstanceOverview;
+                _showHomeShortcuts = s.ShowHomeShortcuts;
+                OnPropertyChanged(nameof(AutoLoginLastAccount));
+                OnPropertyChanged(nameof(MinimizeToTray));
+                OnPropertyChanged(nameof(UpdateIncludePrerelease));
+                OnPropertyChanged(nameof(ShowHomeGreeting));
+                OnPropertyChanged(nameof(ShowHomeLaunchCard));
+                OnPropertyChanged(nameof(ShowHomeRecent));
+                OnPropertyChanged(nameof(ShowHomeInstanceOverview));
+                OnPropertyChanged(nameof(ShowHomeShortcuts));
+
+                // 游戏
+                _useManualJava = !string.IsNullOrWhiteSpace(s.JavaPath)
+                                 && JavaEntries.All(j => j.JavaPath != s.JavaPath);
+                OnPropertyChanged(nameof(UseManualJava));
+                _manualJavaPath = s.JavaPath ?? string.Empty;
+                OnPropertyChanged(nameof(ManualJavaPath));
+
+                _maxMemoryMbValue = s.MaxMemoryMb;
+                OnPropertyChanged(nameof(MaxMemoryMbValue));
+                OnPropertyChanged(nameof(MaxMemorySliderText));
+                _memoryAutoRecommend = s.MemoryAutoRecommend;
+                OnPropertyChanged(nameof(MemoryAutoRecommend));
+
+                _useCustomGameArgs = s.UseCustomGameArgs;
+                _gameArgs = s.GameArgs ?? string.Empty;
+                OnPropertyChanged(nameof(UseCustomGameArgs));
+                OnPropertyChanged(nameof(GameArgs));
+
+                _resourcePacksFolder = s.ResourcePacksFolder ?? string.Empty;
+                _savesFolder = s.SavesFolder ?? string.Empty;
+                OnPropertyChanged(nameof(ResourcePacksFolder));
+                OnPropertyChanged(nameof(SavesFolder));
+                OnPropertyChanged(nameof(ResourcePacksFolderDisplay));
+                OnPropertyChanged(nameof(SavesFolderDisplay));
+
+                _crashReportAutoUpload = s.CrashReportAutoUpload;
+                OnPropertyChanged(nameof(CrashReportAutoUpload));
+
+                // 外观
+                _selectedThemeOption = ThemeOptions.FirstOrDefault(o =>
+                    string.Equals(o.Key, s.Theme, StringComparison.OrdinalIgnoreCase)) ?? ThemeOptions[0];
+                OnPropertyChanged(nameof(SelectedThemeOption));
+
+                SettingsService.TryParseColor(s.AccentColor, out var accent);
+                _accentR = accent.R;
+                _accentG = accent.G;
+                _accentB = accent.B;
+                OnPropertyChanged(nameof(AccentR));
+                OnPropertyChanged(nameof(AccentG));
+                OnPropertyChanged(nameof(AccentB));
+                OnPropertyChanged(nameof(AccentPreviewBrush));
+                OnPropertyChanged(nameof(AccentHexText));
+
+                _selectedBackgroundMode = BackgroundModeOptions.FirstOrDefault(o => o.Key == s.BackgroundMode)
+                                          ?? BackgroundModeOptions[2];
+                OnPropertyChanged(nameof(SelectedBackgroundMode));
+                _backgroundColorHex = s.BackgroundColor;
+                OnPropertyChanged(nameof(BackgroundColorHex));
+                OnPropertyChanged(nameof(BackgroundColorPreviewBrush));
+                _backgroundBlur = s.BackgroundBlur;
+                _backgroundVignette = s.BackgroundVignette;
+                _backgroundAnimated = s.BackgroundAnimated;
+                OnPropertyChanged(nameof(BackgroundBlur));
+                OnPropertyChanged(nameof(BackgroundVignette));
+                OnPropertyChanged(nameof(BackgroundAnimated));
+
+                _selectedAnimationLevel = AnimationLevelOptions.FirstOrDefault(o => o.Key == s.AnimationLevel)
+                                          ?? AnimationLevelOptions[0];
+                OnPropertyChanged(nameof(SelectedAnimationLevel));
+                OnPropertyChanged(nameof(AnimationLevelHint));
+                _selectedPageTransition = PageTransitionOptions.FirstOrDefault(o => o.Key == s.PageTransition)
+                                          ?? PageTransitionOptions[0];
+                OnPropertyChanged(nameof(SelectedPageTransition));
+                _animationSpeed = s.AnimationSpeed <= 0 ? 1 : s.AnimationSpeed;
+                OnPropertyChanged(nameof(AnimationSpeed));
+                OnPropertyChanged(nameof(AnimationSpeedText));
+
+                // 语言与字体
+                _selectedLanguage = LanguageOptions.FirstOrDefault(o => o.Key == s.Language) ?? LanguageOptions[0];
+                OnPropertyChanged(nameof(SelectedLanguage));
+                _selectedFontFamily = string.IsNullOrWhiteSpace(s.FontFamily) ? "系统默认" : s.FontFamily;
+                OnPropertyChanged(nameof(SelectedFontFamily));
+                _fontScale = Math.Clamp(s.FontScale, SettingsService.MinFontScale, SettingsService.MaxFontScale);
+                OnPropertyChanged(nameof(FontScale));
+                OnPropertyChanged(nameof(FontScaleText));
+                OnPropertyChanged(nameof(FontScalePercent));
+                _highContrast = s.HighContrast;
+                OnPropertyChanged(nameof(HighContrast));
+
+                // 网络
+                _selectedDownloadSource = DownloadSourceOptions.FirstOrDefault(o => o.Key == s.DownloadSourceMode)
+                                          ?? DownloadSourceOptions[0];
+                OnPropertyChanged(nameof(SelectedDownloadSource));
+                _downloadSpeedLimitKb = s.DownloadSpeedLimitKb;
+                OnPropertyChanged(nameof(DownloadSpeedLimitKb));
+                OnPropertyChanged(nameof(DownloadSpeedLimitText));
+                _downloadTimeoutSeconds = DownloadTimeoutOptions.Contains(s.DownloadTimeoutSeconds)
+                    ? s.DownloadTimeoutSeconds
+                    : 30;
+                OnPropertyChanged(nameof(DownloadTimeoutSeconds));
+            }
+            finally
+            {
+                _suppressSettingApply = false;
+            }
+
+            RefreshAccountCard();
+        }
+
+        private SettingOption _selectedLanguage = LanguageOptions[0];
+        private string _selectedFontFamily = "系统默认";
+        private double _fontScale = 1.0;
+        private bool _highContrast;
+
+        public static readonly IReadOnlyList<SettingOption> LanguageOptions = new[]
+        {
+            new SettingOption("zh-CN", "简体中文"),
+            new SettingOption("en-US", "English（尚未提供）"),
+        };
+
+        public IReadOnlyList<SettingOption> LanguageList => LanguageOptions;
+
+        /// <summary>界面语言。目前只有简体中文可用，其余选项保留占位。</summary>
+        public SettingOption SelectedLanguage
+        {
+            get => _selectedLanguage;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedLanguage, value))
+                    return;
+
+                if (value.Key != "zh-CN")
+                {
+                    UpdateStatusTextForLanguage();
+                    return;
+                }
+
+                SettingsService.Current.Language = value.Key;
+                SettingsService.Save();
+            }
+        }
+
+        private void UpdateStatusTextForLanguage()
+        {
+            // 选了未提供的语言就退回中文，并如实告知 —— 而不是假装切过去了
+            _selectedLanguage = LanguageOptions[0];
+            OnPropertyChanged(nameof(SelectedLanguage));
+            AppServices.Notifications?.Warning("目前只提供简体中文界面");
+        }
+
+        /// <summary>系统字体列表（含「系统默认」）。</summary>
+        public ObservableCollection<string> FontFamilyList { get; } = new() { "系统默认" };
+
+        public string SelectedFontFamily
+        {
+            get => _selectedFontFamily;
+            set
+            {
+                if (!SetProperty(ref _selectedFontFamily, value ?? "系统默认") || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.FontFamily = value == "系统默认" ? string.Empty : value;
+                SettingsService.ApplyTypography();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>字体缩放 80% ~ 150%。</summary>
+        /// <summary>
+        /// 用外部字体文件作为界面字体。
+        ///
+        /// <para>
+        /// 字体族名必须一起带上（<c>来源#族名</c>），否则 Avalonia 只知道文件、不知道用里面哪一个字体。
+        /// 族名由调用方从文件里读出来。
+        /// </para>
+        /// </summary>
+        public void SetFontFromFile(string path, string familyName)
+        {
+            var source = "file:///" + path.Replace('\\', '/').TrimStart('/');
+            var spec = $"{source}#{familyName}";
+
+            if (!FontFamilyList.Contains(familyName))
+                FontFamilyList.Add(familyName);
+
+            _selectedFontFamily = familyName;
+            OnPropertyChanged(nameof(SelectedFontFamily));
+
+            SettingsService.Current.FontFamily = spec;
+            SettingsService.ApplyTypography();
+            SettingsService.Save();
+        }
+
+        public double FontScale
+        {
+            get => _fontScale;
+            set
+            {
+                if (!SetProperty(ref _fontScale, value))
+                    return;
+
+                OnPropertyChanged(nameof(FontScaleText));
+                OnPropertyChanged(nameof(FontScalePercent));
+
+                if (_suppressSettingApply)
+                    return;
+
+                SettingsService.Current.FontScale = value;
+                SettingsService.ApplyTypography();
+                SettingsService.Save();
+            }
+        }
+
+        public string FontScaleText => $"{_fontScale * 100:0}%";
+
+        public double FontScalePercent
+        {
+            get => _fontScale * 100;
+            set => FontScale = Math.Clamp(value, SettingsService.MinFontScale * 100,
+                SettingsService.MaxFontScale * 100) / 100;
+        }
+
+        /// <summary>高对比度模式。</summary>
+        public bool HighContrast
+        {
+            get => _highContrast;
+            set
+            {
+                if (!SetProperty(ref _highContrast, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.HighContrast = value;
+                SettingsService.ApplyHighContrast();
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>把系统字体灌进列表（首次初始化时调一次）。</summary>
+        private void LoadFontFamilies()
+        {
+            try
+            {
+                foreach (var family in FontManager.Current.SystemFonts)
+                {
+                    var name = family.Name;
+                    if (!string.IsNullOrWhiteSpace(name) && !FontFamilyList.Contains(name))
+                        FontFamilyList.Add(name);
+                }
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "枚举系统字体失败，字体下拉框只保留「系统默认」");
+            }
+        }
+        // ===== 网络 / 高级 / 关于 =====
+
+        private SettingOption _selectedDownloadSource = DownloadSourceOptions[0];
+        private double _downloadSpeedLimitKb;
+        private int _downloadTimeoutSeconds = 30;
+
+        public static readonly IReadOnlyList<SettingOption> DownloadSourceOptions = new[]
+        {
+            new SettingOption("Auto", "自动测速（镜像优先，可回退官方）"),
+            new SettingOption("Mirror", "固定镜像（只走镜像）"),
+            new SettingOption("Official", "官方优先"),
+        };
+
+        public IReadOnlyList<SettingOption> DownloadSourceList => DownloadSourceOptions;
+
+        /// <summary>下载源策略。</summary>
+        public SettingOption SelectedDownloadSource
+        {
+            get => _selectedDownloadSource;
+            set
+            {
+                if (value == null || !SetProperty(ref _selectedDownloadSource, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadSourceMode = value.Key;
+                SettingsService.Save();
+                SettingsService.ApplyDownloadSettings();
+
+                _useBmclMirror = value.Key != "Official";
+                OnPropertyChanged(nameof(UseBmclMirror));
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+            }
+        }
+
+        /// <summary>总速度上限（KB/s），0 表示不限。</summary>
+        public double DownloadSpeedLimitKb
+        {
+            get => _downloadSpeedLimitKb;
+            set
+            {
+                if (!SetProperty(ref _downloadSpeedLimitKb, value))
+                    return;
+
+                OnPropertyChanged(nameof(DownloadSpeedLimitText));
+
+                if (_suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadSpeedLimitKb = (int)value;
+                SettingsService.Save();
+            }
+        }
+
+        public string DownloadSpeedLimitText =>
+            _downloadSpeedLimitKb <= 0 ? "不限" : $"{_downloadSpeedLimitKb / 1024:0.#} MB/s";
+
+        public static readonly IReadOnlyList<int> DownloadTimeoutOptions = new[] { 10, 15, 20, 30, 45, 60, 90, 120 };
+        public IReadOnlyList<int> DownloadTimeoutList => DownloadTimeoutOptions;
+
+        /// <summary>多久收不到数据就判定连接卡死（秒）。</summary>
+        public int DownloadTimeoutSeconds
+        {
+            get => _downloadTimeoutSeconds;
+            set
+            {
+                if (!SetProperty(ref _downloadTimeoutSeconds, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.DownloadTimeoutSeconds = value;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>把日志目录打包成 zip 导出（比单个 log 文件更适合发给开发者）。</summary>
+        public async Task ExportLogArchiveAsync(string destination)
+        {
+            try
+            {
+                if (File.Exists(destination))
+                    File.Delete(destination);
+
+                System.IO.Compression.ZipFile.CreateFromDirectory(
+                    LogService.LogDirectory, destination,
+                    System.IO.Compression.CompressionLevel.Optimal,
+                    includeBaseDirectory: true);
+
+                LogActionMessage = $"已导出日志包到 {destination}";
+                AppServices.Notifications?.Success("日志包已导出");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "导出日志压缩包失败");
+                LogActionMessage = "导出失败：" + ex.Message;
+                AppServices.Notifications?.Error("导出日志包失败");
+            }
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>重置配置（保留账户、游戏目录与 Java 设置）。</summary>
+        public async Task ResetSettingsAsync()
+        {
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            var confirmed = await dialogs.ConfirmAsync(
+                "重置设置",
+                "外观、启动参数、下载与日志设置都会恢复默认值。\n" +
+                "账户、游戏目录和 Java 路径会保留，存档与模组不受影响。\n\n确定继续吗？",
+                "恢复默认", "取消");
+
+            if (!confirmed)
+                return;
+
+            SettingsService.ResetToDefaults();
+
+            // 重置后界面上所有控件要跟着回到默认值
+            _isInitialized = false;
+            InitializeViewModel();
+            AppServices.Notifications?.Success("设置已恢复默认");
+        }
+
+        /// <summary>检查更新。</summary>
+        public async Task CheckUpdateAsync()
+        {
+            UpdateStatusText = "正在检查…";
+
+            var result = await UpdateService.CheckAsync(_updateIncludePrerelease);
+            UpdateStatusText = result.Message;
+
+            if (result.Status != UpdateCheckStatus.UpdateAvailable || result.Latest is null)
+            {
+                AppServices.Notifications?.Show(result.Message);
+                return;
+            }
+
+            var latest = result.Latest;
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            var go = await dialogs.ConfirmAsync(
+                "发现新版本",
+                $"最新版本：{latest.TagName}\n发布时间：{latest.PublishedAt.ToLocalTime():yyyy-MM-dd}\n\n是否打开下载页面？",
+                "打开", "稍后");
+
+            if (go)
+                OpenUrl(latest.HtmlUrl);
+        }
+
+        /// <summary>打开一个外部链接（统一的异常处理，避免点了没反应）。</summary>
+        internal static void OpenUrl(string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "打开链接失败：{Url}", url);
+                AppServices.Notifications?.Error("打不开这个链接");
+            }
         }
 
         // ===== 日志 =====
@@ -1265,6 +2416,15 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 }
 
                 SelectedMaxMemory = best;
+
+                // 滑条也要跟着走，否则点了「自动推荐」界面上还是原来的数字
+                if (Math.Abs(_maxMemoryMbValue - best.Mb) > 0.5)
+                {
+                    _maxMemoryMbValue = best.Mb;
+                    OnPropertyChanged(nameof(MaxMemoryMbValue));
+                    OnPropertyChanged(nameof(MaxMemorySliderText));
+                }
+
                 Serilog.Log.Information("已按本机内存（{Total} MB）自动设为 {Mb} MB", totalMb, best.Mb);
             }
             catch (Exception ex)

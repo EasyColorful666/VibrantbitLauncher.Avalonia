@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAvalonia.Styling;
@@ -91,7 +92,96 @@ namespace VibrantbitLauncher.Services
         /// <summary>用户是否已被询问过「要不要开启性能模式」，避免每次启动都弹。</summary>
         public bool PerformanceModeAsked { get; set; }
 
+        // ===== 通用 · 主页显示项 =====
+        // 「主页」指启动页（导航里的「启动」）。这些开关只影响那一页的模块可见性，
+        // 关掉任何一个都不会让功能消失 —— 对应功能在别的页面仍然可达。
+        public bool ShowHomeGreeting { get; set; } = true;
+        public bool ShowHomeLaunchCard { get; set; } = true;
+        public bool ShowHomeRecent { get; set; } = true;
+        public bool ShowHomeInstanceOverview { get; set; } = true;
+        public bool ShowHomeShortcuts { get; set; } = true;
+
+        /// <summary>启动时自动恢复上次登录的账户（见 <see cref="AccountRestorer"/>）。</summary>
+        public bool AutoLoginLastAccount { get; set; } = true;
+
+        /// <summary>检查更新时是否包含测试版（pre-release）发布。</summary>
+        public bool UpdateIncludePrerelease { get; set; }
+
+        // ===== 游戏 · 启动参数 =====
+        /// <summary>是否追加用户自定义的游戏参数（写在 mojang 的 game 参数之后）。</summary>
+        public bool UseCustomGameArgs { get; set; }
+        /// <summary>自定义游戏参数，一行一条。</summary>
+        public string GameArgs { get; set; } = string.Empty;
+
+        /// <summary>资源包目录的自定义位置；空表示用游戏目录下的 resourcepacks。</summary>
+        public string ResourcePacksFolder { get; set; } = string.Empty;
+        /// <summary>存档目录的自定义位置；空表示用游戏目录下的 saves。</summary>
+        public string SavesFolder { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 内存分配是否为「自动推荐」。
+        ///
+        /// 开启时 <see cref="MaxMemoryMb"/> 由本机内存推算（一半向下取档），
+        /// 用户拖滑块即自动切到手动。
+        /// </summary>
+        public bool MemoryAutoRecommend { get; set; } = true;
+
+        // ===== 外观 · 动效 =====
+        /// <summary>动画档位：Full（完整）/ Reduced（精简）/ Off（关闭）。</summary>
+        public string AnimationLevel { get; set; } = "Full";
+
+        /// <summary>页面切换方式：Slide（滑动）/ Fade（渐变）/ None（无）。</summary>
+        public string PageTransition { get; set; } = "Slide";
+
+        /// <summary>动画速度倍率，0.5（慢）~ 2（快），1 为基准。</summary>
+        public double AnimationSpeed { get; set; } = 1.0;
+
+        // ===== 外观 · 语言与字体 =====
+        /// <summary>界面语言。目前仅提供 zh-CN，保留字段以便后续扩展。</summary>
+        public string Language { get; set; } = "zh-CN";
+
+        /// <summary>界面字体族名；空表示跟随系统默认。</summary>
+        public string FontFamily { get; set; } = string.Empty;
+
+        /// <summary>字体缩放倍率，0.8 ~ 1.5。</summary>
+        public double FontScale { get; set; } = 1.0;
+
+        /// <summary>高对比度模式：把正文与次要文字拉到纯黑 / 纯白。</summary>
+        public bool HighContrast { get; set; }
+
+        // ===== 外观 · 背景 =====
+        /// <summary>背景模式：None（无）/ Color（纯色）/ Image（图片或内置壁纸）。</summary>
+        public string BackgroundMode { get; set; } = "Image";
+
+        /// <summary>纯色背景的颜色（仅 BackgroundMode 为 Color 时生效）。</summary>
+        public string BackgroundColor { get; set; } = "#FF12161C";
+
+        /// <summary>毛玻璃强度 0~1：作用在背景图上，越大越模糊。</summary>
+        public double BackgroundBlur { get; set; }
+
+        /// <summary>暗角强度 0~1：向四角压暗，突出中间内容。</summary>
+        public double BackgroundVignette { get; set; }
+
+        /// <summary>背景图是否缓慢缩放（"动态"背景）。</summary>
+        public bool BackgroundAnimated { get; set; }
+
+        // ===== 高级 · 诊断 =====
+        /// <summary>崩溃日志是否自动上传（目前仅记录到本地日志，保留开关位）。</summary>
+        public bool CrashReportAutoUpload { get; set; }
+
         // ===== 网络 · 下载 =====
+        /// <summary>
+        /// 下载源策略：Auto（自动测速，镜像优先并允许官方兜底）/
+        /// Mirror（固定镜像，镜像不可用也不回退）/ Official（官方优先）。
+        /// </summary>
+        public string DownloadSourceMode { get; set; } = "Auto";
+
+        /// <summary>单次下载的总速度上限（KB/s，0 表示不限）。</summary>
+        public int DownloadSpeedLimitKb { get; set; }
+
+        /// <summary>单个 HTTP 请求的超时秒数。</summary>
+        public int DownloadTimeoutSeconds { get; set; } = 30;
+
         /// <summary>使用 BMCLAPI 镜像下载（国内加速）。</summary>
         public bool UseBmclMirror { get; set; }
 
@@ -222,6 +312,11 @@ namespace VibrantbitLauncher.Services
                     // 有些编辑器 / 脚本会写入 UTF-8 BOM，JsonSerializer 不接受，这里显式去掉
                     var json = File.ReadAllText(ConfigPath).TrimStart('\uFEFF');
                     Current = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+
+                    // 老配置没有「下载源策略」这个字段：按原来的镜像开关推断，
+                    // 否则关过镜像的人升级后会被默默改回镜像优先。
+                    if (!json.Contains("\"DownloadSourceMode\"", StringComparison.Ordinal))
+                        Current.DownloadSourceMode = Current.UseBmclMirror ? "Auto" : "Official";
                 }
             }
             catch (Exception ex)
@@ -279,6 +374,10 @@ namespace VibrantbitLauncher.Services
                     Current.MinecraftFolder = MainWindowViewModel.MainModel.MinecraftFolder ?? "./.minecraft";
                     Current.JavaPath = MainWindowViewModel.MainModel.JavaPath ?? string.Empty;
                     Current.IsMicrosoftAccount = MainWindowViewModel.MainModel.IsMicrosoftAccount;
+
+                    // 新旧两个镜像字段保持同步：UseBmclMirror 仍被下载链路直接读取，
+                    // 口径统一由 DownloadSourceMode 决定，避免两处各说各话。
+                    Current.UseBmclMirror = DownloadSourceMode != "Official";
 
                     // 先写临时文件再原子替换：写到一半被打断也不会留下半截 JSON
                     var json = JsonSerializer.Serialize(Current, JsonOptions);
@@ -405,6 +504,12 @@ namespace VibrantbitLauncher.Services
         /// 那条链路在每次下载时实时读 <see cref="AppSettings.DownloadConcurrency"/> 与
         /// <see cref="AppSettings.DownloadChunkCount"/>，不需要重新 Initialize。
         /// </summary>
+        /// <summary>下载源策略的规范值：Auto / Mirror / Official。</summary>
+        public static string DownloadSourceMode =>
+            Current.DownloadSourceMode is "Auto" or "Mirror" or "Official"
+                ? Current.DownloadSourceMode
+                : "Auto";
+
         public static void ApplyDownloadSettings()
         {
             try
@@ -414,13 +519,20 @@ namespace VibrantbitLauncher.Services
                     settings.MaxThread = 256;
                     settings.MaxFragment = 128;
                     settings.MaxRetryCount = Math.Clamp(Current.DownloadRetryCount, 0, 10);
-                    settings.IsEnableMirror = Current.UseBmclMirror;
+                    // 「固定官方源」才真的关掉镜像改写；自动 / 固定镜像都允许走镜像
+                    settings.IsEnableMirror = DownloadSourceMode != "Official";
                     settings.IsEnableFragment = false;
                 });
 
-                Serilog.Log.Information("下载设置：下载源={Source} 重试={Retry} 次",
-                    Current.UseBmclMirror ? "BMCLAPI 镜像" : "官方源",
-                    Current.DownloadRetryCount);
+                Serilog.Log.Information("下载设置：下载源={Source} 重试={Retry} 次 限速={Limit}",
+                    DownloadSourceMode switch
+                    {
+                        "Mirror" => "固定镜像",
+                        "Official" => "官方优先",
+                        _ => "自动测速"
+                    },
+                    Current.DownloadRetryCount,
+                    Current.DownloadSpeedLimitKb > 0 ? $"{Current.DownloadSpeedLimitKb} KB/s" : "不限");
             }
             catch (Exception ex)
             {
@@ -434,10 +546,36 @@ namespace VibrantbitLauncher.Services
         public static readonly Color DefaultAccentColor = Color.FromRgb(0x00, 0x78, 0xD4);
 
         private static bool IsDarkTheme =>
-            Current.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+            CurrentThemeVariant == ThemeVariant.Dark;
+
+        /// <summary>是否「跟随系统」明暗。</summary>
+        public static bool FollowSystemTheme =>
+            Current.Theme.Equals("System", StringComparison.OrdinalIgnoreCase)
+            || Current.Theme.Equals("FollowSystem", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>系统当前的明暗（拿不到平台信息时按亮色处理）。</summary>
+        private static ThemeVariant SystemThemeVariant
+        {
+            get
+            {
+                try
+                {
+                    var variant = Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant;
+                    return variant == PlatformThemeVariant.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+                }
+                catch
+                {
+                    return ThemeVariant.Light;
+                }
+            }
+        }
 
         private static ThemeVariant CurrentThemeVariant =>
-            IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
+            FollowSystemTheme
+                ? SystemThemeVariant
+                : Current.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+                    ? ThemeVariant.Dark
+                    : ThemeVariant.Light;
 
         /// <summary>
         /// 按用户设置「应该」用的主题变体。
@@ -447,11 +585,14 @@ namespace VibrantbitLauncher.Services
         /// </summary>
         public static ThemeVariant DesiredThemeVariant => CurrentThemeVariant;
 
-        /// <summary>一次性应用「明暗主题 + 主题色/渐变 + 背景图」，启动时调用。</summary>
+        /// <summary>一次性应用「明暗主题 + 主题色/渐变 + 背景图 + 字体 + 动效」，启动时调用。</summary>
         public static void ApplyAppearance()
         {
             ApplyTheme();
             ApplyPerformanceMode();
+            ApplyTypography();
+            ApplyMotion();
+            ApplyHighContrast();
             ApplyBackground();
         }
 
@@ -471,6 +612,189 @@ namespace VibrantbitLauncher.Services
 
             Serilog.Log.Information("性能模式：{State}", Current.PerformanceMode ? "已开启" : "已关闭");
         }
+
+        // ===== 字体 / 字号缩放 =====
+
+        /// <summary>
+        /// 字号阶梯的基准值（与 Styles/AppTheme.axaml 里的 FontSize* 一一对应）。
+        /// 缩放时按这份基准重算，而不是读当前资源 —— 连续拖动滑块不会累积误差。
+        /// </summary>
+        private static readonly (string Key, double Base)[] FontScaleTokens =
+        {
+            ("FontSizeDisplay", 32),
+            ("FontSizeHero", 26),
+            ("FontSizeTitle", 22),
+            ("FontSizeSubtitle", 17),
+            ("FontSizeBodyLarge", 15),
+            ("FontSizeBody", 14),
+            ("FontSizeCaption", 12),
+        };
+
+        /// <summary>字体缩放的合法区间，和设置页滑块保持一致。</summary>
+        public const double MinFontScale = 0.8;
+        public const double MaxFontScale = 1.5;
+
+        /// <summary>
+        /// 应用字体与字号缩放。
+        ///
+        /// <para>
+        /// 字号 token 在页面里用 <c>DynamicResource</c> 引用，所以改这里会即时生效；
+        /// 各页面不必感知缩放的存在。
+        /// </para>
+        /// </summary>
+        public static void ApplyTypography()
+        {
+            if (Application.Current?.Resources is not { } resources)
+                return;
+
+            var scale = Math.Clamp(Current.FontScale, MinFontScale, MaxFontScale);
+            foreach (var (key, baseline) in FontScaleTokens)
+                resources[key] = Math.Round(baseline * scale, 1);
+
+            // 字体：空表示跟随系统。Fluent 的控件文字走 ContentControlThemeFontFamily，
+            // 页面标题走 AppFont / AppDisplayFont，三者要一起改，否则只有一半变了。
+            var family = string.IsNullOrWhiteSpace(Current.FontFamily)
+                ? null
+                : new FontFamily(Current.FontFamily);
+
+            if (family is null)
+            {
+                resources.Remove("ContentControlThemeFontFamily");
+                resources.Remove("AppFont");
+                resources.Remove("AppDisplayFont");
+            }
+            else
+            {
+                resources["ContentControlThemeFontFamily"] = family;
+                resources["AppFont"] = family;
+                resources["AppDisplayFont"] = family;
+            }
+
+            Serilog.Log.Information("字体已应用：{Family}，缩放 {Scale:P0}", family?.Name ?? "系统默认", scale);
+        }
+
+        // ===== 动效 =====
+
+        /// <summary>动画档位取值：Full / Reduced / Off。</summary>
+        public static string AnimationLevel =>
+            NormalizeAnimationLevel(Current.AnimationLevel);
+
+        /// <summary>页面切换方式：Slide / Fade / None。</summary>
+        public static string PageTransitionMode
+        {
+            get
+            {
+                var value = Current.PageTransition;
+                return value is "Slide" or "Fade" or "None" ? value : "Slide";
+            }
+        }
+
+        /// <summary>动画速度倍率（0.5~2），1 为基准；时长要除以它。</summary>
+        public static double AnimationSpeed =>
+            Math.Clamp(Current.AnimationSpeed <= 0 ? 1 : Current.AnimationSpeed, 0.5, 2.0);
+
+        private static string NormalizeAnimationLevel(string? value) =>
+            value is "Full" or "Reduced" or "Off" ? value : "Full";
+
+        /// <summary>
+        /// 应用动效设置：往应用资源里写档位与速度，样式系统据此决定动画时长与是否播放。
+        ///
+        /// <para>
+        /// 性能模式是「一键关掉一切」的粗暴开关；动效档位是细分控制。
+        /// 两者取更严格的那个 —— 性能模式开着时，档位再怎么设也按 Off 处理。
+        /// </para>
+        /// </summary>
+        public static void ApplyMotion()
+        {
+            if (Application.Current?.Resources is not { } resources)
+                return;
+
+            var level = Current.PerformanceMode ? "Off" : AnimationLevel;
+
+            resources["MotionLevel"] = level;
+            resources["AnimationSpeed"] = AnimationSpeed;
+            resources["PageTransitionMode"] = PageTransitionMode;
+
+            Serilog.Log.Information("动效设置：档位 {Level}，页面切换 {Transition}，速度 {Speed}x",
+                level, PageTransitionMode, AnimationSpeed);
+        }
+
+        // ===== 高对比度 =====
+
+        /// <summary>
+        /// 高对比度模式：把正文与次要文字拉到纯黑 / 纯白，并加深分割线。
+        ///
+        /// <para>
+        /// 只改文字与描边，不动背景与强调色 —— 强调色是品牌标识，用户选的色不该被覆盖。
+        /// </para>
+        /// </summary>
+        public static void ApplyHighContrast()
+        {
+            if (Application.Current?.Resources is not { } resources)
+                return;
+
+            if (!Current.HighContrast)
+            {
+                resources.Remove("TextFillColorPrimaryBrush");
+                resources.Remove("TextFillColorSecondaryBrush");
+                resources.Remove("TextFillColorTertiaryBrush");
+                resources.Remove("AppStrokes");
+                return;
+            }
+
+            var foreground = IsDarkTheme ? Colors.White : Colors.Black;
+            var secondary = IsDarkTheme
+                ? Color.FromRgb(0xE6, 0xE6, 0xE6)
+                : Color.FromRgb(0x1A, 0x1A, 0x1A);
+
+            resources["TextFillColorPrimaryBrush"] = new SolidColorBrush(foreground);
+            resources["TextFillColorSecondaryBrush"] = new SolidColorBrush(secondary);
+            resources["TextFillColorTertiaryBrush"] = new SolidColorBrush(secondary);
+
+            Serilog.Log.Information("高对比度：已开启");
+        }
+
+        // ===== 重置配置 =====
+
+        /// <summary>
+        /// 把设置恢复为出厂值。
+        ///
+        /// <para>
+        /// <b>保留</b>账户（凭证）、当前选中的账户、游戏目录、Java 路径与 Java 安装目录 ——
+        /// 这些是「用户积累下来的资产」，重置配置的意图是「界面和参数乱了想回到默认」，
+        /// 不是「把游戏存档和登录状态一起清掉」。
+        /// </para>
+        /// </summary>
+        public static void ResetToDefaults()
+        {
+            var keep = new AppSettings
+            {
+                MicrosoftAccounts = Current.MicrosoftAccounts,
+                YggdrasilAccounts = Current.YggdrasilAccounts,
+                OfflineAccounts = Current.OfflineAccounts,
+                SelectedAccountUuid = Current.SelectedAccountUuid,
+                IsMicrosoftAccount = Current.IsMicrosoftAccount,
+                MinecraftFolder = Current.MinecraftFolder,
+                JavaPath = Current.JavaPath,
+                JavaRuntimeRoot = Current.JavaRuntimeRoot,
+                IsFirstRun = Current.IsFirstRun,
+                PerformanceModeAsked = Current.PerformanceModeAsked,
+            };
+
+            Current = keep;
+            Save();
+
+            ApplyTheme();
+            ApplyPerformanceMode();
+            ApplyTypography();
+            ApplyMotion();
+            ApplyHighContrast();
+            ApplyDownloadSettings();
+            ApplyBackground();
+
+            Serilog.Log.Information("设置已重置为默认值（账户、游戏目录与 Java 设置已保留）");
+        }
+
 
         /// <summary>
         /// 刷新主题：先关掉 FluentAvalonia 的「跟随系统」，再写入主题色 / 手写色资源，
@@ -546,7 +870,12 @@ namespace VibrantbitLauncher.Services
             }
 
             // ③ 资源全部就位后，最后切主题变体 —— 此时没有任何东西会把它改回去了
-            Application.Current.RequestedThemeVariant = CurrentThemeVariant;
+            //    「跟随系统」时写 Default，交给平台事件驱动；此时 CurrentThemeVariant
+            //    已经解析成系统当前的值，上面算出来的底色不会和变体打架。
+            Application.Current.RequestedThemeVariant =
+                FollowSystemTheme ? ThemeVariant.Default : CurrentThemeVariant;
+
+            EnsureSystemThemeListener();
 
             // ④ 记一笔「设置 vs 实际」，以后再有明暗不对的问题能一眼看出是谁没生效
             var actual = Application.Current.ActualThemeVariant;
@@ -560,6 +889,41 @@ namespace VibrantbitLauncher.Services
                 Serilog.Log.Information("主题已应用：{Variant}（强调色 {Primary}，渐变 {Gradient}）",
                     actual, ResolvePrimary(), Current.UseAccentGradient);
             }
+
+            _lastAppliedVariant = actual;
+        }
+
+        /// <summary>上一次应用时实际生效的主题变体，用于抑制「自己改、自己又收到事件」的回环。</summary>
+        private static ThemeVariant? _lastAppliedVariant;
+
+        private static bool _systemThemeHooked;
+
+        /// <summary>
+        /// 订阅一次系统明暗变化。
+        ///
+        /// <para>
+        /// 「跟随系统」模式下，变体本身由 Avalonia 自动切；但本工程另有一批
+        /// <b>手写进资源的颜色</b>（窗口兜底色、壁纸遮罩、强调色派生色），
+        /// 它们不会随变体自动重算，必须在这里补一次。
+        /// </para>
+        /// </summary>
+        private static void EnsureSystemThemeListener()
+        {
+            if (_systemThemeHooked || Application.Current is not { } app)
+                return;
+
+            _systemThemeHooked = true;
+            app.ActualThemeVariantChanged += (_, _) =>
+            {
+                if (!FollowSystemTheme)
+                    return;
+
+                var now = app.ActualThemeVariant;
+                if (_lastAppliedVariant == now)
+                    return;
+
+                ApplyTheme();
+            };
         }
 
         /// <summary>主题色 / 渐变发生变化时的统一入口。</summary>
@@ -629,6 +993,39 @@ namespace VibrantbitLauncher.Services
             resources["AppAccentSurfaceBrush"] = new SolidColorBrush(primary) { Opacity = 0.12 };
             resources["AppAccentSurfaceStrongBrush"] = new SolidColorBrush(primary) { Opacity = 0.20 };
 
+            // 强调色光晕（径向衰减到全透明）：只给启动页的主按钮做"呼吸"用。
+            // 渐变停靠点必须是 Color 而不是 Brush —— GradientStop.Color 是 Color 类型，
+            // 顺手把 alpha 按 55% / 0% 写死，页面上不需要再叠透明度。
+            resources["AppAccentHaloBrush"] = new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                GradientOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                RadiusX = new RelativeScalar(0.5, RelativeUnit.Relative),
+                RadiusY = new RelativeScalar(0.5, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(WithAlpha(primary, 0.55), 0),
+                    new GradientStop(WithAlpha(primary, 0), 1)
+                }
+            };
+
+            // 强调色细线：页标题下那道 2px×28 的短横、导航选中条共用。
+            resources["AppAccentHairlineBrush"] = new SolidColorBrush(primary) { Opacity = 0.45 };
+
+            // 背景极光的主光斑：主色向外淡出。透明度比光晕更低，只负责"有颜色"。
+            resources["AppAccentAuroraBrush"] = new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                GradientOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                RadiusX = new RelativeScalar(0.5, RelativeUnit.Relative),
+                RadiusY = new RelativeScalar(0.5, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(WithAlpha(primary, isDark ? 0.30 : 0.22), 0),
+                    new GradientStop(WithAlpha(primary, 0), 1)
+                }
+            };
+
             // 侧边栏（FANavigationView）的选中态用的是 NavigationView 专属资源键。
             // CustomAccentColor 已经会重算它们，这里再显式写一遍作为兜底（版本差异 / 未覆盖到的键）。
             resources["NavigationViewSelectionIndicatorForeground"] = new SolidColorBrush(primary);
@@ -645,25 +1042,44 @@ namespace VibrantbitLauncher.Services
             resources["NavigationViewItemForegroundSelectedPressed"] = new SolidColorBrush(Darken(selectedForeground, 0.12));
         }
 
-        /// <summary>把当前配置的背景图广播给主窗口（主窗口负责实际的图片加载与渲染）。</summary>
+        /// <summary>
+        /// 把当前背景配置广播给主窗口（主窗口负责实际的图片加载、模糊与暗角渲染）。
+        /// </summary>
         public static void ApplyBackground()
         {
-            ApplyContentBackground();
+            var mode = Current.BackgroundMode;
+            if (mode is not ("None" or "Color" or "Image"))
+                mode = "Image";
 
-            WeakReferenceMessenger.Default.Send(
-                new BackgroundChangedMessage(Current.BackgroundImagePath, Current.BackgroundImageOpacity));
+            ApplyContentBackground(mode);
+
+            WeakReferenceMessenger.Default.Send(new BackgroundChangedMessage(
+                ImagePath: string.IsNullOrWhiteSpace(Current.BackgroundImagePath) ? null : Current.BackgroundImagePath,
+                Opacity: Math.Clamp(Current.BackgroundImageOpacity, 0.05, 1),
+                Mode: mode,
+                ColorHex: Current.BackgroundColor,
+                Blur: Math.Clamp(Current.BackgroundBlur, 0, 1),
+                Vignette: Math.Clamp(Current.BackgroundVignette, 0, 1),
+                Animated: Current.BackgroundAnimated));
         }
 
         /// <summary>
-        /// 让导航内容区透出窗口背景。只有在确实设置了壁纸时才把它改成透明。
+        /// 让导航内容区透出窗口背景。只有在确实「有背景」时才把它改成透明。
         /// </summary>
-        private static void ApplyContentBackground()
+        private static void ApplyContentBackground(string mode)
         {
             var resources = Application.Current?.Resources;
             if (resources == null)
                 return;
 
-            if (!string.IsNullOrWhiteSpace(Current.BackgroundImagePath))
+            var hasBackground = mode switch
+            {
+                "Color" => true,
+                "Image" => !string.IsNullOrWhiteSpace(Current.BackgroundImagePath),
+                _ => false
+            };
+
+            if (hasBackground)
                 resources["NavigationViewContentBackground"] = new SolidColorBrush(Colors.Transparent);
             else
                 resources.Remove("NavigationViewContentBackground");
@@ -685,6 +1101,12 @@ namespace VibrantbitLauncher.Services
                 }
             };
         }
+
+        /// <summary>
+        /// 给颜色套一个透明度（0~1）。用于生成光晕渐变的两个停靠点。
+        /// </summary>
+        private static Color WithAlpha(Color color, double alpha) =>
+            Color.FromArgb((byte)Math.Round(Math.Clamp(alpha, 0d, 1d) * 255), color.R, color.G, color.B);
 
         private static Color Blend(Color from, Color to, double ratio)
         {

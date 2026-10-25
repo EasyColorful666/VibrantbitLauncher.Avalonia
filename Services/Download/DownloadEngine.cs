@@ -82,8 +82,15 @@ internal static class DownloadEngine
             MaxTryAgainOnFailure = MaxTryAgainOnFailure,
             MinimumSizeOfChunking = ChunkyThreshold,
             MinimumChunkSize = MinChunkSize,
-            BlockTimeout = BlockTimeoutMs,
+            // 「多久没收到字节算卡死」由设置页的「连接超时」决定（10~120 秒）。
+            // 慢而稳的大文件不会被误杀，真正挂住的连接到了时限就会被掐掉重试。
+            BlockTimeout = Math.Clamp(SettingsService.Current.DownloadTimeoutSeconds, 10, 120) * 1000,
             HttpClientTimeout = HttpClientTimeoutMs,
+            // 限速：0 表示不限。作用在整个文件的平均速度上（库内按块摊算），
+            // 所以「限速 1 MB/s」在分块下载时也成立，不会被并发放大成 N 倍。
+            MaximumBytesPerSecond = SettingsService.Current.DownloadSpeedLimitKb > 0
+                ? SettingsService.Current.DownloadSpeedLimitKb * 1024L
+                : 0,
             // 50 MB 上限的内存缓冲：分块下载默认把收到的数据先放内存再落盘，
             // 不设上限时下几百 MB 的整合包会把内存顶起来。
             MaximumMemoryBufferBytes = 50L * 1024 * 1024,

@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="VibrantbitLauncher.Controls.SettingRow"
+             mc:Ignorable="d">
+
+    <!--
+        设置项的一行：左边「标题 + 一句说明」，右边是控件。
+
+        为什么要抽成控件：设置页有几十行同一结构，每行手写一遍 Grid + 两个 TextBlock
+        既容易错位（左边距 / 行距不一致），也让人一眼看不出「这里到底有多少项」。
+        抽出来之后，页面本身只剩下「有哪几项」这个信息。
+
+        ⚠️ 这里**不用** {Binding $parent[...]} 也不用 TemplateBinding：
+        $parent[自定义类型] 的反射绑定在本项目里解析不到类型（直接抛错），
+        退成 $parent[UserControl] 又会因为 UserControl 上没有 Header 而静默失败 ——
+        两种写法的结果都是"整页设置项全部空白"。改由代码后置在属性变更时直接写控件，
+        与 PageHeader 同一套做法。
+
+        ⚠️ 布局必须写在 <UserControl.Content> 里：本控件把 Body 标成了 [Content]，
+        直接写自由子元素会被塞进 Body，布局本身反而成了内容（第一次写完就是这样炸的）。
+    -->
+    <UserControl.Content>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                <TextBlock x:Name="PART_Header"
+                           Classes="body"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="PART_Description"
+                           Classes="caption"
+                           Margin="0,3,0,0"
+                           Opacity="0.85"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ContentPresenter x:Name="PART_Body"
+                              Grid.Column="1"
+                              VerticalAlignment="Center" />
+        </Grid>
+    </UserControl.Content>
+</UserControl>

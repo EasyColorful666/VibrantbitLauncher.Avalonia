@@ -15,7 +15,7 @@ namespace VibrantbitLauncher.Views.Pages;
 public partial class AccountPage : UserControl
 {
     /// <summary>单个元素的入场时长：短促、不拖沓，看得出「浮上来」就够了。</summary>
-    private static readonly TimeSpan EntranceDuration = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan EntranceDuration = TimeSpan.FromMilliseconds(200);
 
     private const int EntranceStaggerMs = 40;
 

@@ -30,6 +30,14 @@ namespace VibrantbitLauncher.Services
             var settings = SettingsService.Current;
             var uuid = settings.SelectedAccountUuid;
 
+            // 「通用 → 启动时自动登录上次账户」关掉时，连选中状态都不恢复：
+            // 这是一台多人共用的机器时想要的 —— 谁打开就用自己的账户。
+            if (!settings.AutoLoginLastAccount)
+            {
+                Serilog.Log.Information("账户恢复：已关闭「自动登录上次账户」，跳过");
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(uuid))
             {
                 Serilog.Log.Information("账户恢复：配置里没有上次选择的账户，跳过");
