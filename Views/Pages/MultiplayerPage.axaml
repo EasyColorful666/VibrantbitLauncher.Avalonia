@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -15,7 +15,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  ===== 页头 =====  -->
-        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连即可加入" />
+        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连。联机码与陶瓦联机的码通用，两边互相都认" />
 
         <ScrollViewer Grid.Row="1" Margin="0,16,0,0"
                       HorizontalScrollBarVisibility="Disabled"
@@ -28,7 +28,7 @@
                         <TextBlock Classes="sectionTitle" Text="联机服务" />
                         <TextBlock Margin="0,6,0,0"
                                    Classes="caption"
-                                   Text="默认使用 EasyTier 社区免费共享节点牵线，无需自建服务器；房主与房客填同一个地址即可。"
+                                   Text="默认使用与陶瓦联机相同的公共节点牵线，无需自建服务器；房主与房客填同一个地址即可，只有这样两边才碰得到一起。公共节点填的是「发地址的接口」，启动时会先问接口拿到当前真正的服务器地址，再连过去。"
                                    TextWrapping="Wrap" />
 
                         <!--  缺少核心时的引导  -->
@@ -92,8 +92,9 @@
                                        Text="中继服务器" />
                             <TextBox Grid.Column="1" VerticalAlignment="Center"
                                      IsEnabled="{Binding CanEditKey}"
-                                     PlaceholderText="tcp://easytier.weiai.org.cn:11010"
-                                     Text="{Binding RelayServer, Mode=TwoWay}" />
+                                     PlaceholderText="https://etnode.zkitefly.eu.org/node1"
+                                     Text="{Binding RelayServer, Mode=TwoWay}"
+                                     ToolTip.Tip="可以直接填 tcp:// 开头的服务器地址；填 https:// 开头的接口地址时，启动前会先访问它换取当前真正的服务器地址" />
                             <Button Grid.Column="2" MinWidth="112" Margin="12,0,0,0"
                                     VerticalAlignment="Center"
                                     Classes="accent"
@@ -114,6 +115,13 @@
                                 </StackPanel>
                             </Button>
                         </Grid>
+
+                        <!--  接口解析出来的真实服务器地址（连不上时先看这一行）  -->
+                        <TextBlock Margin="0,8,0,0"
+                                   Classes="caption"
+                                   IsVisible="{Binding HasRelayEndpointText}"
+                                   Text="{Binding RelayEndpointText}"
+                                   TextWrapping="Wrap" />
 
                         <!--  状态行  -->
                         <Grid Margin="0,14,0,0" ColumnDefinitions="Auto,*,Auto">
@@ -152,7 +160,7 @@
                     </StackPanel>
                 </Border>
 
-                <!--  ===== ② 身份与密钥 =====  -->
+                <!--  ===== ② 身份与联机码 =====  -->
                 <Border Margin="0,12,0,0" Padding="18" Classes="card">
                     <StackPanel>
                         <TextBlock Classes="sectionTitle" Text="选择身份" />
@@ -160,28 +168,32 @@
                         <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
                             <RadioButton Content="我要当房主"
                                          GroupName="MultiplayerMode"
-                                         IsChecked="{Binding IsHostMode, Mode=TwoWay}" />
+                                         IsChecked="{Binding IsHostMode, Mode=TwoWay}"
+                                         IsEnabled="{Binding CanSwitchRole}"
+                                         ToolTip.Tip="联机服务运行期间不能切换身份，先点「停止服务」" />
                             <RadioButton Margin="24,0,0,0"
                                          Content="我要当房客"
                                          GroupName="MultiplayerMode"
-                                         IsChecked="{Binding IsGuestMode, Mode=TwoWay}" />
+                                         IsChecked="{Binding IsGuestMode, Mode=TwoWay}"
+                                         IsEnabled="{Binding CanSwitchRole}"
+                                         ToolTip.Tip="联机服务运行期间不能切换身份，先点「停止服务」" />
                         </StackPanel>
 
                         <!--  房主  -->
                         <StackPanel IsVisible="{Binding IsHostMode}">
                             <TextBlock Margin="0,16,0,0"
                                        Classes="caption"
-                                       Text="密钥就是虚拟网络的名字。把「密钥 + 你的虚拟 IP」一起发给好友，他们填进来就能进同一个网络。"
+                                       Text="联机码里存着这个房间的虚拟网络名和密码。把「联机码 + 你的虚拟 IP」一起发给好友，他们填进来就能进同一个网络。这串码与陶瓦联机的码通用，两边互相都认。"
                                        TextWrapping="Wrap" />
 
                             <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
                                 <TextBlock Grid.Column="0" Margin="0,0,12,0"
                                            VerticalAlignment="Center"
                                            Classes="body"
-                                           Text="密钥" />
+                                           Text="联机码" />
                                 <TextBox Grid.Column="1" VerticalAlignment="Center"
                                          IsEnabled="{Binding CanEditKey}"
-                                         PlaceholderText="自动生成，也可以自己改"
+                                         PlaceholderText="自动生成，比如 U/ABCD-EFGH-JKLM-NPQR"
                                          Text="{Binding HostKey, Mode=TwoWay}" />
                                 <Button Grid.Column="2" Margin="12,0,0,0"
                                         VerticalAlignment="Center"
@@ -193,7 +205,7 @@
                                         Classes="accent"
                                         Command="{Binding CopyTextCommand}"
                                         CommandParameter="{Binding HostKey}"
-                                        Content="复制密钥" />
+                                        Content="复制联机码" />
                             </Grid>
 
                             <TextBlock Margin="0,14,0,0"
@@ -206,17 +218,17 @@
                         <StackPanel IsVisible="{Binding !IsHostMode}">
                             <TextBlock Margin="0,16,0,0"
                                        Classes="caption"
-                                       Text="把房主给你的密钥填进来，启动服务后你们就处在同一个虚拟局域网里。"
+                                       Text="把房主给你的联机码填进来（整句粘过来也行，会自动认出 U/ 开头的那一段），启动服务后你们就处在同一个虚拟局域网里。"
                                        TextWrapping="Wrap" />
 
                             <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Grid.Column="0" Margin="0,0,12,0"
                                            VerticalAlignment="Center"
                                            Classes="body"
-                                           Text="密钥" />
+                                           Text="联机码" />
                                 <TextBox Grid.Column="1" VerticalAlignment="Center"
                                          IsEnabled="{Binding CanEditKey}"
-                                         PlaceholderText="粘贴房主给你的密钥"
+                                         PlaceholderText="粘贴房主给你的联机码"
                                          Text="{Binding GuestKey, Mode=TwoWay}" />
                                 <Button Grid.Column="2" Margin="12,0,0,0"
                                         VerticalAlignment="Center"
@@ -349,7 +361,7 @@
                         <TextBlock Classes="sectionTitle" Text="网络成员" />
                         <TextBlock Margin="0,6,0,0"
                                    Classes="caption"
-                                   Text="同一个密钥下的所有设备。每三秒自动刷新一次。"
+                                   Text="同一个联机码下的所有设备。每三秒自动刷新一次。"
                                    TextWrapping="Wrap" />
 
                         <TextBlock Margin="0,12,0,0"

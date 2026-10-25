@@ -69,8 +69,20 @@ namespace VibrantbitLauncher.Services
     /// </summary>
     public sealed class EasyTierService : IDisposable
     {
-        /// <summary>EasyTier 社区免费共享节点，无需自建服务器即可牵线。</summary>
-        public const string DefaultRelayServer = "tcp://easytier.weiai.org.cn:11010";
+        /// <summary>
+        /// 默认中继节点。用公共节点是为了跟「陶瓦联机码」互通 ——
+        /// 网名密码对上还不够，双方得在同一个节点池里才能碰头（见 <see cref="Helpers.RoomCode"/>）。
+        /// </summary>
+        public const string DefaultRelayServer = Helpers.RoomCode.DefaultRelay;
+
+        /// <summary>
+        /// 1.0.13 及更早版本用过、现已停用的默认中继 —— 它跟陶瓦的节点池不在一处。
+        /// 只在迁移判断里出现：读到它就说明用户从没改过，应该换成新默认而不是继续用旧地址。
+        /// </summary>
+        public const string LegacyDefaultRelayServer = "tcp://easytier.weiai.org.cn:11010";
+
+        /// <summary>过渡版本里曾当成默认写进设置的节点，同样按「没改过」处理。</summary>
+        public const string TransitionalDefaultRelayServer = "tcp://public.easytier.top:11010";
 
         /// <summary>核心可执行文件名。</summary>
         private const string CoreFileName = "easytier-core.exe";
@@ -130,6 +142,9 @@ namespace VibrantbitLauncher.Services
         private sealed class SessionState
         {
             public string Key { get; set; } = string.Empty;
+
+            /// <summary>网络密码；为空表示与 Key 同值（老会话文件没有这个字段，反序列化后即为空）。</summary>
+            public string Secret { get; set; } = string.Empty;
             public bool IsHost { get; set; }
             public string Relay { get; set; } = string.Empty;
             public int ListenPort { get; set; }
@@ -262,22 +277,6 @@ namespace VibrantbitLauncher.Services
             return null;
         }
 
-        /// <summary>生成一串 12 位密钥，字母数字混排、去掉容易看混的字符。</summary>
-        public static string GenerateNetworkKey()
-        {
-            const string alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
-            var buffer = new byte[12];
-
-            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
-                rng.GetBytes(buffer);
-
-            var sb = new StringBuilder(12);
-            foreach (var b in buffer)
-                sb.Append(alphabet[b % alphabet.Length]);
-
-            return sb.ToString();
-        }
-
         // ============================ 端口探测 ============================
 
         /// <summary>
@@ -349,6 +348,24 @@ namespace VibrantbitLauncher.Services
         /// 成员列表仍然由 <c>easytier-cli</c> 轮询获得，不受影响。
         /// </param>
         public async Task<string?> StartAsync(string key, bool isHost, string relayServer, bool keepAlive = false)
+            => await StartAsync(key, null, isHost, relayServer, keepAlive, null).ConfigureAwait(false);
+
+        /// <summary>
+        /// 网络名与网络密码**分开**的重载，并允许带一串备用中继。
+        ///
+        /// 联机码（<c>U/XXXX-XXXX-XXXX-XXXX</c>）解出来的就是这两样东西：
+        /// 网络名 <c>scaffolding-mc-XXXX-XXXX</c> 与网络密码 <c>XXXX-XXXX</c> 并不相同。
+        /// 除此之外的启动方式与上面那个重载完全一致 —— 联机核心不变，只是凭据分成两份。
+        /// </summary>
+        /// <param name="networkSecret">网络密码；留空时与网络名同值。</param>
+        /// <param name="extraRelays">备用中继，排在中继地址之后依次尝试。</param>
+        public async Task<string?> StartAsync(
+            string networkName,
+            string? networkSecret,
+            bool isHost,
+            string relayServer,
+            bool keepAlive,
+            IReadOnlyList<string>? extraRelays)
         {
             Stop();
 
@@ -356,9 +373,14 @@ namespace VibrantbitLauncher.Services
             if (core == null)
                 return "未找到 EasyTier 核心程序，请先点击「下载 EasyTier 核心」。";
 
-            key = (key ?? string.Empty).Trim();
-            if (key.Length < 4)
-                return "密钥太短了，请至少填 4 位（建议 8 位以上，避免和别人的网络撞名）。";
+            var name = (networkName ?? string.Empty).Trim();
+            var secret = string.IsNullOrWhiteSpace(networkSecret) ? name : networkSecret.Trim();
+
+            if (name.Length < 4)
+                return "联机码解出来的网络名太短，无法组网。";
+
+            if (secret.Length < 4)
+                return "联机码解出来的网络密码太短，无法组网。";
 
             var endpoint = NormalizeRelayServer(relayServer);
             var listenPort = PickListenerPort();
@@ -379,16 +401,16 @@ namespace VibrantbitLauncher.Services
                 startInfo.StandardErrorEncoding = Encoding.UTF8;
             }
 
-            // 参数与官方文档一致：网络名与网络密码都取密钥，-p 指定公共中继节点。
+            // 参数与官方文档一致：网络名与网络密码分别指定，-p 指定公共中继节点。
             startInfo.ArgumentList.Add("--network-name");
-            startInfo.ArgumentList.Add(key);
+            startInfo.ArgumentList.Add(name);
             startInfo.ArgumentList.Add("--network-secret");
-            startInfo.ArgumentList.Add(key);
+            startInfo.ArgumentList.Add(secret);
 
-            if (!string.IsNullOrEmpty(endpoint))
+            foreach (var relay in EnumerateRelays(endpoint, extraRelays))
             {
                 startInfo.ArgumentList.Add("-p");
-                startInfo.ArgumentList.Add(endpoint);
+                startInfo.ArgumentList.Add(relay);
             }
 
             // 必须显式要一个虚拟 IP：按官方说明，不传 -i 时「此节点将仅转发数据包，不会创建 TUN 设备」，
@@ -445,7 +467,7 @@ namespace VibrantbitLauncher.Services
             // 顺序反过来的话，核心秒退时 Exited 会先把状态清成「未启动」，随后又被这里覆盖回「运行中」。
             IsRunning = true;
             IsHost = isHost;
-            NetworkKey = key;
+            NetworkKey = name;
             RelayServer = endpoint;
             ListenPort = listenPort;
             LocalVirtualIp = string.Empty;
@@ -506,7 +528,8 @@ namespace VibrantbitLauncher.Services
             {
                 WriteSession(new SessionState
                 {
-                    Key = key,
+                    Key = name,
+                    Secret = networkSecret is null ? string.Empty : secret,
                     IsHost = isHost,
                     Relay = endpoint,
                     ListenPort = listenPort,
@@ -864,6 +887,36 @@ namespace VibrantbitLauncher.Services
             return value.Contains("://", StringComparison.Ordinal)
                 ? value
                 : $"tcp://{value}";
+        }
+
+        /// <summary>
+        /// 主中继在前、备用中继在后，去重并规范化；空值直接跳过。
+        ///
+        /// 陶瓦联机同时挂着好几个公共节点，只给一个的话遇上节点抽风就整个房间连不上。
+        /// </summary>
+        private static IEnumerable<string> EnumerateRelays(string? primary, IReadOnlyList<string>? extraRelays)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(primary))
+            {
+                var first = NormalizeRelayServer(primary);
+                if (seen.Add(first))
+                    yield return first;
+            }
+
+            if (extraRelays is null)
+                yield break;
+
+            foreach (var relay in extraRelays)
+            {
+                if (string.IsNullOrWhiteSpace(relay))
+                    continue;
+
+                var normalized = NormalizeRelayServer(relay);
+                if (seen.Add(normalized))
+                    yield return normalized;
+            }
         }
 
         // ============================ 输出解析 ============================

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -18,10 +18,13 @@ namespace VibrantbitLauncher.ViewModels.Pages
     /// <summary>
     /// 多人联机页：把 <see cref="EasyTierService"/> 的状态映射到界面，并驱动房主 / 房客两条流程。
     ///
-    /// 两种身份在 EasyTier 层面做的是同一件事（用同一串密钥加入同一个虚拟网络），
+    /// 两种身份在 EasyTier 层面做的是同一件事（用同一份凭据加入同一个虚拟网络），
     /// 差别只在提示文案和「谁去游戏里开房间」：
-    ///   房主：生成密钥 → 启动服务 → 游戏里「对局域网开放」→ 把密钥 + 自己的虚拟 IP 发给好友
-    ///   房客：填房主给的密钥 → 启动服务 → 在「多人游戏 → 直接连接」里填房主的虚拟 IP
+    ///   房主：生成联机码 → 启动服务 → 游戏里「对局域网开放」→ 把联机码 + 自己的虚拟 IP 发给好友
+    ///   房客：填房主给的联机码 → 启动服务 → 在「多人游戏 → 直接连接」里填房主的虚拟 IP
+    ///
+    /// 联机码形如 <c>U/ABCD-EFGH-JKLM-NPQR</c>，由 <see cref="RoomCode"/> 解析成
+    /// 网络名与网络密码两样东西 —— 串只有一份，凭据有两份，解析这一步就是两者的桥。
     /// </summary>
     public partial class MultiplayerPageViewModel : ObservableObject
     {
@@ -58,6 +61,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         /// <summary>退出启动器后是否保留联机内核（与设置同源，见 <see cref="KeepAliveOnExit"/>）。</summary>
         private bool _keepAliveOnExit = true;
+
+        /// <summary>本次实际使用的中继地址文案（接口解析之后）。</summary>
+        private string _relayEndpointText = string.Empty;
 
         // ===== 运行状态（由服务推送） =====
         private bool _isRunning;
@@ -97,7 +103,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             RegenerateKeyCommand = new RelayCommand(RegenerateKey);
             CopyTextCommand = new RelayCommand<string>(CopyText);
             PasteGuestKeyCommand = new RelayCommand(PasteGuestKey);
-            DownloadCoreCommand = new RelayCommand(ShowInstallWindow);
+            DownloadCoreCommand = new RelayCommand(async () => await ShowInstallWindowAsync());
             RestartElevatedCommand = new RelayCommand(RestartElevated);
             InstallLanModCommand = new RelayCommand(async () => await InstallLanModAsync());
         }
@@ -294,14 +300,14 @@ namespace VibrantbitLauncher.ViewModels.Pages
             RaiseDerivedState();
         }
 
-        /// <summary>房主侧的密钥：进页面自动生成，也可以手动改或重新生成。</summary>
+        /// <summary>房主侧的联机码：进页面自动生成，也可以手动改或重新生成。</summary>
         public string HostKey
         {
             get => _hostKey;
             set => SetProperty(ref _hostKey, value);
         }
 
-        /// <summary>房客侧填的密钥（房主提供）。</summary>
+        /// <summary>房客侧填的联机码（房主提供的那一串）。</summary>
         public string GuestKey
         {
             get => _guestKey;
@@ -314,6 +320,24 @@ namespace VibrantbitLauncher.ViewModels.Pages
             get => _relayServer;
             set => SetProperty(ref _relayServer, value);
         }
+
+        /// <summary>
+        /// 本次真正交给核心的中继地址。
+        ///
+        /// 中继那一栏填的可能是接口而不是服务器，界面上必须把「最后连的是谁」摆出来，
+        /// 否则连不上时完全看不出问题出在接口没解析出来，还是一直在连一个死地址。
+        /// </summary>
+        public string RelayEndpointText
+        {
+            get => _relayEndpointText;
+            private set
+            {
+                if (SetProperty(ref _relayEndpointText, value))
+                    OnPropertyChanged(nameof(HasRelayEndpointText));
+            }
+        }
+
+        public bool HasRelayEndpointText => !string.IsNullOrWhiteSpace(_relayEndpointText);
 
         /// <summary>
         /// 关掉启动器之后，联机内核是否继续在后台运行（默认开）。
@@ -334,6 +358,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 SettingsService.Save();
             }
         }
+
+        // ============================ 联机码 ============================
 
         public bool IsRunning
         {
@@ -410,8 +436,15 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         public bool CanStopService => !IsBusy && _isRunning;
 
-        /// <summary>运行中和忙碌中都不给改密钥，免得核心实际用的和界面对不上。</summary>
+        /// <summary>运行中和忙碌中都不给改联机码，免得核心实际用的和界面对不上。</summary>
         public bool CanEditKey => !IsBusy && !_isRunning;
+
+        /// <summary>
+        /// 能不能换身份。联机一旦起来就锁住：核心已经按「房主 / 房客」的身份连上网了，
+        /// 这时候切一下只是改了界面上的单选框，底下的网络凭据和提示文案会跟实际状态错开。
+        /// 停止服务后自动恢复。
+        /// </summary>
+        public bool CanSwitchRole => !IsBusy && !_isRunning;
 
         public bool CanRegenerateKey => CanEditKey && _isHostMode;
 
@@ -466,14 +499,35 @@ namespace VibrantbitLauncher.ViewModels.Pages
             _isInitialized = true;
 
             var saved = SettingsService.Current;
-            _relayServer = string.IsNullOrWhiteSpace(saved.EasyTierRelayServer)
-                ? EasyTierService.DefaultRelayServer
-                : saved.EasyTierRelayServer;
+
+            // 老版本把「我们自己那个中继」当成默认值写进了设置。那个地址跟陶瓦不在一处，
+            // 留着它等于把互通性直接废掉，所以只认「用户真的改过」的中继：
+            // 空值、旧默认值、过渡版本的默认值都换成新默认（陶瓦默认的那个公共节点）。
+            var savedRelay = saved.EasyTierRelayServer?.Trim() ?? string.Empty;
+            if (savedRelay.Length == 0
+                || string.Equals(savedRelay, EasyTierService.LegacyDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(savedRelay, EasyTierService.TransitionalDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(savedRelay, EasyTierService.DefaultRelayServer, StringComparison.OrdinalIgnoreCase))
+                savedRelay = RoomCode.DefaultRelay;
+
+            _relayServer = savedRelay;
             OnPropertyChanged(nameof(RelayServer));
 
-            _hostKey = string.IsNullOrWhiteSpace(saved.EasyTierNetworkKey)
-                ? EasyTierService.GenerateNetworkKey()
-                : saved.EasyTierNetworkKey;
+            // 旧版本存的是 12 位随机密钥，读不出来就当作没有 —— 直接给一个新的联机码，
+            // 免得把一个过期的、对面根本认不出的串摆在输入框里。
+            if (RoomCode.TryParse(saved.EasyTierNetworkKey, out var savedCode, out _) && savedCode is not null)
+            {
+                _hostKey = savedCode.Code;
+            }
+            else
+            {
+                _hostKey = RoomCode.Generate();
+
+                // 当场存下来：玩家很可能先把码发给好友，隔一会儿才点「启动服务」。
+                // 不存的话中途重启启动器就换了一串，对方手里那串白记了。
+                PersistKey();
+            }
+
             OnPropertyChanged(nameof(HostKey));
 
             PullStateFromService();
@@ -672,16 +726,25 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         private void RegenerateKey()
         {
-            HostKey = EasyTierService.GenerateNetworkKey();
+            HostKey = RoomCode.Generate();
             PersistKey();
-            _notification.Show($"已生成新密钥：{HostKey}", "提示");
+            _notification.Show($"已生成新联机码：{HostKey}", "提示");
         }
 
-        private void ShowInstallWindow()
+        /// <summary>
+        /// 打开「安装联机模块」子页，等它退场后再重新探测核心。
+        ///
+        /// <para>
+        /// 这里必须 <c>await</c>：内嵌子页是异步打开的，安装过程全在它里面进行。
+        /// 早先的写法是「打开后立刻刷新」，那一刻连下载都还没开始，查出来的当然是「没装」，
+        /// 于是装完关掉子页，界面还挂在「未找到 EasyTier 核心」上，只有切走再切回才恢复。
+        /// </para>
+        /// </summary>
+        private async Task ShowInstallWindowAsync()
         {
             try
             {
-                _ = AppLifetime.ShowDialogAsync(new InstallEasyTierWindow());
+                await AppLifetime.ShowDialogAsync(new InstallEasyTierWindow());
             }
             catch (Exception ex)
             {
@@ -689,12 +752,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 return;
             }
 
+            // 走到这里说明子页已经退场：装完了，或者用户中途退出。
+            // 两种都重新探一次 —— 文件在不在，查一下就知道。
             RefreshCoreState();
 
             if (_isCoreInstalled)
-            {
                 _notification.Success("EasyTier 核心已就绪，现在可以启动服务了", "成功");
-            }
         }
 
         /// <summary>
@@ -740,34 +803,76 @@ namespace VibrantbitLauncher.ViewModels.Pages
         // ============================ 启停 ============================
         private async Task StartServiceAsync()
         {
-            var key = CurrentKey.Trim();
+            var raw = CurrentKey;
 
-            if (string.IsNullOrEmpty(key))
+            if (string.IsNullOrWhiteSpace(raw))
             {
-                _notification.Warning(_isHostMode ? "请先填写或生成密钥" : "请填写房主给你的密钥", "提示");
+                _notification.Warning(_isHostMode ? "请先填写或生成联机码" : "请填写房主给你的联机码", "提示");
+                return;
+            }
+
+            // 先把码解成「网络名 + 网络密码」。校验不过就不要往下走 ——
+            // 抄错一位也能进一张「存在但没人」的网，玩家会在游戏里白等十几分钟。
+            if (!RoomCode.TryParse(raw, out var code, out var parseError) || code is null)
+            {
+                _notification.Warning(parseError ?? "联机码无效。", "联机码不对");
                 return;
             }
 
             IsBusy = true;
             try
             {
+                // 回填规范化后的码（大写、补齐连字符），方便双方核对是不是同一串
+                if (_isHostMode)
+                    HostKey = code.Code;
+                else
+                    GuestKey = code.Code;
+
                 PersistSettings();
 
-                var error = await _easyTierService.StartAsync(key, _isHostMode, RelayServer, KeepAliveOnExit);
+                // 中继那一栏填的可能不是服务器，而是一个「发地址的接口」（陶瓦的公共节点就是这样）：
+                // 真的节点会换 IP 换端口，所以得先问接口要一眼当下的地址，再把地址交给核心。
+                // 这步放在起核心之前 —— 一个地址都拿不到就不必起，省得核心挂着干等。
+                var chain = new List<string> { RelayServer };
+                if (RoomCode.ExtraRelaysFor(RelayServer) is { } extras)
+                    chain.AddRange(extras);
+
+                var relays = new List<string>(await PublicRelayResolver.ResolveAllAsync(chain));
+
+                if (relays.Count == 0)
+                {
+                    // 接口一个地址都没拿到，但裸的直连节点也没有（多半是玩家自己填的接口地址）。
+                    // 这时候还是把接口地址原样交给核心：它有自己的 TLS 栈和重试，
+                    // 我们这边取不到，不代表它取不到 —— 总比直接报错让玩家连不了强。
+                    relays.Add(RelayServer);
+                }
+
+                var error = await _easyTierService.StartAsync(
+                    code.NetworkName, code.NetworkSecret, _isHostMode,
+                    relays[0], KeepAliveOnExit, relays.Skip(1).ToArray());
+
                 if (error != null)
                 {
+                    RelayEndpointText = string.Empty;
                     _notification.Error(error, "启动失败");
                     return;
                 }
 
+                RelayEndpointText = relays[0].StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? $"{relays[0]}（暂时没取到真实地址，已交给核心自己去取）"
+                    : relays.Count > 1
+                        ? $"本次实际使用 {relays[0]}，另有 {relays.Count - 1} 个备用节点"
+                        : $"本次实际使用 {relays[0]}";
+
                 _notification.Success(_isHostMode
-                        ? "虚拟网络已启动。请进游戏执行「对局域网开放」，再把密钥和你的虚拟 IP 发给好友"
+                        ? "虚拟网络已启动。请进游戏执行「对局域网开放」，再把联机码和你的虚拟 IP 发给好友"
                         : "已加入虚拟网络。进游戏后在「多人游戏 → 直接连接」里填房主的虚拟 IP", "成功");
             }
             catch (Exception ex)
             {
                 // 命令是 async void 派发过来的，异常漏出去会直接崩掉应用，这里必须兜住。
                 Serilog.Log.Error(ex, "启动 EasyTier 联机服务时发生异常");
+                RelayEndpointText = string.Empty;
                 _notification.Error($"联机服务启动出错：{ex.Message}", "启动失败");
             }
             finally
@@ -782,6 +887,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             try
             {
                 _easyTierService.Stop();
+                RelayEndpointText = string.Empty;
                 _notification.Show("联机服务已停止", "提示");
             }
             catch (Exception ex)
@@ -826,7 +932,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
                 GuestKey = pasted.Trim();
 
-                _notification.Show("已粘贴密钥", "提示");
+                _notification.Show("已粘贴联机码", "提示");
             }
             catch (Exception ex)
             {
@@ -896,6 +1002,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OnPropertyChanged(nameof(CanStartService));
             OnPropertyChanged(nameof(CanStopService));
             OnPropertyChanged(nameof(CanEditKey));
+            OnPropertyChanged(nameof(CanSwitchRole));
             OnPropertyChanged(nameof(CanRegenerateKey));
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(StatusLevel));
