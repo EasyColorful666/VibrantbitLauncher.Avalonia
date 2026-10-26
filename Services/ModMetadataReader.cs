@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -47,6 +47,20 @@ public sealed class InstalledMod
     /// <summary>它声明依赖的其它模组（不含 minecraft / java / 加载器这些内置项 —— 那些不参与「缺失」判定）。</summary>
     public List<ModDependency> Dependencies { get; init; } = new();
 
+    /// <summary>
+    /// 这个 jar **自带**（jar-in-jar / nested jar）的其它模组 id。
+    ///
+    /// <para>
+    /// 典型是 Fabric API：一个 <c>fabric-api-x.y.z.jar</c> 里面塞着几十个模块
+    /// （<c>fabric-api-base</c> / <c>fabric-rendering-v1</c> …），运行时由它统一提供。
+    /// 别的模组声明「需要 fabric-rendering-v1」时，缺的判定必须把这些算成已提供 ——
+    /// 否则装了 Fabric API 还会被报「缺 fabric-rendering-v1」，玩家照着提示去搜也搜不到。
+    /// </para>
+    ///
+    /// <para>NeoForge / Forge 的 jarjar、以及自带库的整合包同理。</para>
+    /// </summary>
+    public List<string> NestedIds { get; init; } = new();
+
     public string Sha1 { get; init; } = string.Empty;
     public long Size { get; init; }
 }
@@ -89,20 +103,60 @@ public sealed class ModDependency
 public static class ModMetadataReader
 {
     /// <summary>
-    /// 内置的「提供者」id —— 这些由游戏 / 加载器本身提供，不算缺失。
-    /// 名称按各加载器社区里最常见的写法列全，比较时统一小写。
+    /// 内置的「提供者」id —— 这些由游戏 / 加载器本身提供，不需要装任何模组。
+    ///
+    /// <para>
+    /// 表里的写法**必须都是归一化后的形态**（<see cref="NormalizeId"/> 会去掉连字符 / 下划线并转小写），
+    /// 否则永远不会命中 —— 早期这里写过 <c>"fabric-loader"</c> 这种带连字符的形式，
+    /// 看着像覆盖了，实际是死条目。
+    /// </para>
+    ///
+    /// <para>
+    /// 这张表就是「有时候体检会检查出 MC / Java 内置库」的闸门：漏一个，
+    /// 界面上就会冒出「缺 javafml」这种玩家根本装不到的东西。
+    /// </para>
     /// </summary>
     private static readonly HashSet<string> BuiltInProviders = new(StringComparer.OrdinalIgnoreCase)
     {
-        "minecraft", "java", "mcp", "fml", "forge", "neoforge", "fabricloader", "fabric-loader",
-        "fabric_loader", "quilt_loader", "quiltloader", "quilt-loader", "minecraftforge",
-        "optifine", "optifabric", "fabric", "quilt", "liteloader", "modlauncher", "bootstraplauncher",
-        "client", "server", "cloth-config-hints", // 少数模组会声明对它的软依赖，实际并不存在此模组
+        // 游戏本体
+        "minecraft", "java", "client", "server", "mcp",
+
+        // 加载器本体
+        "forge", "neoforge", "minecraftforge", "fml", "fml1", "fml2",
+        "modlauncher", "bootstraplauncher", "securejarhandler",
+        "fabric", "fabricloader", "quilt", "quiltloader", "liteloader",
+
+        // 语言提供者：写在 mods.toml 的 modLoader= 里，但也有模组把它当依赖声明
+        "javafml", "lowcodefml", "mclanguage",
+
+        // 加载器直接塞进 classpath 的库
+        "optifine", "optifabric",
+
+        // 少数模组会声明对它的软依赖，而它并不作为模组存在
+        "clothconfighints",
+    };
+
+    /// <summary>
+    /// 只在特定加载器下算「内置」的 id —— 它们是加载器随包自带的库，
+    /// 但同一个名字在别的加载器上是需要单独安装的模组。
+    /// </summary>
+    private static readonly HashSet<string> NeoForgeBundledProviders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // NeoForge 1.20.5 起把 MixinExtras 直接放进 classpath；
+        // 而 Forge 上它是独立模组，判成内置会把真缺的依赖藏起来。
+        "mixinextras",
     };
 
     /// <summary>这个 id 是否由游戏 / 加载器提供（不需要装额外模组）。</summary>
-    public static bool IsBuiltIn(string modId)
-        => BuiltInProviders.Contains(NormalizeId(modId));
+    public static bool IsBuiltIn(string modId, ModLoaderKind loader = ModLoaderKind.Unknown)
+    {
+        var id = NormalizeId(modId);
+        if (id.Length == 0)
+            return true;
+
+        return BuiltInProviders.Contains(id)
+               || (loader is ModLoaderKind.NeoForge && NeoForgeBundledProviders.Contains(id));
+    }
 
     /// <summary>读一个 jar 的模组元数据；不是模组 / 读不出返回 null。</summary>
     public static InstalledMod? TryRead(string jarPath)
@@ -141,6 +195,7 @@ public static class ModMetadataReader
                 Loader = primary.Value.Loader,
                 Loaders = loaders,
                 Dependencies = primary.Value.Dependencies,
+                NestedIds = ReadNestedProvidedIds(archive),
                 Sha1 = TryComputeSha1(file),
                 Size = file.Length,
             };
@@ -179,6 +234,108 @@ public static class ModMetadataReader
         }
 
         return result;
+    }
+
+    /// <summary>嵌套 jar 可能所在的目录前缀（Fabric 用前者，Forge / NeoForge 的 jarjar 用后者）。</summary>
+    private static readonly string[] NestedJarPrefixes = { "META-INF/jars/", "META-INF/jarjar/" };
+
+    /// <summary>单个外包最多读多少个嵌套 jar —— Fabric API 那种大包有几十个，别无限读。</summary>
+    private const int MaxNestedJars = 96;
+
+    /// <summary>超过这个体积的嵌套 jar 不读（正常模块几百 KB，8 MB 已经远超）。</summary>
+    private const long MaxNestedJarBytes = 8L * 1024 * 1024;
+
+    /// <summary>
+    /// 读出一个 jar 里自带的嵌套模组 id（jar-in-jar）。读不出来就返回空表 —— 它只是
+    /// 「别把已提供的依赖报成缺失」的补充证据，失败不该影响主流程。
+    ///
+    /// <para>
+    /// 实现上必须先把嵌套条目**拷进内存**再解析：<see cref="ZipArchiveEntry.Open"/> 给的是
+    /// DeflateStream（不可定位），而 <see cref="ZipArchive"/> 需要可定位的流才能建索引。
+    /// </para>
+    /// </summary>
+    private static List<string> ReadNestedProvidedIds(ZipArchive archive)
+    {
+        var ids = new List<string>(4);
+
+        try
+        {
+            var read = 0;
+
+            foreach (var entry in archive.Entries)
+            {
+                if (read >= MaxNestedJars)
+                    break;
+
+                var path = entry.FullName.Replace('\\', '/');
+                if (!path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var inNestedFolder = false;
+                foreach (var prefix in NestedJarPrefixes)
+                {
+                    if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        inNestedFolder = true;
+                        break;
+                    }
+                }
+
+                if (!inNestedFolder)
+                    continue;
+
+                if (entry.Length <= 0 || entry.Length > MaxNestedJarBytes)
+                    continue;
+
+                read++;
+
+                try
+                {
+                    using var buffer = new MemoryStream((int)entry.Length);
+                    using (var source = entry.Open())
+                        source.CopyTo(buffer);
+
+                    buffer.Position = 0;
+                    using var nestedArchive = new ZipArchive(buffer, ZipArchiveMode.Read);
+
+                    var id = ReadAnyId(nestedArchive);
+                    if (id.Length > 0)
+                        ids.Add(id);
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Debug(ex, "读取嵌套 jar 失败：{Entry}", path);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "枚举嵌套 jar 失败");
+        }
+
+        return ids;
+    }
+
+    /// <summary>只取一个嵌套 jar 的模组 id（三种声明都试，失败返回空串）。</summary>
+    private static string ReadAnyId(ZipArchive archive)
+    {
+        try
+        {
+            if (ReadFabric(archive) is { } fabric && !string.IsNullOrWhiteSpace(fabric.ModId))
+                return fabric.ModId;
+
+            if (ReadQuilt(archive) is { } quilt && !string.IsNullOrWhiteSpace(quilt.ModId))
+                return quilt.ModId;
+
+            if (ReadToml(archive) is { } toml && !string.IsNullOrWhiteSpace(toml.ModId))
+                return toml.ModId;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "嵌套 jar 元数据解析失败");
+        }
+
+        return string.Empty;
     }
 
     // ==================== Fabric ====================
@@ -356,8 +513,26 @@ public static class ModMetadataReader
                 var depId = Get(current, "modId");
                 if (!string.IsNullOrWhiteSpace(depId))
                 {
-                    var mandatory = !current.TryGetValue("mandatory", out var m)
-                                    || m.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    // NeoForge 用 type= 取代了 Forge 的 mandatory=，取值有四种：
+                    //   required     必需
+                    //   optional     可选（缺了照样能跑）
+                    //   incompatible 装了反而不能跑 —— 这**不是**「需要它」，报成缺失纯属反了
+                    //   discouraged  不建议装 —— 同样不算需求
+                    // 只认 type 全文；没有 type 才回落到 mandatory=（默认 true，Forge 的写法）。
+                    var depType = Get(current, "type");
+
+                    if (depType.Equals("incompatible", StringComparison.OrdinalIgnoreCase)
+                        || depType.Equals("discouraged", StringComparison.OrdinalIgnoreCase))
+                    {
+                        current.Clear();
+                        return;
+                    }
+
+                    var mandatory = depType.Length > 0
+                        ? depType.Equals("required", StringComparison.OrdinalIgnoreCase)
+                        : (!current.TryGetValue("mandatory", out var m)
+                           || m.Equals("true", StringComparison.OrdinalIgnoreCase));
+
                     var side = Get(current, "side");
                     // side=SERVER 的依赖是服务端要求，客户端实例里不该报缺失
                     var clientSide = string.IsNullOrWhiteSpace(side)

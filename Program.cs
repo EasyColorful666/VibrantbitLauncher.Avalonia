@@ -34,6 +34,22 @@ internal static class Program
 
         try
         {
+            // 一、单实例守卫（1.0.17.0）。
+            //
+            // 放在最前面：两个实例同时跑会一起读写 settings.json、往同一个 versions/ 里
+            // 解压同一个版本、各起一份联机内核。这类故障事后极难解释，不如根本不让它发生。
+            //
+            // 第二个实例不弹「已在运行」的对话框 —— 它请已经在跑的那个把窗口调到最前
+            // （含从托盘恢复）然后自己退出。用户看到的是窗口跳出来，而不是双击没反应。
+            if (!SingleInstanceGuard.TryAcquireOrActivate())
+            {
+                // 记成「正常结束」而不是失败：否则连续双击几次会被 StartupTrace 数成
+                // 「连续启动失败」，把下次启动自动降级成软件渲染（见 AppEnvironment）。
+                StartupTrace.MarkExit("second-instance");
+                Environment.ExitCode = 0;
+                return;
+            }
+
             // 最先探测运行环境：版本号探测结果会影响 AppBuilder 的渲染配置，
             // 必须赶在 BuildAvaloniaApp() 之前完成。
             AppEnvironment.Probe();
@@ -77,6 +93,8 @@ internal static class Program
         }
         finally
         {
+            // 先放掉「唯一实例」的位置，再收日志：这样关掉之后立刻再开不会被自己挡住。
+            SingleInstanceGuard.Release();
             Log.CloseAndFlush();
         }
     }

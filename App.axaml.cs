@@ -104,6 +104,24 @@ public partial class App : Application
             AppServices.Notifications = new NotificationService(mainWindow.NotificationHost);
             AppServices.FilePicker = new FilePickerService();
 
+            // ⑤.1 单实例：后来的那次双击已经在 Program.Main 里退出了，
+            // 只留下一个「把窗口叫到前面」的请求。这里登记怎么处理它。
+            //
+            // ShowFromTray 而不是 Activate：窗口可能被关到托盘里（Hide 过），
+            // 那种状态下光 Activate 是无效的，必须先 Show 回来。顺带它还做了恢复最小化、
+            // 以及 Win32 上那套「短暂置顶再取消」的前台抢占技巧。
+            SingleInstanceGuard.SetActivationHandler(() =>
+            {
+                try
+                {
+                    mainWindow.ShowFromTray();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "响应第二个实例的前置请求失败");
+                }
+            });
+
             // ⑤.5 系统托盘 + 联机内核脱钩（1.0.11.8）。
             //
             // 这两件事是一套：托盘让「关窗口」不再等于「退出程序」，联机内核因此能留在后台，

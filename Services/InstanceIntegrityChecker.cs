@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -328,7 +328,7 @@ public static class InstanceIntegrityChecker
     /// 极简 rules 判定：只有显式声明了 os 规则时才有意义。
     /// 没有 rules → 适用；有 rules → 最后一条匹配的 allow/disallow 决定。
     /// </summary>
-    private static bool IsAllowedOnThisOs(JsonElement lib)
+    internal static bool IsAllowedOnThisOs(JsonElement lib)
     {
         if (!lib.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
             return true;

@@ -1,6 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using MinecraftLaunch.Base.Models.Network;
@@ -328,34 +331,51 @@ public static class AssetRepairService
     {
         try
         {
-            var instance = new MinecraftParser(report.McFolder).GetMinecraft(report.McVersion);
-            if (instance == null)
+            var items = CollectLoaderLibraryItems(report.McFolder, report.McVersion, out var generated);
+            if (items.Count == 0)
+            {
+                if (generated > 0)
+                {
+                    Serilog.Log.Debug(
+                        "补全加载器依赖：{Count} 条库声明是安装处理器产物，跳过（实例 {Version}）",
+                        generated, report.McVersion);
+                }
+
+                onProgress?.Invoke(100, "补全完成", string.Empty);
+                return;
+            }
+
+            var parallelism = SettingsService.ResolveDownloadConcurrency(8);
+
+            var result = await BatchDownloader.DownloadAsync(
+                items,
+                parallelism,
+                onProgress: p =>
+                {
+                    if (ct.IsCancellationRequested)
+                        return;
+
+                    var ratio = Math.Clamp(p.Percent / 100d, 0, 1);
+                    onProgress?.Invoke(
+                        basePercent + (int)(ratio * (100 - basePercent)),
+                        p.TotalFiles > 0
+                            ? $"补全加载器依赖 {p.CompletedFiles}/{p.TotalFiles}"
+                            : "补全加载器依赖",
+                        p.SpeedText);
+                },
+                ct: ct).ConfigureAwait(false);
+
+            if (result.IsSuccess)
                 return;
 
-            // AllowVerifyAssets = false：资源已经在上一步按原版口径校验过，
-            // 这里只关心加载器自己的库，不必把几千个资源对象再扫一遍。
-            var downloader = new MinecraftResourceDownloader(instance) { AllowVerifyAssets = false };
-            downloader.ProgressChanged += (_, args) =>
-            {
-                if (ct.IsCancellationRequested)
-                    return;
+            var listed = string.Join(" / ", result.Failures.Take(3)
+                .Select(f => $"{Path.GetFileName(f.File)}（{FabricDownloader.Describe(f.Error)}）"));
 
-                var ratio = args.TotalCount > 0
-                    ? (double)args.CompletedCount / args.TotalCount
-                    : args.Percentage / 100d;
+            Serilog.Log.Warning(
+                "补全加载器依赖：{Count} 个库下载失败：{List}（实例 {Version}）",
+                result.Failures.Count, listed, report.McVersion);
 
-                var ours = DownloadSpeedometer.FormatSpeed();
-                onProgress?.Invoke(
-                    basePercent + (int)(Math.Clamp(ratio, 0, 1) * (100 - basePercent)),
-                    $"补全加载器依赖 {args.CompletedCount}/{args.TotalCount}",
-                    string.IsNullOrEmpty(ours)
-                        ? (args.Speed > 0 ? DownloadSpeedometer.FormatSpeed(args.Speed) : string.Empty)
-                        : ours);
-            };
-
-            var parallelism = SettingsService.ResolveDownloadConcurrency(16);
-            // 取消令牌一路传下去：补资源动辄几个 GB，没有令牌点「取消」等于没点（1.0.7.15 修）
-            await downloader.VerifyAndDownloadDependenciesAsync(parallelism, ct).ConfigureAwait(false);
+            onProgress?.Invoke(100, "原版资源已补全（部分加载器库未能补全）", string.Empty);
         }
         catch (OperationCanceledException)
         {
@@ -367,5 +387,106 @@ public static class AssetRepairService
             Serilog.Log.Warning(ex, "补全加载器依赖失败（不影响原版资源补全）：{Version}", report.McVersion);
             onProgress?.Invoke(100, "原版资源已补全（加载器依赖未能补全）", string.Empty);
         }
+    }
+
+    /// <summary>
+    /// 从实例自己的版本 JSON 里收集加载器库的下载项。
+    ///
+    /// <para>
+    /// <b>为什么不再用 <c>MinecraftResourceDownloader.VerifyAndDownloadDependenciesAsync</c></b>
+    /// （2026-10-26 用户日志）：
+    /// 它内部走 <c>MinecraftEntry.GetRequiredLibraries()</c> →
+    /// <c>MinecraftLibrary.ParseJsonNode</c>，而 Fabric / Quilt 的 profile 里库声明是
+    /// 「只有 <c>name</c> + <c>url</c>，没有 <c>downloads</c> / <c>sha1</c> / <c>size</c>」的形态，
+    /// 会命中上游那句 <c>Sha1 = libNode.Sha1.Value</c> —— 对 null 的 <c>Nullable&lt;string&gt;</c>
+    /// 取 <c>.Value</c>，抛 <c>InvalidOperationException: Nullable object must have a value</c>。
+    /// 表现就是「补全加载器依赖失败」，而且整个加载器层一颗库都没补成。
+    /// （同一个 bug 早在 Quilt 安装时就踩过，见 <see cref="LoaderInstaller.InstallQuiltAsync"/>。）
+    /// </para>
+    ///
+    /// <para>
+    /// 换成本项目自己的解析后还有两个附带好处：
+    /// <list type="bullet">
+    /// <item>只碰**加载器层**（实例 JSON 自己的 libraries）。原版的库由阶段 ① 按原版口径补，
+    /// 这里不会再把 Minecraft 自带的库当成缺失重新下一遍 —— 那正是「有时候检查出来一堆 MC 内置库」的来源。</item>
+    /// <item>落点路径与启动流程同一套规则（<c>downloads.artifact.path</c> → 退化按 maven 坐标拼），
+    /// 已经存在的文件由下载内核按「体积 + zip 结构 + sha1」判跳过，不会重复下载。</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    /// <param name="generated">被跳过的「安装处理器本地生成」条目数（maven 上没有，下不到）。</param>
+    private static List<DownloadItem> CollectLoaderLibraryItems(
+        string mcFolder, string instanceId, out int generated)
+    {
+        generated = 0;
+        var items = new List<DownloadItem>();
+
+        var root = TryReadVersionJson(mcFolder, instanceId);
+        if (root is not { } json)
+            return items;
+
+        if (!json.TryGetProperty("libraries", out var libraries) || libraries.ValueKind != JsonValueKind.Array)
+            return items;
+
+        var libsDir = Path.Combine(mcFolder, "libraries");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var lib in libraries.EnumerateArray())
+        {
+            if (!InstanceIntegrityChecker.IsAllowedOnThisOs(lib))
+                continue;
+
+            if (!lib.TryGetProperty("name", out var nameElement)
+                || nameElement.GetString() is not { Length: > 0 } name)
+            {
+                continue;
+            }
+
+            // downloads.artifact 在、但 url 是空串 = 安装处理器用 binarypatcher 本地生成的产物
+            // （Forge / NeoForge 的 patched client jar 就是这种）。maven 上根本没有，
+            // 进了下载队列必然 404，还会把「补全」整批判成失败。
+            if (lib.TryGetProperty("downloads", out var downloads)
+                && downloads.TryGetProperty("artifact", out var artifact))
+            {
+                var artifactUrl = artifact.TryGetProperty("url", out var urlElement)
+                    ? urlElement.GetString()
+                    : null;
+
+                if (string.IsNullOrEmpty(artifactUrl))
+                {
+                    generated++;
+                    continue;
+                }
+            }
+
+            JsonNode? node;
+            try
+            {
+                node = JsonNode.Parse(lib.GetRawText());
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "补全加载器依赖：库声明无法解析：{Name}", name);
+                continue;
+            }
+
+            if (node is null)
+                continue;
+
+            var (url, relativePath, size, sha1) = LoaderInstaller.ResolveArtifact(node, name);
+            if (url is null || relativePath is null)
+            {
+                Serilog.Log.Debug("补全加载器依赖：这条库声明拼不出地址，跳过：{Name}", name);
+                continue;
+            }
+
+            var target = Path.Combine(libsDir, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!seen.Add(target))
+                continue;
+
+            items.Add(new DownloadItem(url, target, size, sha1, DisplayName: Path.GetFileName(target)));
+        }
+
+        return items;
     }
 }

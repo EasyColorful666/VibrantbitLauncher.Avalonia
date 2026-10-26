@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -875,7 +875,7 @@ namespace VibrantbitLauncher.Services
         /// 优先用 <c>downloads.artifact</c>（官方清单里通常都带 url + path）；
         /// 缺失时退回 <c>name</c> + <c>url</c> 自己拼（Forge 的 install_profile 常见这种）。
         /// </summary>
-        private static (string? Url, string? RelativePath, long Size, string? Sha1) ResolveArtifact(
+        internal static (string? Url, string? RelativePath, long Size, string? Sha1) ResolveArtifact(
             JsonNode lib, string name)
         {
             // downloads.artifact

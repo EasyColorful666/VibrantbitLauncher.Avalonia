@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -161,10 +161,19 @@ public static class ModDependencyResolver
             Serilog.Log.Debug(ex, "枚举未识别 jar 失败：{Dir}", modsFolder);
         }
 
-        // 提供者表：所有已装**且能在本实例加载**的模组 id（归一化后）+ 内置项
+        // 提供者表：所有已装**且能在本实例加载**的模组 id（归一化后）+ 它们自带的嵌套模组
         var providers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in compatible)
+        {
             providers.Add(ModMetadataReader.NormalizeId(m.ModId));
+
+            // jar-in-jar：Fabric API 那种「一个 jar 里装着几十个模块」的包，
+            // 里面的模块 id 在运行时同样算「已提供」。不把它们算进来，
+            // 装了 Fabric API 还会被报「缺 fabric-rendering-v1」——而那玩意在 Modrinth 上
+            // 根本是独立项目，玩家点「一键补齐」也补不出正确结果。
+            foreach (var nested in m.NestedIds)
+                providers.Add(ModMetadataReader.NormalizeId(nested));
+        }
 
         // 依赖需求表
         var needed = new Dictionary<string, MissingDependency>(StringComparer.OrdinalIgnoreCase);
@@ -179,8 +188,9 @@ public static class ModDependencyResolver
                 if (normId.Length == 0)
                     continue;
 
-                // 内置提供者、或已被某个已装模组提供 → 不缺
-                if (ModMetadataReader.IsBuiltIn(dep.Id) || providers.Contains(normId))
+                // 内置提供者（minecraft / java / 加载器本体 / 语言提供者）、
+                // 或已被某个已装模组（含其嵌套 jar）提供 → 不缺
+                if (ModMetadataReader.IsBuiltIn(dep.Id, loader) || providers.Contains(normId))
                     continue;
 
                 if (needed.TryGetValue(normId, out var existing))
