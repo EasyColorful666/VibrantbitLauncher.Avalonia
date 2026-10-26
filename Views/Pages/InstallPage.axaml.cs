@@ -104,11 +104,15 @@ public partial class InstallPage : UserControl
 
     private async void SetMcVersion(string msg)
     {
+        // VM 按版本复用（见 InstallPageViewModel.GetOrCreate）。这里绝不能每次新建：
+        // 安装进度是写在 VM 实例上的，一边装 A 一边去装 B 时，A 的 VM 一旦被丢掉，
+        // 之后从「下载任务」点 A 的「详情」跳回来只会看到 0% 的空页面 ——
+        // 任务中心还在更新，页面却像是没在下载。
+        var vm = InstallPageViewModel.GetOrCreate(msg, out var created);
+
         // 已经是这个版本的页面（例如从「下载任务」点「查看详情」跳回来想看进度）：
-        // 直接返回，**不要**重建 VM —— 那会把正在跑的那次安装的进度条整个重置掉，
-        // 用户会以为「跳到详情页 = 安装没了」。只有真正换了版本才重建。
-        if (_viewModel is InstallPageViewModel current
-            && string.Equals(current.McVersion, msg, StringComparison.OrdinalIgnoreCase))
+        // 直接返回，**不要**重建 VM —— 那会把正在跑的那次安装的进度条整个重置掉。
+        if (ReferenceEquals(vm, _viewModel))
         {
             UpdateLoaderAvailability();
             UpdateCardStates();
@@ -120,8 +124,6 @@ public partial class InstallPage : UserControl
         // 回来时若令牌已变，就不要再拿旧结果去改界面。
         var token = ++_loadToken;
 
-        var vm = new InstallPageViewModel(msg);
-
         // 换 VM 时先退订旧的：否则被替换掉的 VM 仍会继续触发
         // PropertyChanged，用过期数据刷新占位文案。
         if (_viewModel is not null)
@@ -131,17 +133,20 @@ public partial class InstallPage : UserControl
         vm.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = vm;
 
-        AppServices_Notify($"正在安装版本 {msg}");
+        // 勾选框是页面级 UI 状态，VM 才是权威：按这个版本**上次的选择**还原，
+        // 免得「切回来发现勾选没了，但下拉里还选着版本」这种自相矛盾的画面。
+        SyncLoaderSelection(vm);
 
-        // 加载前重置勾选状态。四个框的可用性交给 UpdateLoaderAvailability 统一决定：
-        // 此刻版本列表还没拉回来，它们会一起变成禁用态（加载完再放开有货的那几个）。
-        checkBox1.IsChecked = checkBox2.IsChecked = checkBox3.IsChecked = checkBox4.IsChecked = false;
-        UpdateLoaderAvailability();
+        // 只有首次进这个版本才提示。切回来是「看进度」，再弹一次纯属噪音。
+        if (created)
+            AppServices_Notify($"正在安装版本 {msg}");
 
         // 先把加载跑起来：Load() 会同步执行到内部第一个 await，
         // 此时 VM 的 IsLoadingVersions 已经置为 true，下面这次刷新就能让
         // 四张卡片当场显示「正在加载中」，而不是先闪一下上一个版本残留的文案。
         var loadTask = vm.Load();
+        UpdateLoaderAvailability();
+        UpdateCardStates();
         UpdateEmptyHints();
 
         await loadTask;
@@ -149,9 +154,35 @@ public partial class InstallPage : UserControl
         if (token != _loadToken)
             return;
 
+        // 列表拉回来之后再还原一次勾选：加载期间四个框是禁用的，
+        // UpdateLoaderAvailability 会顺手把「此刻还不可用」的勾选清掉，
+        // 而那个勾选其实只是「列表还没到」，不是用户取消了。
+        SyncLoaderSelection(vm);
         UpdateLoaderAvailability();
         UpdateCardStates();
         UpdateEmptyHints();
+    }
+
+    /// <summary>
+    /// 把 VM 里记着的加载器选择还原到四个勾选框上。
+    ///
+    /// 关掉 <see cref="_recalculating"/> 防重入：否则每设一个 IsChecked 都会走
+    /// <see cref="OnLoaderToggled"/>，把 VM 里的其他选择当「用户取消勾选」清掉。
+    /// </summary>
+    private void SyncLoaderSelection(InstallPageViewModel vm)
+    {
+        _recalculating = true;
+        try
+        {
+            checkBox1.IsChecked = !string.IsNullOrEmpty(vm.SelectForgeVersion);
+            checkBox2.IsChecked = !string.IsNullOrEmpty(vm.SelectFabricVersion);
+            checkBox3.IsChecked = !string.IsNullOrEmpty(vm.SelectNeoforgeVersion);
+            checkBox4.IsChecked = !string.IsNullOrEmpty(vm.SelectQuiltVersion);
+        }
+        finally
+        {
+            _recalculating = false;
+        }
     }
 
     private static void AppServices_Notify(string message)

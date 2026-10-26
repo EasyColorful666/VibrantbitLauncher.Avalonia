@@ -201,6 +201,92 @@ namespace VibrantbitLauncher.ViewModels.Pages
             LoadCommand = new RelayCommand(async () => await Load());
         }
 
+        // ============================ 按版本复用 VM ============================
+
+        /// <summary>
+        /// 同时缓存多少个版本的 VM。
+        ///
+        /// 缓存的目的只有一个：**同一时刻可能有好几次安装在不同版本上跑着**，
+        /// 而进度（<see cref="InstallProgress"/> / <see cref="InstallStep"/> / <see cref="Speed"/>）
+        /// 是写在这一个 VM 实例上的。页面换版本时若把旧 VM 丢掉，那次安装之后
+        /// 就只剩任务中心还在更新，任何页面都再也看不到它 —— 表现正是
+        /// 「装 A 的时候去装 B，回任务中心点 A 的『详情』，跳过去了却没有进度」。
+        /// 所以按版本号留一份，切回来就能立刻看到实时进度。
+        ///
+        /// 6 个够用（正常不会同时装更多），再多也不会无限涨 —— 见 <see cref="TrimCache"/>。
+        /// </summary>
+        private const int MaxCachedViewModels = 6;
+
+        private static readonly object CacheLock = new();
+        private static readonly Dictionary<string, InstallPageViewModel> ViewModelCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>最近使用顺序（尾部最新），淘汰时从头部开始。</summary>
+        private static readonly List<string> CacheOrder = new();
+
+        /// <summary>
+        /// 取该版本对应的 VM：有就复用，没有就新建。
+        ///
+        /// <para>
+        /// 复用的是**同一个对象**，所以它身上正在跑的安装、已经拉到的加载器列表都还在。
+        /// 调用方据此决定「要不要重置勾选框 / 要不要再拉一次列表」。
+        /// </para>
+        /// </summary>
+        /// <param name="created">true 表示这次是新建的（首次进这个版本）。</param>
+        public static InstallPageViewModel GetOrCreate(string version, out bool created)
+        {
+            var folder = Path.GetFullPath(SettingsService.Current.MinecraftFolder ?? "./.minecraft");
+
+            lock (CacheLock)
+            {
+                if (ViewModelCache.TryGetValue(version, out var existing))
+                {
+                    // 游戏目录被改过（设置里换了路径）：旧 VM 记的还是老目录，
+                    // 继续用会把文件装到别处。除非它正在安装 —— 那种情况下
+                    // 「让人看见进度」比「目录已经变了」更要紧，装完再换。
+                    if (existing.IsInstalling || string.Equals(existing.mcFolder, folder, StringComparison.Ordinal))
+                    {
+                        // 提到队尾：最近看过的不容易先被淘汰
+                        CacheOrder.Remove(version);
+                        CacheOrder.Add(version);
+                        created = false;
+                        return existing;
+                    }
+
+                    ViewModelCache.Remove(version);
+                    CacheOrder.Remove(version);
+                }
+
+                var vm = new InstallPageViewModel(version);
+                ViewModelCache[version] = vm;
+                CacheOrder.Add(version);
+                created = true;
+                TrimCache();
+                return vm;
+            }
+        }
+
+        /// <summary>
+        /// 把缓存压回上限。**正在安装的 VM 一律不淘汰** ——
+        /// 淘汰它等于让用户再也看不到那次安装的进度，正是本机制要解决的问题。
+        /// </summary>
+        private static void TrimCache()
+        {
+            for (var i = 0; i < CacheOrder.Count && ViewModelCache.Count > MaxCachedViewModels;)
+            {
+                var key = CacheOrder[i];
+                if (ViewModelCache.TryGetValue(key, out var vm) && vm.IsInstalling)
+                {
+                    i++;
+                    continue;
+                }
+
+                ViewModelCache.Remove(key);
+                CacheOrder.RemoveAt(i);
+            }
+        }
+
+
         private string? versionsLoadedFor;
 
         public async Task Load()
