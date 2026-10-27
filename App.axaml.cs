@@ -128,6 +128,17 @@ public partial class App : Application
             // 房客不会因为房主随手关掉启动器就掉线。真正的退出只剩托盘菜单那一条。
             var easyTier = Services.GetRequiredService<EasyTierService>();
 
+            // ⑤.6 会话记账与游戏内工具箱。
+            //
+            // 联机内核和「哪个实例在跑」都是全局唯一的东西，放进静态访问点，
+            // 免得工具箱 / 启动页 / 托盘三处各查一遍容器。
+            var gameSessions = Services.GetRequiredService<GameSessionService>();
+            AppServices.EasyTier = easyTier;
+            AppServices.GameSession = gameSessions;
+
+            var toolbox = Services.GetRequiredService<ToolboxService>();
+            AppServices.Toolbox = toolbox;
+
             TrayIconHost? tray = null;
             try
             {
@@ -135,6 +146,7 @@ public partial class App : Application
                     showWindow: () => Dispatcher.UIThread.Post(() => mainWindow.ShowFromTray()),
                     // Stop() 里有 Kill + WaitForExit(4s)，不能压在 UI 线程上等。
                     stopMultiplayer: () => Task.Run(() => easyTier.Stop()),
+                    showToolbox: () => Dispatcher.UIThread.Post(() => toolbox.Show()),
                     exit: () => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
 
                 UpdateTrayStatus(tray, easyTier);
@@ -189,6 +201,9 @@ public partial class App : Application
 
                 // 接管上一次退出时留在后台的联机内核（有就接管，没有就什么都不做）。
                 RestoreKeptMultiplayerAsync(easyTier);
+
+                // 热键监听只跟「游戏是否在跑」有关，界面已经出来了才谈得上按它。
+                toolbox.Start();
             }
 
             mainWindow.Opened += OnMainWindowOpened;
@@ -224,6 +239,10 @@ public partial class App : Application
                 }
 
                 tray?.Dispose();
+
+                // 热键是系统级资源，进程退出前主动注销比等系统回收干净（否则会被别的程序当成「被占用」）
+                try { toolbox.Dispose(); }
+                catch (Exception ex) { Log.Warning(ex, "释放工具箱热键失败，忽略"); }
 
                 // ⚠️ 这里的 StopAsync **必须带超时**。
                 //
@@ -563,6 +582,10 @@ public partial class App : Application
                 // 基础设施服务
                 services.AddSingleton<DownloadTaskService>();
                 services.AddSingleton<EasyTierService>();
+
+                // 「哪个实例在跑」+ 游戏内工具箱（热键只在游戏运行时注册）
+                services.AddSingleton<GameSessionService>();
+                services.AddSingleton<ToolboxService>();
 
                 // 主窗口与视图模型
                 services.AddSingleton<MainWindowViewModel>();

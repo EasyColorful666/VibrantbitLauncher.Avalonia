@@ -26,6 +26,23 @@ namespace VibrantbitLauncher.Services
 
         /// <summary>依赖注入容器（用于按类型解析页面实例）。</summary>
         public static IServiceProvider? Provider { get; set; }
+
+        /// <summary>
+        /// 联机内核（DI 单例）。工具箱要从任意入口起停虚拟网络，所以在这里留一个直接引用，
+        /// 免得每次去 <see cref="Provider"/> 里查一遍。
+        /// </summary>
+        public static EasyTierService? EasyTier { get; set; }
+
+        /// <summary>
+        /// 「现在哪个实例在跑」的记账处。启动页在游戏起来 / 退出时写它，工具箱只读它。
+        /// </summary>
+        public static GameSessionService? GameSession { get; set; }
+
+        /// <summary>
+        /// 工具箱（DI 单例）。浮窗要读「当前实际生效的唤出键位」，
+        /// 键位被占用时会退到备选，所以文案不能写死。
+        /// </summary>
+        public static ToolboxService? Toolbox { get; set; }
     }
 
     /// <summary>

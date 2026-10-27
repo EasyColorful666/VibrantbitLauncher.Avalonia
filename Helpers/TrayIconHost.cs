@@ -31,11 +31,13 @@ public sealed class TrayIconHost : IDisposable
 
     /// <param name="showWindow">把主窗口重新叫出来。</param>
     /// <param name="stopMultiplayer">断掉虚拟网络（托盘里直接停内核，不必先开窗口）。</param>
+    /// <param name="showToolbox">唤出游戏内工具箱浮窗（热键被占用时的备用入口）。</param>
     /// <param name="exit">真正退出整个程序。</param>
-    public TrayIconHost(Action showWindow, Action stopMultiplayer, Action exit)
+    public TrayIconHost(Action showWindow, Action stopMultiplayer, Action showToolbox, Action exit)
     {
         ArgumentNullException.ThrowIfNull(showWindow);
         ArgumentNullException.ThrowIfNull(stopMultiplayer);
+        ArgumentNullException.ThrowIfNull(showToolbox);
         ArgumentNullException.ThrowIfNull(exit);
 
         // 状态行只是展示，不可点。文案由 SetStatus 更新（联机启动 / 停止 / 接管都会刷）。
@@ -43,6 +45,11 @@ public sealed class TrayIconHost : IDisposable
 
         var showItem = new NativeMenuItem("显示主界面");
         showItem.Click += (_, _) => showWindow();
+
+        // 热键是「游戏运行时才注册」的，被别的软件占用时就没有任何入口了 ——
+        // 托盘这一项是那种情况下的兜底（也方便想先开着窗口再进游戏的人）。
+        var toolboxItem = new NativeMenuItem("Minecraft 工具箱");
+        toolboxItem.Click += (_, _) => showToolbox();
 
         // 托盘是唯一能看到「后台还有内核在跑」的地方，所以断开入口也必须在这里 ——
         // 否则用户想停掉后台联机只能再打开启动器走一遍联机页。
@@ -69,6 +76,7 @@ public sealed class TrayIconHost : IDisposable
         menu.Items.Add(_statusItem);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(showItem);
+        menu.Items.Add(toolboxItem);
         menu.Items.Add(stopItem);
         menu.Items.Add(_trayToggle);
         menu.Items.Add(new NativeMenuItemSeparator());

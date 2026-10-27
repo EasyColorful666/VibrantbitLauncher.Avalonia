@@ -728,6 +728,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
                 void HandleExit()
                 {
+                    // 先撤会话再报状态：工具箱的热键是跟着「有没有游戏在跑」开关的，
+                    // 这一步晚了会出现「游戏已经退出、热键还挂着」的空窗。
+                    AppServices.GameSession?.MarkStopped(rawProcess.Id);
+
                     int exitCode = -1;
                     try { exitCode = rawProcess.ExitCode; } catch { }
                     Diag($"Process exited with code {exitCode}");
@@ -768,6 +772,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 else
                 {
                     Avalonia.Threading.Dispatcher.UIThread.Invoke(() => ShowSuccess("Minecraft 已启动"));
+
+                    // 登记这次会话：工具箱靠它知道「玩家在玩哪个实例」，
+                    // 顺带把 Ctrl+Alt+T 的全局热键挂上（游戏退出时自动注销）。
+                    AppServices.GameSession?.MarkStarted(McVersion, mcFolder, rawProcess.Id);
 
                     // 确认游戏真的起来了（不是秒退）再执行「启动后行为」，
                     // 否则会把用户的启动器一起关掉而游戏根本没开起来。
