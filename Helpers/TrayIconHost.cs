@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 using Serilog;
+using VibrantbitLauncher.Localization;
 
 namespace VibrantbitLauncher.Helpers;
 
@@ -27,6 +28,14 @@ public sealed class TrayIconHost : IDisposable
     private readonly TrayIcon _tray;
     private readonly NativeMenuItem _statusItem;
     private readonly NativeMenuItem _trayToggle;
+    private readonly NativeMenuItem _showItem;
+    private readonly NativeMenuItem _toolboxItem;
+    private readonly NativeMenuItem _stopItem;
+    private readonly NativeMenuItem _exitItem;
+
+    /// <summary>状态行最后一次收到的原文（中文）。切换语言时按它重算。</summary>
+    private string _statusText = "联机：未启动";
+
     private bool _disposed;
 
     /// <param name="showWindow">把主窗口重新叫出来。</param>
@@ -43,18 +52,18 @@ public sealed class TrayIconHost : IDisposable
         // 状态行只是展示，不可点。文案由 SetStatus 更新（联机启动 / 停止 / 接管都会刷）。
         _statusItem = new NativeMenuItem("联机：未启动") { IsEnabled = false };
 
-        var showItem = new NativeMenuItem("显示主界面");
-        showItem.Click += (_, _) => showWindow();
+        _showItem = new NativeMenuItem("显示主界面");
+        _showItem.Click += (_, _) => showWindow();
 
         // 热键是「游戏运行时才注册」的，被别的软件占用时就没有任何入口了 ——
         // 托盘这一项是那种情况下的兜底（也方便想先开着窗口再进游戏的人）。
-        var toolboxItem = new NativeMenuItem("Minecraft 工具箱");
-        toolboxItem.Click += (_, _) => showToolbox();
+        _toolboxItem = new NativeMenuItem("Minecraft 工具箱");
+        _toolboxItem.Click += (_, _) => showToolbox();
 
         // 托盘是唯一能看到「后台还有内核在跑」的地方，所以断开入口也必须在这里 ——
         // 否则用户想停掉后台联机只能再打开启动器走一遍联机页。
-        var stopItem = new NativeMenuItem("断开联机（停止虚拟网络）");
-        stopItem.Click += (_, _) => stopMultiplayer();
+        _stopItem = new NativeMenuItem("断开联机（停止虚拟网络）");
+        _stopItem.Click += (_, _) => stopMultiplayer();
 
         _trayToggle = new NativeMenuItem("关闭窗口时最小化到托盘")
         {
@@ -69,18 +78,18 @@ public sealed class TrayIconHost : IDisposable
             Log.Information("托盘菜单：关闭窗口时最小化到托盘 = {Value}", _trayToggle.IsChecked);
         };
 
-        var exitItem = new NativeMenuItem("退出启动器");
-        exitItem.Click += (_, _) => exit();
+        _exitItem = new NativeMenuItem("退出启动器");
+        _exitItem.Click += (_, _) => exit();
 
         var menu = new NativeMenu();
         menu.Items.Add(_statusItem);
         menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(showItem);
-        menu.Items.Add(toolboxItem);
-        menu.Items.Add(stopItem);
+        menu.Items.Add(_showItem);
+        menu.Items.Add(_toolboxItem);
+        menu.Items.Add(_stopItem);
         menu.Items.Add(_trayToggle);
         menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(exitItem);
+        menu.Items.Add(_exitItem);
 
         _tray = new TrayIcon
         {
@@ -104,6 +113,26 @@ public sealed class TrayIconHost : IDisposable
         TrayIcon.SetIcons(application, icons);
 
         Log.Information("系统托盘图标已创建");
+
+        // 托盘菜单是原生菜单，不是视觉树 —— 翻译那套「属性变化」处理器碰不到它，
+        // 所以要在这里自己按语言填一次，并在切换语言时重来。
+        ApplyLanguage();
+        Localize.Changed += ApplyLanguage;
+    }
+
+    /// <summary>把菜单文案按当前语言重填一遍。</summary>
+    private void ApplyLanguage()
+    {
+        if (_disposed)
+            return;
+
+        _showItem.Header = Localize.T("显示主界面");
+        _toolboxItem.Header = Localize.T("Minecraft 工具箱");
+        _stopItem.Header = Localize.T("断开联机（停止虚拟网络）");
+        _trayToggle.Header = Localize.T("关闭窗口时最小化到托盘");
+        _exitItem.Header = Localize.T("退出启动器");
+
+        SetStatus(_statusText);
     }
 
     /// <summary>更新托盘状态文案（同时作用于 tooltip 与菜单第一行）。</summary>
@@ -112,12 +141,15 @@ public sealed class TrayIconHost : IDisposable
         if (_disposed)
             return;
 
-        _statusItem.Header = text;
+        _statusText = text;
+
+        var localized = Localize.T(text);
+        _statusItem.Header = localized;
 
         // Windows 的通知区域 tooltip 实际只显示一行，这里保持单行可读。
         _tray.ToolTipText = string.IsNullOrWhiteSpace(text)
             ? "Vibrantbit Launcher"
-            : $"Vibrantbit Launcher — {text}";
+            : $"Vibrantbit Launcher — {localized}";
     }
 
     public void Dispose()
@@ -126,6 +158,8 @@ public sealed class TrayIconHost : IDisposable
             return;
 
         _disposed = true;
+
+        Localize.Changed -= ApplyLanguage;
 
         try
         {

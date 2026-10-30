@@ -16,6 +16,7 @@ using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Serilog.Events;
+using VibrantbitLauncher.Localization;
 using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Windows;
@@ -133,6 +134,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
             RefreshLogsCommand = new RelayCommand(RefreshLogs);
             ClearLogsCommand = new RelayCommand(ClearLogs);
             OpenLogFolderCommand = new RelayCommand(LogService.OpenLogDirectory);
+            RefreshDiskUsageCommand = new AsyncRelayCommand(RefreshDiskUsageAsync);
+            CleanExpiredLogsCommand = new RelayCommand(CleanExpiredLogs);
 
             // 订阅内存 sink：日志产生时实时出现在「最近日志」里。
             // 事件可能来自任意线程（下载、启动都是后台线程），必须切回 UI 线程再动集合。
@@ -1955,13 +1958,17 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         public static readonly IReadOnlyList<SettingOption> LanguageOptions = new[]
         {
+            new SettingOption(string.Empty, "跟随系统"),
             new SettingOption("zh-CN", "简体中文"),
-            new SettingOption("en-US", "English（尚未提供）"),
+            new SettingOption("en-US", "English"),
         };
 
         public IReadOnlyList<SettingOption> LanguageList => LanguageOptions;
 
-        /// <summary>界面语言。目前只有简体中文可用，其余选项保留占位。</summary>
+        /// <summary>
+        /// 界面语言。选完<b>立刻</b>生效 —— 不要求重启，翻不翻得出来是翻译层的事，
+        /// 是否愿意为它重启一次不该由玩家承担。
+        /// </summary>
         public SettingOption SelectedLanguage
         {
             get => _selectedLanguage;
@@ -1970,23 +1977,19 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 if (value == null || !SetProperty(ref _selectedLanguage, value))
                     return;
 
-                if (value.Key != "zh-CN")
-                {
-                    UpdateStatusTextForLanguage();
-                    return;
-                }
-
                 SettingsService.Current.Language = value.Key;
                 SettingsService.Save();
-            }
-        }
 
-        private void UpdateStatusTextForLanguage()
-        {
-            // 选了未提供的语言就退回中文，并如实告知 —— 而不是假装切过去了
-            _selectedLanguage = LanguageOptions[0];
-            OnPropertyChanged(nameof(SelectedLanguage));
-            AppServices.Notifications?.Warning("目前只提供简体中文界面");
+                var target = value.Key switch
+                {
+                    "en-US" => AppLanguage.English,
+                    "zh-CN" => AppLanguage.Chinese,
+                    // 「跟随系统」：按系统语言重新判一次
+                    _ => Localize.DetectSystemLanguage()
+                };
+
+                Localize.SetLanguage(target);
+            }
         }
 
         /// <summary>系统字体列表（含「系统默认」）。</summary>
@@ -2404,6 +2407,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
         public RelayCommand ClearLogsCommand { get; }
         public RelayCommand OpenLogFolderCommand { get; }
 
+        /// <summary>重新统计磁盘占用。</summary>
+        public AsyncRelayCommand RefreshDiskUsageCommand { get; }
+
+        /// <summary>只清掉超过保留天数的日志（当天那份永远留着）。</summary>
+        public RelayCommand CleanExpiredLogsCommand { get; }
+
         private static LogEventLevel ParseFilterLevel(string key) =>
             Enum.TryParse<LogEventLevel>(key, ignoreCase: true, out var level)
                 ? level
@@ -2470,6 +2479,198 @@ namespace VibrantbitLauncher.ViewModels.Pages
             SettingsService.ApplyTheme();
             CurrentTheme = theme;
             SettingsService.Save();
+        }
+
+        // ============================================================
+        //  磁盘占用（高级 → 磁盘占用）
+        // ============================================================
+
+        private readonly ObservableCollection<DiskUsageEntry> _diskUsage = new();
+        private bool _isDiskUsageBusy;
+        private string _diskUsageSummary = string.Empty;
+        private bool _diskUsageLoaded;
+
+        /// <summary>三块目录的占用。集合本身只增删元素，不整体替换 —— 否则列表会闪一下。</summary>
+        public ObservableCollection<DiskUsageEntry> DiskUsage => _diskUsage;
+
+        public bool IsDiskUsageBusy
+        {
+            get => _isDiskUsageBusy;
+            private set => SetProperty(ref _isDiskUsageBusy, value);
+        }
+
+        public string DiskUsageSummary
+        {
+            get => _diskUsageSummary;
+            private set => SetProperty(ref _diskUsageSummary, value);
+        }
+
+        /// <summary>重新量一遍。统计在后台线程跑，界面上只换文案。</summary>
+        public async Task RefreshDiskUsageAsync()
+        {
+            if (_isDiskUsageBusy)
+                return;
+
+            IsDiskUsageBusy = true;
+            DiskUsageSummary = "正在统计…";
+
+            try
+            {
+                var entries = await DiskUsageService.MeasureAsync();
+                var total = 0L;
+
+                _diskUsage.Clear();
+                foreach (var entry in entries)
+                {
+                    _diskUsage.Add(entry);
+                    total += entry.Bytes;
+                }
+
+                DiskUsageSummary = $"合计 {DiskUsageService.FormatSize(total)}";
+                _diskUsageLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "统计磁盘占用失败");
+                DiskUsageSummary = "统计失败，可以点「重新统计」再试一次";
+            }
+            finally
+            {
+                IsDiskUsageBusy = false;
+            }
+        }
+
+        /// <summary>
+        /// 切到「高级」时才量一次。
+        ///
+        /// <para>
+        /// 不在页面构造时量：设置页是 DI 单例，构造时量等于启动即枚举整个 .minecraft，
+        /// 而绝大多数用户根本不会打开这个分区。
+        /// </para>
+        /// </summary>
+        public void EnsureDiskUsageLoaded()
+        {
+            if (_diskUsageLoaded || _isDiskUsageBusy)
+                return;
+
+            _ = RefreshDiskUsageAsync();
+        }
+
+        private void CleanExpiredLogs()
+        {
+            var deleted = DiskUsageService.CleanExpiredLogs();
+
+            AppServices.Notifications?.Success(deleted > 0
+                ? $"已清理 {deleted} 个超期日志文件"
+                : "没有超期日志需要清理");
+
+            RefreshLogs();
+            UpdateLogSummary(force: true);
+            _ = RefreshDiskUsageAsync();
+        }
+
+        // ============================================================
+        //  配置备份 / 分区重置
+        // ============================================================
+
+        private string _backupStatus = string.Empty;
+
+        /// <summary>导入导出那一行的结果文案（成功、失败都写在这里，不弹窗）。</summary>
+        public string BackupStatus
+        {
+            get => _backupStatus;
+            private set => SetProperty(ref _backupStatus, value);
+        }
+
+        /// <summary>导出配置备份。文件路径由页面的保存对话框给出。</summary>
+        public void ExportBackup(string path)
+        {
+            try
+            {
+                var count = SettingsBackupService.Export(path);
+                BackupStatus = $"已导出 {count} 项设置到 {Path.GetFileName(path)}";
+                AppServices.Notifications?.Success("设置备份已导出");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "导出设置备份失败");
+                BackupStatus = "导出失败：" + FriendlyError.Describe(ex);
+                AppServices.Notifications?.Error("导出失败");
+            }
+        }
+
+        /// <summary>
+        /// 导入配置备份：先确认，再逐项合并，最后把界面整页刷回配置里的值。
+        ///
+        /// <para>
+        /// 「整页刷回」是必须的 —— 导入改的是 <see cref="SettingsService.Current"/>，
+        /// 而界面上的开关各自持有一份副本，不重新初始化就会看到「设置说开了、界面还是关的」。
+        /// </para>
+        /// </summary>
+        public async Task ImportBackupAsync(string path)
+        {
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            var confirmed = await dialogs.ConfirmAsync(
+                "导入设置备份",
+                "会用文件里的设置覆盖你现在的选择，账户、游戏目录、Java 路径和语言不受影响。",
+                "导入", "取消");
+
+            if (!confirmed)
+                return;
+
+            var result = SettingsBackupService.Import(path);
+
+            if (!result.Succeeded)
+            {
+                BackupStatus = result.Error ?? "导入失败";
+                AppServices.Notifications?.Error("这个文件导入不了");
+                return;
+            }
+
+            _isInitialized = false;
+            InitializeViewModel();
+
+            BackupStatus = result.Applied > 0
+                ? $"已导入 {result.Applied} 项设置"
+                : "文件里的设置和你现在的完全一致";
+
+            AppServices.Notifications?.Success(result.Applied > 0 ? "设置已更新" : "没有需要改的项");
+        }
+
+        /// <summary>
+        /// 只把某一节恢复默认。
+        /// <paramref name="title"/> 是界面上那一节的名字，出现在确认框里，
+        /// 让用户看清「恢复的是哪一节」而不是含糊地「恢复默认」。
+        /// </summary>
+        public async Task ResetSectionAsync(string section, string title)
+        {
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            // 节名先过一遍翻译：英文界面下要把 "General" 填进句子里，
+            // 而不是留着「通用」两个字夹在英文句子中间
+            var display = Localize.T(title);
+
+            var confirmed = await dialogs.ConfirmAsync(
+                $"恢复「{display}」的默认设置",
+                $"只把「{display}」这一节的选项恢复默认，其它节和账户、游戏目录都不受影响。",
+                "恢复默认", "取消");
+
+            if (!confirmed)
+                return;
+
+            var changed = SettingsService.ResetSection(section);
+
+            _isInitialized = false;
+            InitializeViewModel();
+
+            AppServices.Notifications?.Success(changed > 0
+                ? $"「{display}」已恢复默认（改动 {changed} 项）"
+                : $"「{display}」本来就是默认值");
         }
     }
 }

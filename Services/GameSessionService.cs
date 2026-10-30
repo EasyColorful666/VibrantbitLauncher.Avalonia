@@ -45,7 +45,7 @@ public sealed class GameSession
 ///
 /// <para>
 /// 工具箱要解决的第一件事就是「玩家此刻在玩哪个实例」—— 联机要把房间码和这个实例对上，
-/// 种子要读它的存档目录，快捷指令要送到它的窗口。这些东西散落在
+/// 浮窗标题要显示是哪个版本、什么加载器。这些信息本来散落在
 /// <c>RunPageViewModel</c> 的局部变量里，页面一离开就没了，所以启动成功 / 进程退出时
 /// 往这里登记一笔，其余模块只看这里。
 /// </para>
@@ -73,7 +73,7 @@ public sealed class GameSessionService
             lock (_gate)
             {
                 // 从新到旧挑第一个还活着的。每次都验一遍进程，避免「游戏崩了但退出事件没送到」
-                // 导致工具箱一直认为游戏还在跑（那样热键会一直挂着，指令也送进一个空窗口）。
+                // 导致工具箱一直认为游戏还在跑（那样热键会挂在没有游戏的桌面上）。
                 foreach (var session in _sessions.Values.OrderByDescending(s => s.StartedAt).ToArray())
                 {
                     if (IsAlive(session.ProcessId))
@@ -126,27 +126,6 @@ public sealed class GameSessionService
 
         Log.Information("游戏会话结束：PID {Pid}", processId);
         NotifyChanged();
-    }
-
-    /// <summary>
-    /// 取游戏主窗口句柄（注入按键要用）。窗口还没建出来时返回 <see cref="IntPtr.Zero"/>。
-    /// </summary>
-    public IntPtr TryGetWindowHandle(out GameSession? session)
-    {
-        session = Current;
-        if (session is null)
-            return IntPtr.Zero;
-
-        try
-        {
-            using var process = Process.GetProcessById(session.ProcessId);
-            return process.MainWindowHandle;
-        }
-        catch (Exception ex)
-        {
-            Log.Debug(ex, "取游戏窗口句柄失败（PID {Pid}）", session.ProcessId);
-            return IntPtr.Zero;
-        }
     }
 
     private void NotifyChanged()

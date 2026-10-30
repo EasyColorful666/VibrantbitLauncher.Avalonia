@@ -137,8 +137,13 @@ namespace VibrantbitLauncher.Services
         public double AnimationSpeed { get; set; } = 1.0;
 
         // ===== 外观 · 语言与字体 =====
-        /// <summary>界面语言。目前仅提供 zh-CN，保留字段以便后续扩展。</summary>
-        public string Language { get; set; } = "zh-CN";
+        /// <summary>
+        /// 界面语言：<c>zh-CN</c> / <c>en-US</c>；<b>空表示跟随系统</b>。
+        ///
+        /// 默认给空串而不是 <c>zh-CN</c>：新装的用户该按系统语言走，
+        /// 老配置里这一项已经写着具体值，不受影响。
+        /// </summary>
+        public string Language { get; set; } = string.Empty;
 
         /// <summary>界面字体族名；空表示跟随系统默认。</summary>
         public string FontFamily { get; set; } = string.Empty;
@@ -784,6 +789,21 @@ namespace VibrantbitLauncher.Services
             Current = keep;
             Save();
 
+            ApplyAll();
+
+            Serilog.Log.Information("设置已重置为默认值（账户、游戏目录与 Java 设置已保留）");
+        }
+
+        /// <summary>
+        /// 把「当前配置」整体重新刷到界面层（主题、字体、动效、背景、下载）。
+        ///
+        /// <para>
+        /// 重置整份配置、按分区重置、导入备份三处都要做同一串动作，
+        /// 抽出来避免以后新增一个 Apply 方法时漏掉某一条路径。
+        /// </para>
+        /// </summary>
+        public static void ApplyAll()
+        {
             ApplyTheme();
             ApplyPerformanceMode();
             ApplyTypography();
@@ -791,8 +811,113 @@ namespace VibrantbitLauncher.Services
             ApplyHighContrast();
             ApplyDownloadSettings();
             ApplyBackground();
+        }
 
-            Serilog.Log.Information("设置已重置为默认值（账户、游戏目录与 Java 设置已保留）");
+        /// <summary>
+        /// 每个分区「本区恢复默认」管到哪些字段。
+        ///
+        /// <para>
+        /// 这里刻意是<b>白名单</b>而不是按前缀猜：设置项之间的关联并不按页面分组 ——
+        /// 比如性能模式在外观页，但它决定渲染后端，属于「这台机器扛不扛得住」，
+        /// 不该被「恢复外观默认」顺手关掉；语言与字体同理，换了就找不着北。
+        /// </para>
+        ///
+        /// <para>
+        /// 路径类字段（游戏目录、Java、资源包 / 存档迁移位置、背景图、字体文件）一律不在表内：
+        /// 它们是用户攒下来的资产，重置一下配置不该让人重新选一次目录。
+        /// </para>
+        /// </summary>
+        private static readonly Dictionary<string, string[]> SectionFields = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["general"] = new[]
+            {
+                nameof(AppSettings.ShowHomeGreeting), nameof(AppSettings.ShowHomeLaunchCard),
+                nameof(AppSettings.ShowHomeRecent), nameof(AppSettings.ShowHomeInstanceOverview),
+                nameof(AppSettings.ShowHomeShortcuts), nameof(AppSettings.MinimizeToTray),
+                nameof(AppSettings.UpdateIncludePrerelease), nameof(AppSettings.AutoLoginLastAccount),
+                nameof(AppSettings.AfterLaunchAction)
+            },
+            ["game"] = new[]
+            {
+                nameof(AppSettings.MaxMemoryMb), nameof(AppSettings.MinMemoryMb),
+                nameof(AppSettings.MemoryAutoRecommend), nameof(AppSettings.JvmArgs),
+                nameof(AppSettings.VersionIsolation), nameof(AppSettings.DisableIpv6),
+                nameof(AppSettings.GcMode), nameof(AppSettings.WindowWidth),
+                nameof(AppSettings.WindowHeight), nameof(AppSettings.StartFullscreen),
+                nameof(AppSettings.UseCustomGameArgs), nameof(AppSettings.GameArgs)
+            },
+            ["appearance"] = new[]
+            {
+                nameof(AppSettings.Theme), nameof(AppSettings.AccentColor),
+                nameof(AppSettings.AccentColorEnd), nameof(AppSettings.UseAccentGradient),
+                nameof(AppSettings.BackgroundMode), nameof(AppSettings.BackgroundColor),
+                nameof(AppSettings.BackgroundImageOpacity), nameof(AppSettings.BackgroundBlur),
+                nameof(AppSettings.BackgroundVignette), nameof(AppSettings.BackgroundAnimated),
+                nameof(AppSettings.AnimationLevel), nameof(AppSettings.PageTransition),
+                nameof(AppSettings.AnimationSpeed), nameof(AppSettings.FontScale),
+                nameof(AppSettings.HighContrast)
+            },
+            ["network"] = new[]
+            {
+                nameof(AppSettings.DownloadSourceMode), nameof(AppSettings.DownloadSpeedLimitKb),
+                nameof(AppSettings.DownloadTimeoutSeconds), nameof(AppSettings.UseBmclMirror),
+                nameof(AppSettings.DownloadConcurrency), nameof(AppSettings.DownloadChunkCount),
+                nameof(AppSettings.DownloadRetryCount), nameof(AppSettings.EasyTierRelayServer),
+                nameof(AppSettings.KeepMultiplayerAlive)
+            },
+            ["advanced"] = new[]
+            {
+                nameof(AppSettings.LogLevel), nameof(AppSettings.LogRetentionDays),
+                nameof(AppSettings.LogToDebugOutput), nameof(AppSettings.CrashReportAutoUpload)
+            }
+        };
+
+        /// <summary>这个分区有没有可重置的项（「关于」页没有，界面上就不给按钮）。</summary>
+        public static bool HasSectionDefaults(string section) => SectionFields.ContainsKey(section);
+
+        /// <summary>
+        /// 只把某一个分区管辖的设置恢复默认，返回实际改动了几项。
+        ///
+        /// <para>
+        /// 用来替代「改坏了一个开关却只能整份重置」：整份重置连账户之外的一大堆选择都会丢，
+        /// 用户宁可忍着不改。按分区重置的语义是「我只想把这个页面退回刚装好的样子」。
+        /// </para>
+        /// </summary>
+        public static int ResetSection(string section)
+        {
+            if (!SectionFields.TryGetValue(section, out var names))
+                return 0;
+
+            var defaults = new AppSettings();
+            var type = typeof(AppSettings);
+            var changed = 0;
+
+            foreach (var name in names)
+            {
+                var property = type.GetProperty(name);
+                if (property is null || !property.CanWrite)
+                    continue;
+
+                var current = property.GetValue(Current);
+                var fallback = property.GetValue(defaults);
+
+                // 逐字段比对：没变的项不算「改动」，否则界面上会显示「已恢复 12 项」而实际一个也没变
+                if (Equals(current, fallback))
+                    continue;
+
+                property.SetValue(Current, fallback);
+                changed++;
+            }
+
+            Save();
+
+            if (changed > 0)
+            {
+                ApplyAll();
+                Serilog.Log.Information("设置分区「{Section}」已恢复默认，改动 {Count} 项", section, changed);
+            }
+
+            return changed;
         }
 
 

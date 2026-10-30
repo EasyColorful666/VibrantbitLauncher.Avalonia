@@ -6,7 +6,7 @@
              mc:Ignorable="d">
 
     <!--
-        设置项的一行：左边「标题 + 一句说明」，右边是控件。
+        设置项的一行：左边「标题（+ 生效方式标签）+ 一句说明」，右边是控件。
 
         为什么要抽成控件：设置页有几十行同一结构，每行手写一遍 Grid + 两个 TextBlock
         既容易错位（左边距 / 行距不一致），也让人一眼看不出「这里到底有多少项」。
@@ -20,25 +20,47 @@
 
         ⚠️ 布局必须写在 <UserControl.Content> 里：本控件把 Body 标成了 [Content]，
         直接写自由子元素会被塞进 Body，布局本身反而成了内容（第一次写完就是这样炸的）。
+
+        外层那个 Border（PART_Shell）平时透明，只用来给「搜索跳转」时刷一块底色。
+        它用负左边距把内边距抵消掉，所以加上前后各 6 的上下内边距之后，
+        行与行之间的视觉间距与以前（只有 14 下边距）一致，不会整体错位。
     -->
     <UserControl.Content>
-        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
+        <Border x:Name="PART_Shell"
+                Margin="-10,-6,-10,8"
+                Padding="10,6,10,6"
+                Background="Transparent"
+                CornerRadius="{StaticResource RadiusM}">
 
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                <TextBlock x:Name="PART_Header"
-                           Classes="body"
-                           FontWeight="SemiBold"
-                           TextWrapping="Wrap" />
-                <TextBlock x:Name="PART_Description"
-                           Classes="caption"
-                           Margin="0,3,0,0"
-                           Opacity="0.85"
-                           TextWrapping="Wrap" />
-            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto">
 
-            <ContentPresenter x:Name="PART_Body"
-                              Grid.Column="1"
-                              VerticalAlignment="Center" />
-        </Grid>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock x:Name="PART_Header"
+                                   Classes="body"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <Border x:Name="PART_Badge"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="{StaticResource RadiusPill}"
+                                Padding="7,1"
+                                IsVisible="False">
+                            <TextBlock x:Name="PART_BadgeText" Classes="caption" Opacity="0.8" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="PART_Description"
+                               Classes="caption"
+                               Margin="0,3,0,0"
+                               Opacity="0.85"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ContentPresenter x:Name="PART_Body"
+                                  Grid.Column="1"
+                                  VerticalAlignment="Center" />
+            </Grid>
+        </Border>
     </UserControl.Content>
 </UserControl>

@@ -66,6 +66,10 @@ public partial class App : Application
             // ② 先读配置再建窗口：页面初始化会读写 SettingsService.Current
             SettingsService.Load();
 
+            // ②.1 界面语言。必须**在第一个窗口出现之前**定下来 ——
+            // 翻译是在「文字属性被写入的那一刻」生效的，窗口建完再初始化就会有一屏中文闪现。
+            Localization.Localize.Initialize();
+
             // ②.5 恢复上次登录的账户。
             //
             // 账户以前只在打开「账户」页时才被读回来，于是启动器一开就点「启动游戏」

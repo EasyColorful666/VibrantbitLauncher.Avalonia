@@ -18,6 +18,11 @@ namespace VibrantbitLauncher.Controls;
 /// 换成 <c>$parent[UserControl]</c> 又会因为 UserControl 上没有 Header 而静默失败，
 /// 结果是整页设置项一片空白且没有任何日志。与 <see cref="PageHeader"/> 同一套做法。
 /// </para>
+///
+/// <para>
+/// <see cref="Badge"/> 是标题右上角那个小胶囊，用来标「重启后生效」这类补充信息。
+/// 只有需要额外说明的行才写，没写的行完全看不出差别（胶囊直接隐藏，不占位）。
+/// </para>
 /// </summary>
 public partial class SettingRow : UserControl
 {
@@ -29,6 +34,10 @@ public partial class SettingRow : UserControl
     public static readonly StyledProperty<string?> DescriptionProperty =
         AvaloniaProperty.Register<SettingRow, string?>(nameof(Description));
 
+    /// <summary>标题右侧的小标签，如「重启后生效」。空表示不显示。</summary>
+    public static readonly StyledProperty<string?> BadgeProperty =
+        AvaloniaProperty.Register<SettingRow, string?>(nameof(Badge));
+
     /// <summary>右侧的控件。</summary>
     public static readonly StyledProperty<object?> BodyProperty =
         AvaloniaProperty.Register<SettingRow, object?>(nameof(Body));
@@ -37,6 +46,7 @@ public partial class SettingRow : UserControl
     {
         HeaderProperty.Changed.AddClassHandler<SettingRow>((row, _) => row.SyncHeader());
         DescriptionProperty.Changed.AddClassHandler<SettingRow>((row, _) => row.SyncDescription());
+        BadgeProperty.Changed.AddClassHandler<SettingRow>((row, _) => row.SyncBadge());
         BodyProperty.Changed.AddClassHandler<SettingRow>((row, _) => row.SyncBody());
     }
 
@@ -47,6 +57,7 @@ public partial class SettingRow : UserControl
         // XAML 里写死的属性不会触发 Changed，这里补一次首帧同步
         SyncHeader();
         SyncDescription();
+        SyncBadge();
         SyncBody();
     }
 
@@ -60,6 +71,12 @@ public partial class SettingRow : UserControl
     {
         get => GetValue(DescriptionProperty);
         set => SetValue(DescriptionProperty, value);
+    }
+
+    public string? Badge
+    {
+        get => GetValue(BadgeProperty);
+        set => SetValue(BadgeProperty, value);
     }
 
     [Content]
@@ -78,6 +95,15 @@ public partial class SettingRow : UserControl
 
         // 没有说明时整行收起，否则标题下面会留一段空白
         PART_Description.IsVisible = !string.IsNullOrWhiteSpace(text);
+    }
+
+    private void SyncBadge()
+    {
+        var text = Badge;
+        PART_BadgeText.Text = text;
+
+        // 空标签连外框一起收掉 —— 否则每行标题右边都会多出一个小圆点
+        PART_Badge.IsVisible = !string.IsNullOrWhiteSpace(text);
     }
 
     private void SyncBody() => PART_Body.Content = Body;

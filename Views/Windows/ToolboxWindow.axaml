@@ -7,7 +7,7 @@
     mc:Ignorable="d"
     Title="Minecraft 工具箱"
     Width="452"
-    Height="500"
+    Height="348"
     CanResize="False"
     ShowInTaskbar="False"
     WindowDecorations="None"
@@ -46,7 +46,7 @@
                         <TextBlock
                             x:Name="TitleText"
                             Classes="subtitle"
-                            Text="Minecraft 工具箱" />
+                            Text="快速联机" />
                         <TextBlock
                             x:Name="InstanceText"
                             Classes="caption"
@@ -69,223 +69,84 @@
                 </Grid>
             </Border>
 
-            <TabControl
-                x:Name="ToolTabs"
+            <!--
+                只有一页，所以不再套 TabControl：单页签的标签条除了多占一行高度，
+                还会让人以为「下面还有别的东西」。
+            -->
+            <ScrollViewer
                 Grid.Row="1"
-                Margin="8,0,8,0"
-                Padding="0">
+                Margin="14,10,14,0"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="10">
 
-                <!--  ==================== 快速联机  ====================  -->
-                <TabItem Header="联机">
-                    <ScrollViewer
-                        Margin="6,10,6,0"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <RadioButton
+                            x:Name="HostRadio"
+                            IsChecked="True"
+                            IsCheckedChanged="Role_Changed"
+                            Content="我是房主"
+                            GroupName="ToolboxRole" />
+                        <RadioButton
+                            x:Name="GuestRadio"
+                            IsCheckedChanged="Role_Changed"
+                            Content="我是房客"
+                            GroupName="ToolboxRole" />
+                    </StackPanel>
 
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <RadioButton
-                                    x:Name="HostRadio"
-                                    IsChecked="True"
-                                    IsCheckedChanged="Role_Changed"
-                                    Content="我是房主"
-                                    GroupName="ToolboxRole" />
-                                <RadioButton
-                                    x:Name="GuestRadio"
-                                    IsCheckedChanged="Role_Changed"
-                                    Content="我是房客"
-                                    GroupName="ToolboxRole" />
-                            </StackPanel>
-
-                            <!--  房主：房间码  -->
-                            <StackPanel x:Name="HostPanel" Spacing="8">
-                                <Border
-                                    Padding="14,12"
-                                    Background="{DynamicResource SurfaceSunkenBrush}"
-                                    CornerRadius="{StaticResource RadiusM}">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Classes="caption" Text="把这个码发给好友" />
-                                        <SelectableTextBlock
-                                            x:Name="HostCodeText"
-                                            FontSize="{DynamicResource FontSizeSubtitle}"
-                                            Text="—" />
-                                    </StackPanel>
-                                </Border>
-
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Click="Regenerate_Click" Content="换一个码" />
-                                    <Button Click="CopyCode_Click" Content="复制联机码" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <!--  房客：填码  -->
-                            <StackPanel x:Name="GuestPanel" Spacing="8" IsVisible="False">
-                                <TextBox
-                                    x:Name="GuestCodeBox"
-                                    PlaceholderText="粘贴房主给你的联机码，例如 U/ABCD-EFGH-JKLM-NPQR" />
-                                <Button Click="Paste_Click" Content="从剪贴板粘贴" />
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button
-                                    x:Name="StartButton"
-                                    Classes="accent"
-                                    Click="Start_Click"
-                                    Content="开启联机" />
-                                <Button
-                                    x:Name="StopButton"
-                                    Click="Stop_Click"
-                                    Content="断开"
-                                    IsEnabled="False" />
-                            </StackPanel>
-
-                            <TextBlock
-                                x:Name="MultiplayerStatus"
-                                Classes="caption"
-                                Text="尚未开启虚拟网络。"
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                x:Name="MultiplayerDetail"
-                                Classes="caption"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-
-                <!--  ==================== 种子地图  ====================  -->
-                <TabItem Header="种子">
-                    <Grid Margin="6,10,6,8" RowDefinitions="Auto,*,Auto">
-                        <StackPanel Grid.Row="0" Spacing="8">
-                            <ComboBox
-                                x:Name="WorldCombo"
-                                HorizontalAlignment="Stretch"
-                                PlaceholderText="选择存档"
-                                SelectionChanged="WorldCombo_SelectionChanged" />
-
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <!--  只读：地图是照着存档画的，手改种子并不会改变图上内容  -->
-                                <TextBox
-                                    x:Name="SeedBox"
-                                    Grid.Column="0"
-                                    IsReadOnly="True"
-                                    PlaceholderText="这个存档还没读出种子" />
-                                <Button
-                                    x:Name="CopySeedButton"
-                                    Grid.Column="1"
-                                    Classes="accent"
-                                    Click="CopySeed_Click"
-                                    Content="复制" />
-                            </Grid>
-                        </StackPanel>
-
-                        <!--  地图就地画在这儿：滚轮缩放、按住拖动、双击复位  -->
+                    <!--  房主：房间码  -->
+                    <StackPanel x:Name="HostPanel" Spacing="8">
                         <Border
-                            x:Name="MapHost"
-                            Grid.Row="1"
-                            Margin="0,10,0,0"
-                            Background="{DynamicResource SurfaceCardBrush}"
-                            BorderBrush="{DynamicResource HairlineBrush}"
-                            BorderThickness="1"
-                            ClipToBounds="True"
-                            CornerRadius="{DynamicResource RadiusM}"
-                            DoubleTapped="MapHost_DoubleTapped"
-                            PointerMoved="MapHost_PointerMoved"
-                            PointerPressed="MapHost_PointerPressed"
-                            PointerReleased="MapHost_PointerReleased"
-                            PointerWheelChanged="MapHost_PointerWheelChanged">
-                            <Grid>
-                                <!--  缩放 / 平移的变换由代码建（XAML 里给 Transform 命名拿不到字段）  -->
-                                <Image x:Name="MapImage" Stretch="Uniform" />
-
-                                <TextBlock
-                                    x:Name="MapEmptyHint"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Classes="caption"
-                                    Opacity="0.7"
-                                    Text="进去跑两步，这里就会长出地图"
-                                    TextAlignment="Center"
-                                    TextWrapping="Wrap" />
-                            </Grid>
+                            Padding="14,12"
+                            Background="{DynamicResource SurfaceSunkenBrush}"
+                            CornerRadius="{StaticResource RadiusM}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="caption" Text="把这个码发给好友" />
+                                <SelectableTextBlock
+                                    x:Name="HostCodeText"
+                                    FontSize="{DynamicResource FontSizeSubtitle}"
+                                    Text="—" />
+                            </StackPanel>
                         </Border>
 
-                        <TextBlock
-                            x:Name="SeedStatus"
-                            Grid.Row="2"
-                            Margin="0,8,0,0"
-                            Classes="caption"
-                            TextWrapping="Wrap" />
-                    </Grid>
-                </TabItem>
-
-                <!--  ==================== 快捷指令  ====================  -->
-                <TabItem Header="指令">
-                    <ScrollViewer
-                        Margin="6,10,6,0"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="10">
-                            <!--  两个下拉并排会被看成一回事，所以各给一行小标签区分「模板」和「物品」  -->
-                            <Grid ColumnDefinitions="60,*">
-                                <TextBlock
-                                    Grid.Column="0"
-                                    Classes="caption"
-                                    VerticalAlignment="Center"
-                                    Opacity="0.75"
-                                    Text="指令模板" />
-                                <ComboBox
-                                    x:Name="TemplateCombo"
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Stretch"
-                                    PlaceholderText="选一个常用指令"
-                                    SelectionChanged="TemplateCombo_SelectionChanged" />
-                            </Grid>
-
-                            <Grid ColumnDefinitions="60,*">
-                                <TextBlock
-                                    Grid.Column="0"
-                                    Classes="caption"
-                                    VerticalAlignment="Center"
-                                    Opacity="0.75"
-                                    Text="常用物品" />
-                                <ComboBox
-                                    x:Name="ItemCombo"
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Stretch"
-                                    MaxDropDownHeight="340"
-                                    PlaceholderText="选一个直接生成给予指令"
-                                    SelectionChanged="ItemCombo_SelectionChanged" />
-                            </Grid>
-
-                            <TextBox
-                                x:Name="CommandBox"
-                                Height="66"
-                                AcceptsReturn="True"
-                                TextWrapping="Wrap"
-                                PlaceholderText="/give @s minecraft:diamond 64" />
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button
-                                    x:Name="SendCommandButton"
-                                    Classes="accent"
-                                    Click="SendCommand_Click"
-                                    Content="送进游戏" />
-                                <Button Click="CopyCommand_Click" Content="复制指令" />
-                            </StackPanel>
-
-                            <TextBlock
-                                Classes="caption"
-                                Text="「送进游戏」会把游戏切到最前面，自动打开聊天框、输入指令并回车。单人存档需要开启作弊。"
-                                TextWrapping="Wrap" />
-
-                            <TextBlock
-                                x:Name="CommandStatus"
-                                Classes="caption"
-                                TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Click="Regenerate_Click" Content="换一个码" />
+                            <Button Click="CopyCode_Click" Content="复制联机码" />
                         </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-            </TabControl>
+                    </StackPanel>
+
+                    <!--  房客：填码  -->
+                    <StackPanel x:Name="GuestPanel" Spacing="8" IsVisible="False">
+                        <TextBox
+                            x:Name="GuestCodeBox"
+                            PlaceholderText="粘贴房主给你的联机码，例如 U/ABCD-EFGH-JKLM-NPQR" />
+                        <Button Click="Paste_Click" Content="从剪贴板粘贴" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="StartButton"
+                            Classes="accent"
+                            Click="Start_Click"
+                            Content="开启联机" />
+                        <Button
+                            x:Name="StopButton"
+                            Click="Stop_Click"
+                            Content="断开"
+                            IsEnabled="False" />
+                    </StackPanel>
+
+                    <TextBlock
+                        x:Name="MultiplayerStatus"
+                        Classes="caption"
+                        Text="尚未开启虚拟网络。"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="MultiplayerDetail"
+                        Classes="caption"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
 
             <!--  ==================== 底栏：快捷键提示  ====================  -->
             <Border

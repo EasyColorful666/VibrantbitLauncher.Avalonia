@@ -249,6 +249,132 @@
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
+
+                <!--  ==================== 导出整合包  ====================  -->
+                <TabItem Header="导出整合包">
+                    <ScrollViewer
+                        Margin="0,14,0,0"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="14">
+
+                            <TextBlock
+                                Classes="body"
+                                Text="把当前实例打包成一个能发给别人的整合包。对方用启动器导入后会自动装好同样的游戏版本与加载器，模组按清单补齐。"
+                                TextWrapping="Wrap" />
+
+                            <!--  基本信息  -->
+                            <Border Classes="card" Padding="16,14">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Classes="sectionTitle" Text="基本信息" />
+
+                                    <Grid ColumnDefinitions="60,*">
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Classes="caption"
+                                            Text="名称"
+                                            VerticalAlignment="Center" />
+                                        <TextBox
+                                            x:Name="PackNameBox"
+                                            Grid.Column="1"
+                                            PlaceholderText="留空就用实例名" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="60,*">
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Classes="caption"
+                                            Text="版本号"
+                                            VerticalAlignment="Center" />
+                                        <TextBox
+                                            x:Name="PackVersionBox"
+                                            Grid.Column="1"
+                                            PlaceholderText="1.0.0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="60,*">
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Classes="caption"
+                                            Text="简介"
+                                            VerticalAlignment="Center" />
+                                        <TextBox
+                                            x:Name="PackSummaryBox"
+                                            Grid.Column="1"
+                                            PlaceholderText="一句话说明这个整合包是干什么的（可留空）" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!--  格式  -->
+                            <Border Classes="card" Padding="16,14">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Classes="sectionTitle" Text="格式" />
+
+                                    <RadioButton
+                                        x:Name="FormatMrpackRadio"
+                                        GroupName="packFormat"
+                                        IsChecked="True">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="body" Text="Modrinth 整合包（.mrpack）" />
+                                            <TextBlock
+                                                Classes="caption"
+                                                Text="体积小：清单里只记「哪个模组、哪一版、从哪下」，对方启动器自己去下。没发布到 Modrinth 的模组会一起打进包里。"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <RadioButton x:Name="FormatZipRadio" GroupName="packFormat">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Classes="body" Text="普通压缩包（.zip）" />
+                                            <TextBlock
+                                                Classes="caption"
+                                                Text="不联网：所有模组原样装进包里，谁都能装，代价是体积大。解压后也可以直接当一份游戏目录用。"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <!--  打包内容  -->
+                            <Border Classes="card" Padding="16,14">
+                                <StackPanel Spacing="8">
+                                    <TextBlock
+                                        Classes="sectionTitle"
+                                        Margin="0,0,0,6"
+                                        Text="打包内容" />
+
+                                    <CheckBox x:Name="PackConfigToggle" IsChecked="True" Content="配置（config / defaultconfigs / kubejs / scripts）" />
+                                    <CheckBox x:Name="PackResourcePackToggle" Content="资源包" />
+                                    <CheckBox x:Name="PackShaderToggle" Content="光影包" />
+                                    <CheckBox x:Name="PackOptionsToggle" Content="选项文件（键位与视频设置，会覆盖对方的）" />
+                                    <CheckBox x:Name="PackSavesToggle" Content="存档（含你的建筑与坐标，默认不带）" />
+                                    <CheckBox x:Name="PackBundleToggle" IsChecked="True" Content="Modrinth 上查不到的模组一并打包" />
+                                </StackPanel>
+                            </Border>
+
+                            <!--  操作  -->
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Button
+                                    x:Name="ExportPackButton"
+                                    Classes="accent"
+                                    Click="ExportPack_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ui:FASymbolIcon Symbol="Save" />
+                                        <TextBlock Text="导出整合包" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock
+                                    x:Name="PackStatus"
+                                    Classes="caption"
+                                    MaxWidth="480"
+                                    TextWrapping="Wrap"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
             </TabControl>
 
             <StackPanel

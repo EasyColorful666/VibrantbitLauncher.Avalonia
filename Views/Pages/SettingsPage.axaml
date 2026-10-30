@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:helpers="using:VibrantbitLauncher.Helpers"
              xmlns:models="using:VibrantbitLauncher.Models"
+             xmlns:services="using:VibrantbitLauncher.Services"
              xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:ctrl="using:VibrantbitLauncher.Controls"
@@ -25,6 +26,14 @@
             <Setter Property="Margin" Value="4,0,0,8" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
         </Style>
+
+        <!--
+            搜索跳到某一行时给那行刷一块底色。类由代码后置加 / 摘，
+            底色随即消失，让人一眼看到「就是这一项」。
+        -->
+        <Style Selector="ctrl|SettingRow.searchHit Border#PART_Shell">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorTertiaryBrush}" />
+        </Style>
     </UserControl.Styles>
 
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
@@ -44,59 +53,108 @@
                     Margin="0,0,20,0"
                     Padding="6"
                     VerticalAlignment="Top">
-                <ListBox x:Name="CategoryList"
-                         VerticalAlignment="Top"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         SelectionChanged="CategoryList_SelectionChanged">
+                <StackPanel>
 
-                    <ListBox.Styles>
-                        <Style Selector="ListBoxItem">
-                            <Setter Property="Margin" Value="0,1" />
-                            <Setter Property="Padding" Value="12,9" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
-                        </Style>
-                    </ListBox.Styles>
+                    <!--
+                        设置项已经有五十多个，「从通用翻到外观再滚三屏」找一项越来越难受。
+                        搜索框直接筛出条目、点一下就跳过去 —— 而不是让人记住它在哪一节。
+                    -->
+                    <TextBox x:Name="SearchBox"
+                             Margin="4,4,4,8"
+                             PlaceholderText="搜索设置"
+                             TextChanged="SearchBox_TextChanged" />
 
-                    <ListBoxItem IsSelected="True" Tag="0">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Home" />
-                            <TextBlock Text="通用" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="1">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Play" />
-                            <TextBlock Text="游戏" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="2">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Edit" />
-                            <TextBlock Text="外观" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="3">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Globe" />
-                            <TextBlock Text="网络" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="4">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Code" />
-                            <TextBlock Text="高级" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="5">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Help" />
-                            <TextBlock Text="关于" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                </ListBox>
+                    <ListBox x:Name="CategoryList"
+                             VerticalAlignment="Top"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="CategoryList_SelectionChanged">
+
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Margin" Value="0,1" />
+                                <Setter Property="Padding" Value="12,9" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                            </Style>
+                        </ListBox.Styles>
+
+                        <ListBoxItem IsSelected="True" Tag="0">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Home" />
+                                <TextBlock Text="通用" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="1">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Play" />
+                                <TextBlock Text="游戏" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="2">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Edit" />
+                                <TextBlock Text="外观" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="3">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Globe" />
+                                <TextBlock Text="网络" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="4">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Code" />
+                                <TextBlock Text="高级" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="5">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ui:FASymbolIcon Symbol="Help" />
+                                <TextBlock Text="关于" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        </ListBox>
+
+                    <!--
+                        搜索结果与分类列表互斥：有搜索词就只显示结果。
+                        两项都留着只会让人犹豫该看哪个。
+                    -->
+                    <ListBox x:Name="SearchResultList"
+                             IsVisible="False"
+                             MaxHeight="430"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             SelectionChanged="SearchResultList_SelectionChanged">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Margin" Value="0,1" />
+                                <Setter Property="Padding" Value="10,7" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:SettingSearchHit">
+                                <StackPanel>
+                                    <TextBlock Classes="body" Text="{Binding Header}" TextWrapping="Wrap" />
+                                    <TextBlock Classes="caption" Margin="0,1,0,0" Opacity="0.65" Text="{Binding Section}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock x:Name="SearchEmptyHint"
+                               Classes="caption"
+                               Margin="10,6,10,10"
+                               IsVisible="False"
+                               Opacity="0.75"
+                               TextWrapping="Wrap" />
+                </StackPanel>
             </Border>
 
             <!--
@@ -158,6 +216,21 @@
                                     <Button Command="{Binding CheckUpdateCommand}" Content="检查更新" />
                                 </ctrl:SettingRow>
                             </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="恢复本节默认" />
+                                    <TextBlock Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                               Text="只把「通用」这一节的选项恢复默认，其它节不受影响" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Tag="general"
+                                        Click="OnResetSection"
+                                        Content="本区恢复默认" />
+                            </Grid>
                         </Border>
 
                     </StackPanel>
@@ -346,7 +419,9 @@
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
                                            Text="游戏窗口的大小，以及启动游戏时额外附加的参数。" />
 
-                                <ctrl:SettingRow Header="全屏启动" Description="开启后忽略下面的窗体大小">
+                                <ctrl:SettingRow Header="全屏启动"
+                                                 Badge="下次启动游戏生效"
+                                                 Description="开启后忽略下面的窗体大小">
                                     <ToggleSwitch IsChecked="{Binding StartFullscreen, Mode=TwoWay}" />
                                 </ctrl:SettingRow>
 
@@ -364,11 +439,13 @@
                                 <ui:FASettingsExpander Header="高级启动参数" IsExpanded="False">
                                     <StackPanel Spacing="14">
                                         <ctrl:SettingRow Header="禁用 IPv6"
+                                                         Badge="下次启动游戏生效"
                                                          Description="加 -Djava.net.preferIPv4Stack=true。IPv6 环境下连不上多人服务器时打开">
                                             <ToggleSwitch IsChecked="{Binding DisableIpv6, Mode=TwoWay}" />
                                         </ctrl:SettingRow>
 
                                         <ctrl:SettingRow Header="Java 垃圾回收器"
+                                                         Badge="下次启动游戏生效"
                                                          Description="一般保持「自动」即可；卡顿时可试 G1GC，大内存可试 ZGC">
                                             <ComboBox Width="200"
                                                       ItemsSource="{Binding GcModes}"
@@ -382,6 +459,7 @@
                                         </ctrl:SettingRow>
 
                                         <ctrl:SettingRow Header="追加自定义游戏参数"
+                                                         Badge="下次启动游戏生效"
                                                          Description="写在官方参数之后，用于高级调试">
                                             <ToggleSwitch IsChecked="{Binding UseCustomGameArgs, Mode=TwoWay}" />
                                         </ctrl:SettingRow>
@@ -396,6 +474,21 @@
                                     </StackPanel>
                                 </ui:FASettingsExpander>
                             </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="恢复本节默认" />
+                                    <TextBlock Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                               Text="只把「游戏」这一节的选项恢复默认，其它节不受影响" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Tag="game"
+                                        Click="OnResetSection"
+                                        Content="本区恢复默认" />
+                            </Grid>
                         </Border>
 
                     </StackPanel>
@@ -734,6 +827,9 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
 
+                                <TextBlock Classes="caption" Margin="0,-8,0,16" TextWrapping="Wrap"
+                                           Text="切换后立即生效，无需重启。" />
+
                                 <TextBlock Classes="groupLabel" Text="界面字体" />
                                 <Grid Margin="0,0,0,16" ColumnDefinitions="*,Auto">
                                     <ComboBox Grid.Column="0"
@@ -764,6 +860,21 @@
                                     <ToggleSwitch IsChecked="{Binding HighContrast, Mode=TwoWay}" />
                                 </ctrl:SettingRow>
                             </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="恢复本节默认" />
+                                    <TextBlock Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                               Text="只把「外观」这一节的选项恢复默认，其它节不受影响。背景图、字体文件、语言与性能模式会保留" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Tag="appearance"
+                                        Click="OnResetSection"
+                                        Content="本区恢复默认" />
+                            </Grid>
                         </Border>
 
                     </StackPanel>
@@ -876,6 +987,21 @@
                                 <TextBlock Classes="caption" TextWrapping="Wrap"
                                            Text="局域网联机模组、虚拟局域网这些功能目前放在「多人」页。P2P 直连与中继服务器设置会在后续版本并入这里。" />
                             </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="恢复本节默认" />
+                                    <TextBlock Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                               Text="只把「网络」这一节的选项恢复默认，其它节不受影响" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Tag="network"
+                                        Click="OnResetSection"
+                                        Content="本区恢复默认" />
+                            </Grid>
                         </Border>
 
                     </StackPanel>
@@ -1018,6 +1144,70 @@
                             </StackPanel>
                         </Border>
 
+                        <!--  磁盘占用  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="磁盘占用" />
+                                        <TextBlock Classes="caption" TextWrapping="Wrap"
+                                                   Text="游戏目录、日志与联机内核各占多少。一个装满模组和存档的游戏目录有几万个小文件，统计要几秒钟，慢是正常的。" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            VerticalAlignment="Top"
+                                            Command="{Binding RefreshDiskUsageCommand}"
+                                            Content="重新统计" />
+                                </Grid>
+
+                                <ItemsControl Margin="0,14,0,0" ItemsSource="{Binding DiskUsage}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="services:DiskUsageEntry">
+                                            <Grid Margin="0,0,0,10" ColumnDefinitions="*,Auto">
+                                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding Title}" />
+                                                    <TextBlock Classes="caption" Margin="0,2,0,0"
+                                                               Opacity="0.7"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Text="{Binding Path}"
+                                                               ToolTip.Tip="{Binding Path}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1"
+                                                           Classes="number"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="{DynamicResource FontSizeBody}"
+                                                           Text="{Binding SizeText}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Classes="caption" Margin="0,2,0,10" TextWrapping="Wrap"
+                                           Text="{Binding DiskUsageSummary}" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Command="{Binding CleanExpiredLogsCommand}" Content="清理超期日志" />
+                                    <Button Command="{Binding OpenGameFolderCommand}" Content="打开游戏目录" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  配置备份  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="配置备份" />
+                                <TextBlock Classes="caption" Margin="0,0,0,14" TextWrapping="Wrap"
+                                           Text="导出一份设置文件，换电脑、给朋友抄一份、或者改坏了想退回去时用。账户、联机密钥和本机路径不会写进文件，导入时也不会覆盖这些东西。" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Click="OnExportSettings" Content="导出配置" />
+                                    <Button Click="OnImportSettings" Content="导入配置" />
+                                </StackPanel>
+
+                                <TextBlock Classes="caption" Margin="0,10,0,0" TextWrapping="Wrap"
+                                           Text="{Binding BackupStatus}" />
+                            </StackPanel>
+                        </Border>
+
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="崩溃与重置" />
@@ -1034,6 +1224,21 @@
                                             Content="恢复默认设置" />
                                 </ctrl:SettingRow>
                             </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Classes="body" FontWeight="SemiBold" Text="恢复本节默认" />
+                                    <TextBlock Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" Opacity="0.85"
+                                               Text="只把「高级」这一节的选项恢复默认，日志文件与磁盘上的东西不会被删" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Tag="advanced"
+                                        Click="OnResetSection"
+                                        Content="本区恢复默认" />
+                            </Grid>
                         </Border>
 
                     </StackPanel>

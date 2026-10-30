@@ -17,17 +17,19 @@ using VibrantbitLauncher.Services;
 namespace VibrantbitLauncher.Views.Windows;
 
 /// <summary>
-/// 实例工具箱：把「依赖体检」与「配装分享」两个跟**实例内容**相关的功能收在一处。
+/// 实例工具箱：把「依赖体检」「配装分享」「导出整合包」三个跟**实例内容**相关的功能收在一处。
 ///
 /// <para>
-/// 之所以不塞进设置页或下载页：这两件事都以「某个实例」为主语 ——
-/// 体检是体检某个实例的 mods，分享是分享某个实例的配装。放在一起，共用顶部那个实例下拉框，
+/// 之所以不塞进设置页或下载页：这三件事都以「某个实例」为主语 ——
+/// 体检是体检某个实例的 mods，分享是分享某个实例的配装，
+/// 导出是把这个实例整份打成包。放在一起，共用顶部那个实例下拉框，
 /// 用户不用在两个页面之间反复切换选择。
 /// </para>
 ///
 /// <para>
-/// 本窗口只做「编排 + 展示」，真正的解析 / 下载都在
-/// <see cref="ModDependencyResolver"/> 与 <see cref="LoadoutShareService"/> 里。
+/// 本窗口只做「编排 + 展示」，真正的解析 / 下载 / 打包都在
+/// <see cref="ModDependencyResolver"/>、<see cref="LoadoutShareService"/>
+/// 与 <see cref="InstancePackExporter"/> 里。
 /// </para>
 /// </summary>
 public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
@@ -85,6 +87,8 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
             InstanceCombo.IsEnabled = false;
             AnalyzeButton.IsEnabled = false;
             ExportButton.IsEnabled = false;
+            ExportPackButton.IsEnabled = false;
+            PackNameBox.Text = string.Empty;
             return;
         }
 
@@ -116,8 +120,15 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
         if (instance is null)
         {
             InstanceHint.Text = string.Empty;
+            ExportPackButton.IsEnabled = false;
             return;
         }
+
+        // 导出的整合包默认就叫实例名 —— 用户在「导出整合包」页里改过也没关系，
+        // 一旦切实例，包名跟着换是符合预期的（否则容易把 A 的名字用到 B 上）。
+        PackNameBox.Text = instance.Id;
+        PackStatus.Text = string.Empty;
+        ExportPackButton.IsEnabled = true;
 
         var isolation = GameInstanceHelper.IsVersionIsolated ? "版本隔离：开" : "版本隔离：关";
         var mods = GameInstanceHelper.DescribeInstanceFolder(instance.Id, "mods");
@@ -517,6 +528,124 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
             ImportIntoButton.IsEnabled = true;
             _busy = false;
         }
+    }
+
+    // ==================== 导出整合包 ====================
+
+    /// <summary>
+    /// 把当前实例导出成整合包。
+    ///
+    /// <para>
+    /// 这里只负责「问用户要什么、把参数翻译成 <see cref="PackExportOptions"/>、报告结果」，
+    /// 真正的哈希、联网反查与打包都在 <see cref="InstancePackExporter"/> 里 ——
+    /// 那段逻辑需要被「以后可能的命令行导出」复用，不能绑在窗口上。
+    /// </para>
+    /// </summary>
+    private async void ExportPack_Click(object? sender, RoutedEventArgs e)
+    {
+        var instance = SelectedInstance;
+        if (instance is null || _busy)
+            return;
+
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is null)
+            return;
+
+        var isMrpack = FormatMrpackRadio.IsChecked == true;
+        var extension = isMrpack ? "mrpack" : "zip";
+
+        var packName = string.IsNullOrWhiteSpace(PackNameBox.Text) ? instance.Id : PackNameBox.Text.Trim();
+        var packVersion = string.IsNullOrWhiteSpace(PackVersionBox.Text) ? "1.0.0" : PackVersionBox.Text.Trim();
+
+        var fileType = isMrpack
+            ? new FilePickerFileType("Modrinth 整合包") { Patterns = new[] { "*.mrpack" } }
+            : new FilePickerFileType("整合包压缩包") { Patterns = new[] { "*.zip" } };
+
+        Avalonia.Platform.Storage.IStorageFile? file;
+        try
+        {
+            file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "导出整合包",
+                SuggestedFileName = $"{SafeFileName(packName, "modpack")}.{extension}",
+                DefaultExtension = extension,
+                FileTypeChoices = new[] { fileType },
+            });
+        }
+        catch (Exception ex)
+        {
+            PackStatus.Text = $"打开保存对话框失败：{ex.Message}";
+            return;
+        }
+
+        var path = file?.TryGetLocalPath();
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        var options = new PackExportOptions
+        {
+            Name = packName,
+            Version = packVersion,
+            Summary = PackSummaryBox.Text?.Trim() ?? string.Empty,
+            Format = isMrpack ? PackFormat.Mrpack : PackFormat.Zip,
+            IncludeConfig = PackConfigToggle.IsChecked == true,
+            IncludeResourcePacks = PackResourcePackToggle.IsChecked == true,
+            IncludeShaderPacks = PackShaderToggle.IsChecked == true,
+            IncludeSaves = PackSavesToggle.IsChecked == true,
+            IncludeOptionsFile = PackOptionsToggle.IsChecked == true,
+            BundleUnresolvedMods = PackBundleToggle.IsChecked == true,
+        };
+
+        _busy = true;
+        ExportPackButton.IsEnabled = false;
+        PackStatus.Text = "正在准备…";
+
+        try
+        {
+            var progress = new Progress<string>(s => PackStatus.Text = s);
+
+            var result = await InstancePackExporter.ExportAsync(
+                instance.Id, path, options,
+                s => ((IProgress<string>)progress).Report(s),
+                CancellationToken.None);
+
+            // 一句话说完，用一条词条就能整句翻译。拆成「有条件才出现」的几段拼接，
+            // 词表里就得为每种组合各写一条（2^3 种），维护不动。
+            var summary = $"已导出 {Path.GetFileName(path)}（{result.DescribeSize()}）"
+                          + $"：模组 {result.ModTotal} 个，自动下载 {result.ModLinked} 个，"
+                          + $"随包 {result.ModBundled} 个，未包含 {result.ModSkipped} 个";
+
+            PackStatus.Text = result.Warnings.Count == 0
+                ? summary
+                : summary + "\n" + string.Join("\n", result.Warnings.Select(w => "· " + w));
+
+            AppServices.Notifications?.Success($"整合包已导出：{Path.GetFileName(path)}");
+        }
+        catch (PackExportException ex)
+        {
+            PackStatus.Text = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "导出整合包失败：{Id}", instance.Id);
+            PackStatus.Text = $"导出失败：{FriendlyError.Describe(ex)}";
+        }
+        finally
+        {
+            _busy = false;
+            ExportPackButton.IsEnabled = SelectedInstance is not null;
+        }
+    }
+
+    /// <summary>把用户填的名称变成合法文件名（整合包名里常有冒号、斜杠）。</summary>
+    private static string SafeFileName(string name, string fallback)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray())
+            .Replace(" ", string.Empty)
+            .Trim();
+
+        return cleaned.Length == 0 ? fallback : cleaned;
     }
 
     // ==================== 关闭 ====================
