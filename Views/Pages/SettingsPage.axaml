@@ -507,7 +507,7 @@
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Text="主题包" />
                                 <TextBlock Classes="caption" Margin="0,4,0,14" TextWrapping="Wrap"
-                                           Text="一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格就是顶部的横向导航条。选中的那套立刻生效，不用重启。" />
+                                           Text="一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格把导航并进了深蓝色标题栏。选中的那套立刻生效，不用重启。" />
 
                                 <ListBox ItemsSource="{Binding ThemePackages}"
                                          SelectedItem="{Binding SelectedThemePackage, Mode=TwoWay}"

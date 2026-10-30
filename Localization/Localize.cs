@@ -192,6 +192,17 @@ public static class Localize
     /// <summary>只有一个占位符时的简写。</summary>
     public static string Tf(string format, object? arg) => Tf(format, new[] { arg });
 
+    /// <summary>
+    /// 某个控件当前文案的原文（中文）。
+    ///
+    /// <para>
+    /// 给「照着已有控件另建一份文字」的地方用：标题栏导航项就是从侧边栏菜单项复制出来的，
+    /// 复制出来的 <c>TextBlock</c> 必须拿到中文原文再交给翻译器 ——
+    /// 若直接把已翻译过的英文当原文写进去，切回中文时它会停在英文上。
+    /// </para>
+    /// </summary>
+    public static string? OriginalText(Control control) => control.GetValue(SourceProperty);
+
     /// <summary>把某个元素（含子孙）按当前语言重算一遍。</summary>
     public static void Reapply(Visual root)
     {

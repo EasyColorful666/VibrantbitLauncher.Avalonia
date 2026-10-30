@@ -174,8 +174,14 @@ public static class ThemeService
         _active = theme;
 
         RestoreBaseline(app);
-        ApplyResources(app, theme);
+        var applied = ApplyResources(app, theme);
         ApplyStyles(app, theme);
+
+        // 排障用：一套主题「看着生效了、其实一条资源都没进来」是非常安静的故障
+        // （1.0.23.0 就撞过一次 —— theme.json 读得到、XAML 读不到，配色全靠默认值）
+        Log.Information("主题包已应用：{Id}（资源键 {Keys} 个，样式 {HasStyles}）",
+            theme.Id, applied, _appliedStyles is not null);
+
     }
 
     /// <summary>切换主题：写配置、应用、通知各界刷新。</summary>
@@ -239,10 +245,12 @@ public static class ThemeService
         _baseline.Clear();
     }
 
-    private static void ApplyResources(Application app, ThemePackage theme)
+    private static int ApplyResources(Application app, ThemePackage theme)
     {
         if (theme.Id == DefaultId)
-            return;
+            return 0;
+
+        var applied = 0;
 
         foreach (var (key, value) in ReadEntries(theme))
         {
@@ -255,12 +263,15 @@ public static class ThemeService
             try
             {
                 app.Resources[key] = value;
+                applied++;
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "写入主题资源失败：{Key}", key);
             }
         }
+
+        return applied;
     }
 
     /// <summary>记下这个键当前的值（可能是主题字典 / 内置样式 / 压根没有）。</summary>
@@ -374,18 +385,69 @@ public static class ThemeService
     private static string? ReadThemeText(ThemePackage theme, string fileName)
     {
         if (theme.IsBuiltIn)
-        {
-            var uri = new Uri($"{BuiltInBase}{theme.Id}/{fileName}");
-            if (!AssetLoader.Exists(uri))
-                return null;
-
-            using var stream = AssetLoader.Open(uri);
-            using var reader = new StreamReader(stream);
-            return reader.ReadToEnd();
-        }
+            return ReadBuiltInFile(theme.Id, fileName);
 
         var path = Path.Combine(theme.Directory, fileName);
         return File.Exists(path) ? File.ReadAllText(path) : null;
+    }
+
+    /// <summary>
+    /// 读一份内置主题文件（<c>Assets/Themes/&lt;id&gt;/&lt;file&gt;</c>）。
+    ///
+    /// <para>
+    /// <b>为什么走 EmbeddedResource 而不是 avares：</b>主题包里的 <c>.axaml</c> 必须是**原始文本**
+    /// —— 运行期要用 <see cref="AvaloniaRuntimeXamlLoader"/> 解析它，内置那三套才和用户写的
+    /// 主题包是同一种东西。但只要有 <c>.axaml</c> 扩展名，Avalonia 的构建任务就会把它当编译期
+    /// XAML 处理，最后既没有编译产物、也没留下原文（1.0.23.0 的坑：主题配色一条都没生效）。
+    /// 所以在 csproj 里把它们从 Avalonia 资源里摘出来、按普通嵌入式资源打包，
+    /// 这里按「.主题id.文件名」后缀在清单里找。
+    /// </para>
+    /// </summary>
+    private static string? ReadBuiltInFile(string id, string fileName)
+    {
+        var assembly = typeof(ThemeService).Assembly;
+
+        try
+        {
+            // 默认资源名是「RootNamespace.Assets.Themes.<id>.<file>」，
+            // 前缀不参与比较 —— 改 RootNamespace 不该让主题集体失效
+            var suffix = "." + id + "." + fileName;
+
+            foreach (var name in assembly.GetManifestResourceNames())
+            {
+                if (!name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                using var stream = assembly.GetManifestResourceStream(name);
+                if (stream is null)
+                    continue;
+
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "读取内置主题文件失败：{Theme}/{File}", id, fileName);
+        }
+
+        // 兜底：万一哪天又把它们放回 Avalonia 资源里，这条路仍然是通的
+        try
+        {
+            var uri = new Uri($"{BuiltInBase}{id}/{fileName}");
+            if (AssetLoader.Exists(uri))
+            {
+                using var stream = AssetLoader.Open(uri);
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "从 Avalonia 资源读取内置主题失败：{Theme}/{File}", id, fileName);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -462,13 +524,7 @@ public static class ThemeService
         {
             if (isBuiltIn)
             {
-                var uri = new Uri($"{themesRoot}{id}/theme.json");
-                if (AssetLoader.Exists(uri))
-                {
-                    using var stream = AssetLoader.Open(uri);
-                    using var reader = new StreamReader(stream);
-                    json = reader.ReadToEnd();
-                }
+                json = ReadBuiltInFile(id, "theme.json");
             }
             else
             {
@@ -520,6 +576,7 @@ public static class ThemeService
     {
         "left" => ThemeNavigation.Left,
         "top" => ThemeNavigation.Top,
+        "header" => ThemeNavigation.Header,
         "minimal" => ThemeNavigation.Minimal,
         _ => ThemeNavigation.Compact
     };
@@ -749,7 +806,8 @@ public static class ThemeService
             主题包结构（四份 XAML 都是可选的，theme.json 必需）：
 
               theme.json     元信息：id / name / author / version / description
-                     navigation 导航栏模式：left | top | compact | minimal（PCL2 那种横向的是 top）
+                     navigation 导航栏模式：left | top | header | compact | minimal
+                                header = 导航项并进标题栏（横向居中，配蓝色顶栏最像 PCL2）
                      accent     可选，主题自带的强调色，如 "#FF128BFA"
               theme.axaml    所有明暗都生效的资源覆盖（ResourceDictionary）
               light.axaml    只在亮色下生效的资源覆盖

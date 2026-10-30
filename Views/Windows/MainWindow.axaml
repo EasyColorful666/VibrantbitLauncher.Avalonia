@@ -124,19 +124,34 @@
 
         <!--  ==================== 第 3 层：应用本体  ====================  -->
         <Grid x:Name="AppRoot" RowDefinitions="Auto,*" RenderTransformOrigin="50%,50%">
-            <!--  自定义标题栏（控件自带最小化 / 最大化 / 关闭，见 Controls/TitleBar.cs）  -->
+            <!--
+                标题栏。
+
+                Content 放的是「并进标题栏的导航条」：只有主题要求 navigation=header 时才有内容
+                （PCL2 那套蓝色顶栏）。按钮本身由代码按 RootNavigation 的菜单项生成 ——
+                菜单只有一份定义，标题栏这排是照着它复刻的，不会出现「改了一边忘了另一边」。
+            -->
             <ctrl:TitleBar x:Name="AppTitleBar"
                            Grid.Row="0"
                            Height="40"
                            Title="VibrantbitLauncher"
-                           Icon="/Assets/icon.ico" />
+                           Icon="/Assets/icon.ico">
+                <StackPanel x:Name="HeaderNavHost"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsHeaderNavigation}"
+                            Orientation="Horizontal"
+                            Spacing="4" />
+            </ctrl:TitleBar>
 
             <!--
                 导航容器。
 
                 PaneDisplayMode 不再写死：它绑到 ViewModel，值来自当前主题包 ——
-                PCL2 那类启动器的顶部横向导航条就是靠这里换成 Top，
                 其余主题仍是左侧图标栏。切换主题时属性一变，FluentAvalonia 自己重排。
+
+                ⚠️ 导航项并进标题栏时（navigation=header），这里切的是「最小模式」，
+                不是「顶部模式 + IsPaneVisible=false」—— 后者会让顶部自适应测量反复重排、
+                整个窗口卡死（1.0.24.0 实测，表现是启动后界面无响应）。
             -->
             <ui:FANavigationView x:Name="RootNavigation"
                                  Grid.Row="1"

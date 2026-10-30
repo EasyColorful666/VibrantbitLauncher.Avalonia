@@ -45,6 +45,18 @@
             <!--  卡片内高光：模拟玻璃上沿的一道反光  -->
             <SolidColorBrush x:Key="CardTopSheenBrush" Color="#33FFFFFF" />
 
+            <!--
+                标题栏。默认「透明 + 正文色」= 以前的样子，切主题才变色。
+                主题包里写同名的键就能把整条顶栏刷成自己的颜色（PCL2 的蓝色就是这条），
+                标题文字、窗口按钮字形、导航项全部跟着这一组走，不用逐个去改控件。
+            -->
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#E4000000" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#1A000000" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#E4000000" />
+
             <!--  极光三色（低饱和，面积大但透明度低）  -->
             <SolidColorBrush x:Key="AuroraOneBrush" Color="#330078D4" />
             <SolidColorBrush x:Key="AuroraTwoBrush" Color="#22B146C2" />
@@ -85,6 +97,14 @@
             <SolidColorBrush x:Key="HairlineBrush" Color="#1CFFFFFF" />
             <SolidColorBrush x:Key="HairlineStrongBrush" Color="#33FFFFFF" />
             <SolidColorBrush x:Key="CardTopSheenBrush" Color="#1AFFFFFF" />
+
+            <!--  标题栏：暗色下同样透明，白字（详见亮色那一段的说明）  -->
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#17FFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#2BFFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="AuroraOneBrush" Color="#4A2B8BD4" />
             <SolidColorBrush x:Key="AuroraTwoBrush" Color="#33A146C2" />
             <SolidColorBrush x:Key="AuroraThreeBrush" Color="#3320C4D6" />

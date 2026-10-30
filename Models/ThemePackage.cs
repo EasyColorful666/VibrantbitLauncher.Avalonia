@@ -9,8 +9,14 @@ public enum ThemeNavigation
     /// <summary>左侧展开，图标 + 文字。</summary>
     Left,
 
-    /// <summary>顶部横向。PCL2 那类启动器的样子，主窗口宽度不够时会自动收成图标。</summary>
+    /// <summary>顶部横向。主窗口宽度不够时会自动收成图标。</summary>
     Top,
+
+    /// <summary>
+    /// 并进标题栏：导航项横向排在标题栏中间，标题栏本身就是导航条，
+    /// 内容区上方不再单独占一行（PCL2 的蓝色顶栏就是这个结构）。
+    /// </summary>
+    Header,
 
     /// <summary>左侧只留图标条，悬停展开。本项目默认。</summary>
     Compact,

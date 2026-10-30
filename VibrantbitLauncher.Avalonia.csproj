@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.23.0</Version>
+    <Version>1.0.24.0</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -426,8 +426,16 @@
 
       注意 Remove 必须在 Include 之前求值才能生效 —— Avalonia 的默认项在
       Avalonia.props 里，早于本文件，所以这里 Remove 有效。
+
+      ⚠️ 只 Remove 掉 AvaloniaXaml 是**不够**的（1.0.23.0 的坑）：
+      文件还挂在 AvaloniaResource 里，Avalonia 的 XAML 构建任务照样会去处理它们，
+      最后既没有编译产物、也没有可读的原始文本 —— 运行时 AssetLoader.Exists 直接返回 false，
+      于是主题包里的配色/圆角/样式**一条都没生效**，只有 theme.json 的元信息在起作用。
+      现在改成真正的普通资源（EmbeddedResource），运行时用 GetManifestResourceStream 读文本。
     -->
     <AvaloniaXaml Remove="Assets\Themes\**\*.axaml" />
+    <AvaloniaResource Remove="Assets\Themes\**\*.axaml" />
+    <EmbeddedResource Include="Assets\Themes\**\*.*" />
     <!--
       协议全文也打进程序集里（约 35 KB），供「设置 → 关于 → 查看协议」离线显示。
 

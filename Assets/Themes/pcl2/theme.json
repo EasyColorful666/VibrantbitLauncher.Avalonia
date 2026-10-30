@@ -2,8 +2,8 @@
   "id": "pcl2",
   "name": "PCL2 风格",
   "author": "Vibrantbit",
-  "version": "1.0",
-  "description": "直角、细描边、顶部横向导航条，浅灰底白卡片。致敬 PCL2 的朴素工具感。",
-  "navigation": "top",
+  "version": "1.1",
+  "description": "直角、细描边、深蓝色标题栏，导航项并进标题栏居中排列。致敬 PCL2 的朴素工具感。",
+  "navigation": "header",
   "accent": "#FF128BFA"
 }

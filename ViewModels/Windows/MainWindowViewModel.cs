@@ -142,6 +142,23 @@ namespace VibrantbitLauncher.ViewModels.Windows
             private set => SetProperty(ref _navigationMode, value);
         }
 
+        private bool _isHeaderNavigation;
+
+        /// <summary>
+        /// 导航项是不是并进了标题栏（<see cref="ThemeNavigation.Header"/>）。
+        ///
+        /// <para>
+        /// 为 true 时导航视图的导航条不占用任何版面，菜单由标题栏中间那排按钮承担。
+        /// 实现方式是把它切成「最小模式 + 不显示展开按钮」：没有钉子的时候，
+        /// 收起的导航条就等于不存在，内容区独占整窗。
+        /// </para>
+        /// </summary>
+        public bool IsHeaderNavigation
+        {
+            get => _isHeaderNavigation;
+            private set => SetProperty(ref _isHeaderNavigation, value);
+        }
+
         public MainWindowViewModel()
         {
             imagePath = @"avares://VibrantbitLauncher.Avalonia/Assets/Blank.jpg";
@@ -156,6 +173,7 @@ namespace VibrantbitLauncher.ViewModels.Windows
             InitializeMenuItems();
 
             NavigationMode = ToPaneMode(ThemeService.Navigation);
+            IsHeaderNavigation = ThemeService.Navigation == ThemeNavigation.Header;
             ThemeService.Changed += OnThemeChanged;
         }
 
@@ -163,13 +181,25 @@ namespace VibrantbitLauncher.ViewModels.Windows
         private void OnThemeChanged()
         {
             if (Dispatcher.UIThread.CheckAccess())
-                NavigationMode = ToPaneMode(ThemeService.Navigation);
+                SyncNavigationFromTheme();
             else
-                Dispatcher.UIThread.Post(() => NavigationMode = ToPaneMode(ThemeService.Navigation));
+                Dispatcher.UIThread.Post(SyncNavigationFromTheme);
+        }
+
+        private void SyncNavigationFromTheme()
+        {
+            var navigation = ThemeService.Navigation;
+            NavigationMode = ToPaneMode(navigation);
+            IsHeaderNavigation = navigation == ThemeNavigation.Header;
         }
 
         private static FANavigationViewPaneDisplayMode ToPaneMode(ThemeNavigation navigation) => navigation switch
         {
+            // Header = 导航项已经并进标题栏，导航视图这边不该再占版面。
+            // 用「最小模式」（导航条是收起状态的浮层）而不是「顶部」：
+            // 顶部模式下再把它隐藏，会让控件内部的顶部自适应测量反复重排、整个窗口卡死（1.0.24.0 实测）。
+            // 最小模式配 IsPaneToggleButtonVisible=False，收起的浮层等于不存在，内容区独占整窗。
+            ThemeNavigation.Header => FANavigationViewPaneDisplayMode.LeftMinimal,
             ThemeNavigation.Top => FANavigationViewPaneDisplayMode.Top,
             ThemeNavigation.Left => FANavigationViewPaneDisplayMode.Left,
             ThemeNavigation.Minimal => FANavigationViewPaneDisplayMode.LeftMinimal,

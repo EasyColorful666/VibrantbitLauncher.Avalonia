@@ -295,8 +295,17 @@ internal static class UiSettings
         d["主题包"] = "Theme";
         // 内置默认主题的名字（theme.json 里写的是中文，英文界面下要显示 Default）
         d["默认"] = "Default";
-        d["一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格就是顶部的横向导航条。选中的那套立刻生效，不用重启。"]
-            = "A theme decides colors, corner radii, control styling, and where the navigation bar sits — the PCL2 style uses a horizontal bar across the top. Switching applies immediately, no restart.";
+        // 主题卡片上的名字与介绍来自各套的 theme.json，同样要翻 —— 否则英文界面里
+        // 三张卡片只有名字是英文、介绍整段中文，比不翻更难看
+        d["PCL2 风格"] = "PCL2 style";
+        d["直角、细描边、深蓝色标题栏，导航项并进标题栏居中排列。致敬 PCL2 的朴素工具感。"]
+            = "Square corners, visible hairlines, a deep blue title bar with the navigation centred inside it. A nod to PCL2's plain, tool-like feel.";
+        d["紫色基调、大圆角、填充按钮与扁平面板，标准 M3 语义配色。"]
+            = "Purple base, large corner radii, filled buttons and flat panels, in standard Material 3 semantic colors.";
+        d["启动器原本的样子：Fluent 2 圆角、左侧图标栏、跟随你选的强调色。"]
+            = "The launcher's original look: Fluent 2 corners, an icon rail on the left, your own accent color.";
+        d["一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格把导航并进了深蓝色标题栏。选中的那套立刻生效，不用重启。"]
+            = "A theme decides colors, corner radii, control styling, and where the navigation bar sits — the PCL2 style merges it into a deep blue title bar. Switching applies immediately, no restart.";
         d["导入主题包…"] = "Import theme…";
         d["打开主题文件夹"] = "Open themes folder";
         d["主题包里的样式会被真正执行，等同于运行一段程序 —— 只装你自己写的或信得过的来源。"]

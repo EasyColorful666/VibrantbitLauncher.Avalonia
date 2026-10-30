@@ -30,4 +30,16 @@
     <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FF1B3A5B" />
     <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FF24507A" />
 
+    <!--  顶栏：同一套结构压暗一档，暗色底下才不刺眼  -->
+    <LinearGradientBrush x:Key="AppHeaderBarBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#FF0B4F94" />
+        <GradientStop Offset="0.5" Color="#FF0D5CA8" />
+        <GradientStop Offset="1" Color="#FF0B4F94" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#3DFFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FFF2F7FC" />
+    <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FF0E62B4" />
+
 </ResourceDictionary>

@@ -44,4 +44,22 @@
     <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FFE3F1FF" />
     <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FFC9E3FF" />
 
+    <!--  ==================== 标题栏  ====================  -->
+
+    <!--
+        顶栏。照着参考样式做：整条是蓝色，中间比两端略亮（一抹横向的渐变），
+        导航项居中，选中项是一块白色胶囊 + 蓝字。
+        颜色取自参考截图（两端 #106CC8、正中 #1378DD），不是随手挑的蓝。
+    -->
+    <LinearGradientBrush x:Key="AppHeaderBarBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#FF106CC8" />
+        <GradientStop Offset="0.5" Color="#FF1378DD" />
+        <GradientStop Offset="1" Color="#FF106CC8" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#3DFFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FF116DC9" />
+
 </ResourceDictionary>

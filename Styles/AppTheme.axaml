@@ -146,6 +146,12 @@
     <CornerRadius x:Key="RadiusM">8</CornerRadius>
     <CornerRadius x:Key="RadiusL">12</CornerRadius>
     <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+    <!--
+        标题栏导航项的选中块。单独一支而不是复用 RadiusPill：
+        PCL2 那套主题把所有圆角归零（直角是它的性格），
+        但顶栏上的选中块在参考样式里是个胶囊 —— 只有它该保持圆的。
+    -->
+    <CornerRadius x:Key="RadiusHeaderNav">999</CornerRadius>
     <CornerRadius x:Key="CardRadius">8</CornerRadius>
 
 </ResourceDictionary>
