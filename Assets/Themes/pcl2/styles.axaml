@@ -1,0 +1,92 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        PCL2 风格 · 控件外观
+
+        只做「去圆角 + 去阴影 + 实心描边」三件事，不改颜色语义 ——
+        颜色交给 light/dark.axaml 的资源覆盖，这里只管几何。
+        这样明暗两套不会各写一遍样式。
+    -->
+
+    <!--  卡片：方块 + 1px 可见描边，不再浮起来  -->
+    <Style Selector="Border.card">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style Selector="Border.hoverCard">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+
+    <Style Selector="Border.glass">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+
+    <Style Selector="Border.accentBanner">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+
+    <!--  按钮：矮一点、方一点，主色实心而不是渐变  -->
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="Padding" Value="12,4" />
+    </Style>
+
+    <Style Selector="Button.accent">
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+    </Style>
+
+    <!--  Fluent 的悬停态在模板里的 ContentPresenter 上，这里要再压一次，
+         否则一堆方按钮里只有鼠标划过的那一个是圆的  -->
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!--  输入控件：1px 凹框是 PCL2 的输入区语言  -->
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style Selector="ComboBox">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="ListBoxItem">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!--  进度条与提示气泡跟着一起方  -->
+    <Style Selector="ProgressBar">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <Style Selector="Border.accentRule">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Height" Value="3" />
+    </Style>
+
+</Styles>

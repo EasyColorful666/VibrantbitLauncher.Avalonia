@@ -30,7 +30,7 @@
         BorderBrush="{DynamicResource HairlineStrongBrush}"
         BorderThickness="1"
         BoxShadow="0 16 40 0 #40000000"
-        CornerRadius="{StaticResource RadiusL}">
+        CornerRadius="{DynamicResource RadiusL}">
 
         <Grid RowDefinitions="Auto,*,Auto">
 
@@ -99,7 +99,7 @@
                         <Border
                             Padding="14,12"
                             Background="{DynamicResource SurfaceSunkenBrush}"
-                            CornerRadius="{StaticResource RadiusM}">
+                            CornerRadius="{DynamicResource RadiusM}">
                             <StackPanel Spacing="4">
                                 <TextBlock Classes="caption" Text="把这个码发给好友" />
                                 <SelectableTextBlock

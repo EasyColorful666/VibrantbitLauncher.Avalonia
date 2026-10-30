@@ -49,7 +49,7 @@
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="{StaticResource RadiusM}">
+                CornerRadius="{DynamicResource RadiusM}">
                 <TextBlock
                     x:Name="CodeText"
                     HorizontalAlignment="Center"

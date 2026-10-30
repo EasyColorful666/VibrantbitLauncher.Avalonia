@@ -39,7 +39,7 @@
                     BorderThickness="1"
                     BoxShadow="0 24 64 0 #40000000"
                     ClipToBounds="True"
-                    CornerRadius="{StaticResource RadiusL}">
+                    CornerRadius="{DynamicResource RadiusL}">
                 <ContentControl x:Name="ContentHost" />
             </Border>
         </ScrollViewer>

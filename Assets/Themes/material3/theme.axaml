@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Material Design 3 · 通用
+
+        M3 的圆角是一套「形状阶梯」：小件 8、卡片 12、面板 16、按钮全圆。
+        注意 RadiusPill 保持 999 —— 全圆是 M3 的主动选择，不是漏改。
+    -->
+
+    <CornerRadius x:Key="RadiusNone">0</CornerRadius>
+    <CornerRadius x:Key="RadiusS">8</CornerRadius>
+    <CornerRadius x:Key="RadiusM">12</CornerRadius>
+    <CornerRadius x:Key="RadiusL">16</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+    <CornerRadius x:Key="CardRadius">12</CornerRadius>
+
+</ResourceDictionary>

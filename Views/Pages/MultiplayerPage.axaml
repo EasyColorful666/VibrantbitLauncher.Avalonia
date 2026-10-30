@@ -35,7 +35,7 @@
                         <Border Margin="0,14,0,0" Padding="12,10"
                                 IsVisible="{Binding IsCoreMissing}"
                                 Background="{DynamicResource AppCautionSurfaceBrush}"
-                                CornerRadius="{StaticResource RadiusM}">
+                                CornerRadius="{DynamicResource RadiusM}">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <ui:FASymbolIcon VerticalAlignment="Center"
@@ -64,7 +64,7 @@
                         <Border Margin="0,14,0,0" Padding="12,10"
                                 IsVisible="{Binding NeedsElevation}"
                                 Background="{DynamicResource AppCautionSurfaceBrush}"
-                                CornerRadius="{StaticResource RadiusM}">
+                                CornerRadius="{DynamicResource RadiusM}">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <ui:FASymbolIcon VerticalAlignment="Center"
@@ -241,7 +241,7 @@
                             <Border Margin="0,14,0,0" Padding="12,10"
                                     IsVisible="{Binding HasRemotePeer}"
                                     Background="{DynamicResource AppSuccessSurfaceBrush}"
-                                    CornerRadius="{StaticResource RadiusM}">
+                                    CornerRadius="{DynamicResource RadiusM}">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Classes="body"
@@ -282,7 +282,7 @@
                         <Border Margin="0,14,0,0" Padding="12,10"
                                 IsVisible="{Binding HasNoInstances}"
                                 Background="{DynamicResource AppCautionSurfaceBrush}"
-                                CornerRadius="{StaticResource RadiusM}">
+                                CornerRadius="{DynamicResource RadiusM}">
                             <TextBlock Classes="body"
                                        Text="还没有安装任何 Minecraft 实例，请先在「下载」页装一个带加载器的版本（Fabric / Forge / NeoForge）。"
                                        TextWrapping="Wrap" />
@@ -341,7 +341,7 @@
                         <Border Margin="0,12,0,0" Padding="12,10"
                                 IsVisible="{Binding HasLanModGuide}"
                                 Background="{DynamicResource AppSuccessSurfaceBrush}"
-                                CornerRadius="{StaticResource RadiusM}">
+                                CornerRadius="{DynamicResource RadiusM}">
                             <StackPanel>
                                 <TextBlock Classes="body"
                                            Text="怎么用"
@@ -375,7 +375,7 @@
                                 <DataTemplate>
                                     <Border Margin="0,0,0,6" Padding="12,8"
                                             Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                            CornerRadius="{StaticResource RadiusM}">
+                                            CornerRadius="{DynamicResource RadiusM}">
                                         <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                                             <TextBlock Grid.Column="0" Margin="0,0,12,0"
                                                        VerticalAlignment="Center"

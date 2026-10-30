@@ -48,7 +48,7 @@
                         Background="{DynamicResource AppCriticalSurfaceBrush}"
                         BorderBrush="{DynamicResource AppCriticalBrush}"
                         BorderThickness="1"
-                        CornerRadius="{StaticResource RadiusM}">
+                        CornerRadius="{DynamicResource RadiusM}">
                         <StackPanel>
                             <TextBlock
                                 FontWeight="SemiBold"
@@ -75,7 +75,7 @@
                         Background="{DynamicResource AppCautionSurfaceBrush}"
                         BorderBrush="{DynamicResource AppCautionBrush}"
                         BorderThickness="1"
-                        CornerRadius="{StaticResource RadiusM}">
+                        CornerRadius="{DynamicResource RadiusM}">
                         <StackPanel>
                             <TextBlock
                                 FontWeight="SemiBold"
@@ -130,7 +130,7 @@
                                                     Padding="6,2"
                                                     VerticalAlignment="Center"
                                                     Background="{DynamicResource AppAccentBrush}"
-                                                    CornerRadius="{StaticResource RadiusS}">
+                                                    CornerRadius="{DynamicResource RadiusS}">
                                                     <TextBlock
                                                         Classes="caption"
                                                         Foreground="White"

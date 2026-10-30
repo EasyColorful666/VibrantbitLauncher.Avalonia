@@ -131,13 +131,19 @@
                            Title="VibrantbitLauncher"
                            Icon="/Assets/icon.ico" />
 
-            <!--  导航容器  -->
+            <!--
+                导航容器。
+
+                PaneDisplayMode 不再写死：它绑到 ViewModel，值来自当前主题包 ——
+                PCL2 那类启动器的顶部横向导航条就是靠这里换成 Top，
+                其余主题仍是左侧图标栏。切换主题时属性一变，FluentAvalonia 自己重排。
+            -->
             <ui:FANavigationView x:Name="RootNavigation"
                                  Grid.Row="1"
                                  Background="Transparent"
                                  IsSettingsVisible="False"
                                  IsBackButtonVisible="False"
-                                 PaneDisplayMode="LeftCompact"
+                                 PaneDisplayMode="{Binding NavigationMode}"
                                  IsPaneToggleButtonVisible="False">
 
                 <ui:FANavigationView.MenuItems>
@@ -214,7 +220,7 @@
                     Background="{DynamicResource AppDropPanelBrush}"
                     BorderBrush="{DynamicResource AppAccentBrush}"
                     BorderThickness="2"
-                    CornerRadius="{StaticResource RadiusL}"
+                    CornerRadius="{DynamicResource RadiusL}"
                     BoxShadow="0 24 60 0 #40000000">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                     <ui:FASymbolIcon HorizontalAlignment="Center"

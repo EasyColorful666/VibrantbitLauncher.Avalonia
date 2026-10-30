@@ -142,7 +142,7 @@
                                                     Background="{DynamicResource AppCautionSurfaceBrush}"
                                                     BorderBrush="{DynamicResource AppCautionBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="{StaticResource RadiusM}">
+                                                    CornerRadius="{DynamicResource RadiusM}">
                                                     <TextBlock
                                                         Classes="body"
                                                         Text="{Binding}"

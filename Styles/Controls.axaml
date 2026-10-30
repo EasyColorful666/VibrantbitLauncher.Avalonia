@@ -116,7 +116,7 @@
     <Style Selector="Button">
         <Setter Property="MinHeight" Value="32" />
         <Setter Property="Padding" Value="14,6" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -171,7 +171,7 @@
 
     <!--  胶囊按钮：只给"一次性的强调操作"，不要满页面撒  -->
     <Style Selector="Button.pill">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
         <Setter Property="Padding" Value="20,7" />
     </Style>
 
@@ -186,7 +186,7 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}" />
         <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000, 0 4 14 0 #0A000000" />
     </Style>
 
@@ -195,7 +195,7 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}" />
         <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000, 0 4 14 0 #0A000000" />
         <Setter Property="ClipToBounds" Value="True" />
     </Style>
@@ -205,14 +205,14 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceGlassBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         <Setter Property="BoxShadow" Value="0 8 28 0 #1F000000" />
     </Style>
 
     <!--  下沉面：输入区 / 列表底 / 代码块  -->
     <Style Selector="Border.sunken">
         <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
     </Style>
 
     <!--  强调色短横：页标题下唯一的一处主色，28×2 就够  -->
@@ -220,7 +220,7 @@
     <Style Selector="Border.accentRule">
         <Setter Property="Width" Value="28" />
         <Setter Property="Height" Value="2" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
     </Style>
@@ -228,7 +228,7 @@
     <!--  强调横幅：只有下载完成 / 首次引导这类"值得庆祝"的时刻才用  -->
     <Style Selector="Border.accentBanner">
         <Setter Property="Padding" Value="24,20" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
         <Setter Property="BoxShadow" Value="0 8 24 0 #33000000" />
     </Style>
@@ -237,18 +237,18 @@
 
     <Style Selector="TextBox">
         <Setter Property="MinHeight" Value="32" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     </Style>
 
     <Style Selector="ComboBox">
         <Setter Property="MinHeight" Value="32" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     </Style>
 
     <Style Selector="ComboBoxItem">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     </Style>
 
@@ -261,7 +261,7 @@
         左侧条由页面自己用 Border 画（需要时再加）。
     -->
     <Style Selector="ListBoxItem">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="Padding" Value="10,7" />
         <Setter Property="Margin" Value="0,1" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
@@ -280,7 +280,7 @@
         比自己用 Border 拼卡片更接近系统设置的手感。
     -->
     <Style Selector="ui|FASettingsExpander">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
     </Style>
 
     <Style Selector="ui|FASettingsExpanderItem">
@@ -289,7 +289,7 @@
 
     <!--  FAInfoBar：页内提示条，圆角与细线跟卡片对齐  -->
     <Style Selector="ui|FAInfoBar">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     </Style>
 
@@ -300,7 +300,7 @@
 
     <!--  Expander（Avalonia 内置）：分组折叠  -->
     <Style Selector="Expander">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
@@ -308,12 +308,12 @@
     <!--  ProgressBar：胶囊端头，2px 细身  -->
     <Style Selector="ProgressBar">
         <Setter Property="MinHeight" Value="4" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
     </Style>
 
     <!--  ToolTip：小圆角 + 细线，避免默认的大黑块  -->
     <Style Selector="ToolTip">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
         <Setter Property="Padding" Value="10,6" />
     </Style>

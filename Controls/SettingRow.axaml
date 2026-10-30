@@ -30,7 +30,7 @@
                 Margin="-10,-6,-10,8"
                 Padding="10,6,10,6"
                 Background="Transparent"
-                CornerRadius="{StaticResource RadiusM}">
+                CornerRadius="{DynamicResource RadiusM}">
 
             <Grid ColumnDefinitions="*,Auto">
 
@@ -44,7 +44,7 @@
                         <Border x:Name="PART_Badge"
                                 VerticalAlignment="Center"
                                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                CornerRadius="{StaticResource RadiusPill}"
+                                CornerRadius="{DynamicResource RadiusPill}"
                                 Padding="7,1"
                                 IsVisible="False">
                             <TextBlock x:Name="PART_BadgeText" Classes="caption" Opacity="0.8" />

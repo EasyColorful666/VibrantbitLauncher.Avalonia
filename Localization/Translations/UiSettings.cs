@@ -290,5 +290,34 @@ internal static class UiSettings
         d["读不到这个文件"] = "Couldn't read that file";
         d["这个文件不是设置备份"] = "That file isn't a settings backup";
         d["这个文件不是本启动器的设置备份"] = "That file isn't a settings backup from this launcher";
+
+        // —— 主题包 ——
+        d["主题包"] = "Theme";
+        // 内置默认主题的名字（theme.json 里写的是中文，英文界面下要显示 Default）
+        d["默认"] = "Default";
+        d["一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格就是顶部的横向导航条。选中的那套立刻生效，不用重启。"]
+            = "A theme decides colors, corner radii, control styling, and where the navigation bar sits — the PCL2 style uses a horizontal bar across the top. Switching applies immediately, no restart.";
+        d["导入主题包…"] = "Import theme…";
+        d["打开主题文件夹"] = "Open themes folder";
+        d["主题包里的样式会被真正执行，等同于运行一段程序 —— 只装你自己写的或信得过的来源。"]
+            = "A theme's styles are actually executed, exactly like running a program — only install themes you wrote or trust.";
+        d["内置"] = "Built-in";
+        d["已切换到「{0}」"] = "Switched to “{0}”";
+        d["已导入「{0}」"] = "Imported “{0}”";
+        d["已删除「{0}」"] = "Deleted “{0}”";
+        d["删除主题「{0}」"] = "Delete theme “{0}”";
+        d["会把这份主题从磁盘上删掉。正在用的话会立刻退回默认主题，确定继续吗？"]
+            = "This removes the theme from disk. If it's in use, you'll drop back to the default theme. Continue?";
+        d["删除失败，可能没有权限"] = "Delete failed — check file permissions";
+        d["导入主题包"] = "Import theme";
+        d["找不到这个文件或文件夹"] = "Couldn't find that file or folder";
+        d["只支持 .zip 或文件夹形式的主题包"] = "Themes must be a .zip file or a folder";
+        d["主题包里没有 theme.json"] = "That theme has no theme.json";
+        d["theme.json 里的 id 只能用小写字母、数字或连字符，以字母或数字开头，最长 64 个字符"]
+            = "The id in theme.json may only contain lowercase letters, digits and hyphens, must start with a letter or digit, and can be at most 64 characters";
+        d["主题包里没有任何 .axaml，装了也不会改变外观"] = "That theme contains no .axaml files, so it wouldn't change anything";
+        d["「{0}」是内置主题的 id，换一个"] = "“{0}” is reserved by a built-in theme, pick another id";
+        d["主题已复制进去，但读取不到，检查 theme.json"] = "The theme was copied in but can't be read — check theme.json";
+        d["导入失败：{0}"] = "Import failed: {0}";
     }
 }

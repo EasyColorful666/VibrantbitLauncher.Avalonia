@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using FluentAvalonia.UI.Controls;
 using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Models;
 using VibrantbitLauncher.Services;
@@ -123,6 +124,24 @@ namespace VibrantbitLauncher.ViewModels.Windows
         /// <summary>导航服务：由 MainWindow 注入，负责实际页面切换。</summary>
         public INavigationService? Navigation { get; set; }
 
+        private FANavigationViewPaneDisplayMode _navigationMode = FANavigationViewPaneDisplayMode.LeftCompact;
+
+        /// <summary>
+        /// 导航栏的摆放方式。由主题包决定 —— PCL2 那类横向顶部导航就是这里换成
+        /// <see cref="FANavigationViewPaneDisplayMode.Top"/>。
+        ///
+        /// <para>
+        /// 以前是 XAML 里写死的 <c>LeftCompact</c>。改成绑定是因为「导航栏长什么样」
+        /// 本身就是主题的一部分：一套要求顶部横排的主题，如果导航还挂在左边，
+        /// 看起来只是换了个配色，不算换了风格。
+        /// </para>
+        /// </summary>
+        public FANavigationViewPaneDisplayMode NavigationMode
+        {
+            get => _navigationMode;
+            private set => SetProperty(ref _navigationMode, value);
+        }
+
         public MainWindowViewModel()
         {
             imagePath = @"avares://VibrantbitLauncher.Avalonia/Assets/Blank.jpg";
@@ -135,7 +154,27 @@ namespace VibrantbitLauncher.ViewModels.Windows
             WeakReferenceMessenger.Default.Register<Type, string>(this, "NavigateTo", (_, m) => NavigateToPage(m));
             WeakReferenceMessenger.Default.Register<BackgroundChangedMessage>(this, (_, m) => ApplyBackground(m));
             InitializeMenuItems();
+
+            NavigationMode = ToPaneMode(ThemeService.Navigation);
+            ThemeService.Changed += OnThemeChanged;
         }
+
+        /// <summary>主题换了：导航栏模式可能跟着变，界面立刻重排。</summary>
+        private void OnThemeChanged()
+        {
+            if (Dispatcher.UIThread.CheckAccess())
+                NavigationMode = ToPaneMode(ThemeService.Navigation);
+            else
+                Dispatcher.UIThread.Post(() => NavigationMode = ToPaneMode(ThemeService.Navigation));
+        }
+
+        private static FANavigationViewPaneDisplayMode ToPaneMode(ThemeNavigation navigation) => navigation switch
+        {
+            ThemeNavigation.Top => FANavigationViewPaneDisplayMode.Top,
+            ThemeNavigation.Left => FANavigationViewPaneDisplayMode.Left,
+            ThemeNavigation.Minimal => FANavigationViewPaneDisplayMode.LeftMinimal,
+            _ => FANavigationViewPaneDisplayMode.LeftCompact
+        };
 
         /// <summary>
         /// 响应背景图变更：安全加载图片（失败则退回 Mica），并同步不透明度。

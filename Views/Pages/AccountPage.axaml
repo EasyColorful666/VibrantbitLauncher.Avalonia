@@ -36,14 +36,14 @@
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         </Style>
 
         <!--  渐变洗底：7% 的主色斜向铺在卡片上，是「贵」的来源，不是装饰  -->
         <Style Selector="Border.heroWash">
             <Setter Property="Background" Value="{DynamicResource AppAccentGradientBrush}" />
             <Setter Property="Opacity" Value="0.07" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
             <Setter Property="IsHitTestVisible" Value="False" />
         </Style>
 
@@ -87,7 +87,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="Transitions">
                 <Transitions>
@@ -117,7 +117,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         </Style>
 
         <!--  ==================== 账户列表  ====================  -->
@@ -127,12 +127,12 @@
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         </Style>
 
         <Style Selector="Border.accountRow">
             <Setter Property="Padding" Value="10" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
@@ -196,7 +196,7 @@
             <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
@@ -214,7 +214,7 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
         </Style>
 
         <Style Selector="Button.rowIcon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -236,7 +236,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="Transitions">
                 <Transitions>
@@ -276,7 +276,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
         </Style>
 
         <Style Selector="ListBoxItem /template/ ContentPresenter">
@@ -304,7 +304,7 @@
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusL}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
         </Style>
 
         <Style Selector="Button.addIdentity">
@@ -314,7 +314,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Transitions">
                 <Transitions>
                     <BrushTransition Property="Background" Duration="0:0:0.10" />
@@ -340,7 +340,7 @@
         <Style Selector="Border.identityTile">
             <Setter Property="Width" Value="34" />
             <Setter Property="Height" Value="34" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusM}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />

@@ -1,0 +1,47 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        PCL2 风格 · 亮色
+
+        PCL2 的视觉是「工具」而不是「产品」：浅灰底、白卡片、可见的细描边、
+        没有阴影也没有背景光斑。所以这里把极光与玻璃全部压成不透明或全透明，
+        让界面回到一块平整的纸面上。
+    -->
+
+    <!--  ==================== 面  ====================  -->
+
+    <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFF2F2F2" />
+    <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FFF7F7F7" />
+    <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FFFAFAFA" />
+    <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#14000000" />
+
+    <!--  PCL2 的线是看得见的：它是「框」，不是「分」  -->
+    <SolidColorBrush x:Key="HairlineBrush" Color="#FFD4D4D4" />
+    <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FFB4B4B4" />
+    <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00FFFFFF" />
+
+    <!--  没有极光：五个键全部透明，底层只剩纯色画布  -->
+    <SolidColorBrush x:Key="AuroraOneBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraTwoBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraThreeBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraColdBlobBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraWarmBlobBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraCoolBlobBrush" Color="#00000000" />
+
+    <SolidColorBrush x:Key="ScrimBrush" Color="#66101010" />
+
+    <!--  ==================== 窗口底  ====================  -->
+
+    <!--  这两个键由 SettingsService.ApplyTheme 手写，主题必须后写一次才生效  -->
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#FFF2F2F2" />
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFF2F2F2" />
+    <SolidColorBrush x:Key="AppDropPanelBrush" Color="#FFFFFFFF" />
+
+    <!--  强调色浅底不再半透明，PCL2 用的是实心浅蓝块  -->
+    <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FFE3F1FF" />
+    <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FFC9E3FF" />
+
+</ResourceDictionary>

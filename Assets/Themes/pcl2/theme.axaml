@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        PCL2 风格 · 通用
+
+        直角是这套主题的全部性格。六档圆角一起归零 —— 只改 RadiusS 不够，
+        卡片和浮层用的是 RadiusM / RadiusL / CardRadius，漏一个就会在一堆方块里
+        突然冒出一个圆角。
+    -->
+
+    <CornerRadius x:Key="RadiusNone">0</CornerRadius>
+    <CornerRadius x:Key="RadiusS">0</CornerRadius>
+    <CornerRadius x:Key="RadiusM">0</CornerRadius>
+    <CornerRadius x:Key="RadiusL">0</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">0</CornerRadius>
+    <CornerRadius x:Key="CardRadius">0</CornerRadius>
+
+</ResourceDictionary>

@@ -1,0 +1,94 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Material Design 3 · 控件外观
+
+        M3 的卡片没有边框也没有阴影（elevation 用色阶表达），按钮是填充 + 全圆。
+        这几条正是它和 Fluent 2 最直观的差别，所以必须写进样式而不只是换颜色。
+    -->
+
+    <!--  卡片：纯色填充，去掉 1px 描边和投影  -->
+    <Style Selector="Border.card">
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+
+    <Style Selector="Border.hoverCard">
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+
+    <Style Selector="Border.glass">
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BoxShadow" Value="0 2 6 0 #14000000" />
+    </Style>
+
+    <Style Selector="Border.sunken">
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+
+    <Style Selector="Border.accentBanner">
+        <Setter Property="CornerRadius" Value="16" />
+    </Style>
+
+    <!--  按钮：M3 标准是 40 高、全圆、填充主色  -->
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="20" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="18,6" />
+    </Style>
+
+    <Style Selector="Button.accent">
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="CornerRadius" Value="999" />
+    </Style>
+
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceStrongBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="CornerRadius" Value="999" />
+    </Style>
+
+    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="CornerRadius" Value="999" />
+    </Style>
+
+    <!--  输入控件：M3 的 filled 风格，靠填充而不是描边  -->
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    </Style>
+
+    <Style Selector="ComboBox">
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <Style Selector="ListBoxItem">
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="14,7" />
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <!--  M3 的选中指示短横是一枚小圆点，不是细横线  -->
+    <Style Selector="Border.accentRule">
+        <Setter Property="Width" Value="6" />
+        <Setter Property="Height" Value="6" />
+        <Setter Property="CornerRadius" Value="999" />
+    </Style>
+
+</Styles>

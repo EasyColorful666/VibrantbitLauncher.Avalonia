@@ -104,7 +104,7 @@
                                 <Border Grid.Column="0" Width="56" Height="56" Margin="0,0,14,0"
                                         VerticalAlignment="Top"
                                         Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                        CornerRadius="{StaticResource RadiusM}">
+                                        CornerRadius="{DynamicResource RadiusM}">
                                     <Image Width="48" Height="48" Source="{Binding Icon}" />
                                 </Border>
 
@@ -127,7 +127,7 @@
                                         <Border Padding="8,2" VerticalAlignment="Center"
                                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="{StaticResource RadiusS}">
+                                                CornerRadius="{DynamicResource RadiusS}">
                                             <TextBlock Classes="caption" Text="{Binding Tags}" />
                                         </Border>
 

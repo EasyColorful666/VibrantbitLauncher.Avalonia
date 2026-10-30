@@ -20,6 +20,11 @@ namespace VibrantbitLauncher.Services
     public class AppSettings
     {
         public string Theme { get; set; } = "Light";
+        /// <summary>
+        /// 当前主题包 id（<c>Styles/Themes</c> 里的内置主题，或 <c>VBL/themes</c> 下用户装的）。
+        /// 空串与 "default" 等价：内置默认主题，不覆盖任何外观。
+        /// </summary>
+        public string ThemePackage { get; set; } = "default";
         public string AccentColor { get; set; } = "#FF0078D4";
         /// <summary>主题渐变色的终点色（UseAccentGradient 为 true 时生效）。</summary>
         public string AccentColorEnd { get; set; } = "#FF00B7C3";
@@ -848,7 +853,8 @@ namespace VibrantbitLauncher.Services
             },
             ["appearance"] = new[]
             {
-                nameof(AppSettings.Theme), nameof(AppSettings.AccentColor),
+                nameof(AppSettings.Theme), nameof(AppSettings.ThemePackage),
+                nameof(AppSettings.AccentColor),
                 nameof(AppSettings.AccentColorEnd), nameof(AppSettings.UseAccentGradient),
                 nameof(AppSettings.BackgroundMode), nameof(AppSettings.BackgroundColor),
                 nameof(AppSettings.BackgroundImageOpacity), nameof(AppSettings.BackgroundBlur),
@@ -1016,6 +1022,10 @@ namespace VibrantbitLauncher.Services
             }
 
             _lastAppliedVariant = actual;
+
+            // ⑤ 最后叠主题包。必须排在所有手写资源之后 —— 主题也可能想改窗口底色，
+            //    而上面第 ② 步是直接往根资源字典里写的，只有后写的那一方才有效。
+            ThemeService.Apply();
         }
 
         /// <summary>上一次应用时实际生效的主题变体，用于抑制「自己改、自己又收到事件」的回环。</summary>
@@ -1062,11 +1072,23 @@ namespace VibrantbitLauncher.Services
             ApplyAccentCore(ResolvePrimary(), ResolveEnd(), Current.UseAccentGradient, IsDarkTheme);
         }
 
+        /// <summary>
+        /// 主色。主题包声明了 accent 就以它为准 —— 一套主题的识别度多半就在这个色上，
+        /// 用户在设置里挑的强调色这时候让位；主题没声明则仍听用户的。
+        /// </summary>
         private static Color ResolvePrimary() =>
-            TryParseColor(Current.AccentColor, out var parsed) ? parsed : DefaultAccentColor;
+            ThemeService.TryGetAccent(out var themed) ? themed
+            : TryParseColor(Current.AccentColor, out var parsed) ? parsed
+            : DefaultAccentColor;
 
-        private static Color ResolveEnd() =>
-            TryParseColor(Current.AccentColorEnd, out var parsed) ? parsed : ResolvePrimary();
+        private static Color ResolveEnd()
+        {
+            // 主题给了强调色，渐变终点也跟它算，别让旧设置里的青色掺进来
+            if (ThemeService.TryGetAccent(out _))
+                return ResolvePrimary();
+
+            return TryParseColor(Current.AccentColorEnd, out var parsed) ? parsed : ResolvePrimary();
+        }
 
         /// <summary>
         /// 覆盖 FluentAvalonia 的强调色资源，并把 <c>AppAccentGradientBrush</c> 换成当前的主色渐变。

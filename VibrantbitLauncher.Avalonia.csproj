@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.22.1</Version>
+    <Version>1.0.23.0</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -208,6 +208,12 @@
     <TrimmerRootAssembly Include="Avalonia.Base" />
     <TrimmerRootAssembly Include="Avalonia.Controls" />
     <TrimmerRootAssembly Include="Avalonia.Markup.Xaml" />
+    <!--
+      运行时 XAML 加载器：主题包的 theme.axaml / styles.axaml 只有运行期才解析，
+      剪裁器看不到任何静态引用，不 root 会在开剪裁的发布档里被整份摘掉，
+      症状是「装好主题点了没反应」（加载返回 null，日志里一条 exception）。
+    -->
+    <TrimmerRootAssembly Include="Avalonia.Markup.Xaml.Loader" />
     <TrimmerRootAssembly Include="FluentAvalonia" />
     <TrimmerRootAssembly Include="MinecraftLaunch" />
     <TrimmerRootAssembly Include="MinecraftLaunch.Base" />
@@ -366,6 +372,12 @@
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <!--
+      运行时 XAML 加载器：主题包（用户自己写的 theme.axaml / styles.axaml）靠它加载。
+      内置 XAML 有编译期产物，用户上传的没有，只能在运行期解析。
+      版本必须与 Avalonia 主包一致，否则 XAML schema 对不上。
+    -->
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.1.4" />
     <!-- 下载内核：分块多连接 + 断点续传 + 每块重试，1.0.7.15 起接管全部
          Minecraft 资源 / 模组 / 加载器下载（见 Services/Download/）。
          选它的理由：MIT、单 dll 约 1.3 MB、唯一依赖 Microsoft.Extensions.Logging.Abstractions，
@@ -403,6 +415,19 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!--
+      主题包的 XAML 只当**普通资源**打包（原样保留文本）。
+
+      它们必须能被运行期解析：内置主题与用户主题走同一条加载路径
+      （读文本 → AvaloniaRuntimeXamlLoader），这样「内置的那三套」本身就是
+      主题包格式的活样本，用户照着改就能做出自己的主题。
+      如果让它们走编译期 XAML，内置那三套的写法就和用户的不一样了，
+      文档说的和代码做的是两回事。
+
+      注意 Remove 必须在 Include 之前求值才能生效 —— Avalonia 的默认项在
+      Avalonia.props 里，早于本文件，所以这里 Remove 有效。
+    -->
+    <AvaloniaXaml Remove="Assets\Themes\**\*.axaml" />
     <!--
       协议全文也打进程序集里（约 35 KB），供「设置 → 关于 → 查看协议」离线显示。
 

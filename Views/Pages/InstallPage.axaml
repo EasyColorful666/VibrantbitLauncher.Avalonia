@@ -22,7 +22,7 @@
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource CardRadius}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}" />
         </Style>
         <!--  被选中的加载器卡片：边框点亮  -->
         <Style Selector="Border.loaderCard.selected">

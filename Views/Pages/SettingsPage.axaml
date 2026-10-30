@@ -76,7 +76,7 @@
                                 <Setter Property="Margin" Value="0,1" />
                                 <Setter Property="Padding" Value="12,9" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                                <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
                             </Style>
                         </ListBox.Styles>
 
@@ -135,7 +135,7 @@
                                 <Setter Property="Margin" Value="0,1" />
                                 <Setter Property="Padding" Value="10,7" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                                <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
                             </Style>
                         </ListBox.Styles>
                         <ListBox.ItemTemplate>
@@ -502,6 +502,86 @@
                               IsVisible="False">
                     <StackPanel>
 
+                        <!--  主题包  -->
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Text="主题包" />
+                                <TextBlock Classes="caption" Margin="0,4,0,14" TextWrapping="Wrap"
+                                           Text="一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格就是顶部的横向导航条。选中的那套立刻生效，不用重启。" />
+
+                                <ListBox ItemsSource="{Binding ThemePackages}"
+                                         SelectedItem="{Binding SelectedThemePackage, Mode=TwoWay}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Padding="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0,0,12,12" />
+                                            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        </Style>
+                                        <!--  选中态给一块强调浅底，卡片本身透明，颜色从底下透出来  -->
+                                        <Style Selector="ListBoxItem:selected">
+                                            <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}" />
+                                        </Style>
+                                    </ListBox.Styles>
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:ThemePackage">
+                                            <Border MinWidth="184"
+                                                    MaxWidth="220"
+                                                    Padding="14,12"
+                                                    Background="Transparent"
+                                                    BorderBrush="{DynamicResource HairlineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{DynamicResource RadiusM}">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontWeight="SemiBold"
+                                                               FontSize="{DynamicResource FontSizeBody}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Classes="caption"
+                                                               Text="{Binding Subtitle}"
+                                                               IsVisible="{Binding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                    <TextBlock Classes="caption"
+                                                               Margin="0,2,0,0"
+                                                               Text="{Binding Description}"
+                                                               TextWrapping="Wrap"
+                                                               MaxLines="3" />
+                                                    <TextBlock Classes="caption"
+                                                               Margin="0,4,0,0"
+                                                               Opacity="0.65"
+                                                               Text="{Binding SourceLabel}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
+                                    <Button Content="导入主题包…" Click="OnImportTheme" />
+                                    <Button Content="打开主题文件夹" Click="OnOpenThemeFolder" />
+                                    <Button Classes="danger"
+                                            Content="删除"
+                                            IsEnabled="{Binding CanDeleteTheme}"
+                                            Click="OnDeleteTheme" />
+                                </StackPanel>
+
+                                <TextBlock Classes="caption" Margin="0,10,0,0" TextWrapping="Wrap"
+                                           Text="{Binding ThemeStatus}"
+                                           IsVisible="{Binding ThemeStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                <TextBlock Classes="caption" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.7"
+                                           Text="主题包里的样式会被真正执行，等同于运行一段程序 —— 只装你自己写的或信得过的来源。" />
+                            </StackPanel>
+                        </Border>
+
                         <!--  主题  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
@@ -541,10 +621,10 @@
                                                                 Background="Transparent"
                                                                 BorderBrush="{Binding AccentRingBrush}"
                                                                 BorderThickness="2"
-                                                                CornerRadius="{StaticResource RadiusPill}">
+                                                                CornerRadius="{DynamicResource RadiusPill}">
                                                             <Border Width="28" Height="28"
                                                                     Background="{Binding SwatchBrush}"
-                                                                    CornerRadius="{StaticResource RadiusPill}" />
+                                                                    CornerRadius="{DynamicResource RadiusPill}" />
                                                         </Border>
                                                     </ControlTemplate>
                                                 </Button.Template>
@@ -574,7 +654,7 @@
                                     <StackPanel Grid.Column="1" Width="150" Spacing="8" VerticalAlignment="Center">
                                         <Border Height="48"
                                                 Background="{Binding AccentPreviewBrush}"
-                                                CornerRadius="{StaticResource RadiusM}" />
+                                                CornerRadius="{DynamicResource RadiusM}" />
                                         <TextBlock Classes="caption"
                                                    HorizontalAlignment="Center"
                                                    FontFamily="Consolas"
@@ -614,10 +694,10 @@
                                                                     Background="Transparent"
                                                                     BorderBrush="{Binding GradientRingBrush}"
                                                                     BorderThickness="2"
-                                                                    CornerRadius="{StaticResource RadiusPill}">
+                                                                    CornerRadius="{DynamicResource RadiusPill}">
                                                                 <Border Width="28" Height="28"
                                                                         Background="{Binding GradientEndBrush}"
-                                                                        CornerRadius="{StaticResource RadiusPill}" />
+                                                                        CornerRadius="{DynamicResource RadiusPill}" />
                                                             </Border>
                                                         </ControlTemplate>
                                                     </Button.Template>
@@ -628,7 +708,7 @@
 
                                     <Border Height="40" Margin="0,4,0,0"
                                             Background="{DynamicResource AppAccentGradientBrush}"
-                                            CornerRadius="{StaticResource RadiusM}" />
+                                            CornerRadius="{DynamicResource RadiusM}" />
                                 </StackPanel>
 
                                 <Button HorizontalAlignment="Left"
@@ -663,7 +743,7 @@
                                             Background="{Binding BackgroundColorPreviewBrush}"
                                             BorderBrush="{DynamicResource HairlineBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="{StaticResource RadiusS}" />
+                                            CornerRadius="{DynamicResource RadiusS}" />
                                     <TextBox Grid.Column="1"
                                              FontFamily="Consolas"
                                              PlaceholderText="#FF12161C"
@@ -684,7 +764,7 @@
                                                     Command="{Binding $parent[ItemsControl].DataContext.PickWallpaperCommand}"
                                                     CommandParameter="{Binding}">
                                                 <StackPanel Width="104">
-                                                    <Border CornerRadius="{StaticResource RadiusS}" ClipToBounds="True">
+                                                    <Border CornerRadius="{DynamicResource RadiusS}" ClipToBounds="True">
                                                         <Image Height="58" Stretch="UniformToFill" Source="{Binding Preview}" />
                                                     </Border>
                                                     <TextBlock Classes="caption" Margin="0,6"
@@ -1083,7 +1163,7 @@
 
                                 <Border Margin="0,6,0,0" Padding="12,8"
                                         Background="{DynamicResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{StaticResource RadiusM}">
+                                        CornerRadius="{DynamicResource RadiusM}">
                                     <ListBox MaxHeight="260"
                                              Background="Transparent"
                                              BorderThickness="0"

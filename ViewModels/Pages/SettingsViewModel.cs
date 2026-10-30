@@ -2672,5 +2672,123 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 ? $"「{display}」已恢复默认（改动 {changed} 项）"
                 : $"「{display}」本来就是默认值");
         }
+
+        // ============================================================
+        //  主题包
+        // ============================================================
+
+        /// <summary>可选主题：内置几套在前，用户自己装的在后。</summary>
+        public ObservableCollection<ThemePackage> ThemePackages { get; } = new();
+
+        private ThemePackage? _selectedThemePackage;
+
+        /// <summary>
+        /// 当前主题。改了就立刻应用 —— 主题必须当场看到效果，
+        /// 选完还要再点一次「应用」纯属多余的仪式。
+        /// </summary>
+        public ThemePackage? SelectedThemePackage
+        {
+            get => _selectedThemePackage;
+            set
+            {
+                if (!SetProperty(ref _selectedThemePackage, value) || value is null)
+                    return;
+
+                OnPropertyChanged(nameof(CanDeleteTheme));
+
+                // 同一个主题重复赋值（列表重建时会走到）不重放，否则整个界面白闪一下
+                if (value.Id.Equals(SettingsService.Current.ThemePackage, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                ThemeService.SetTheme(value.Id);
+                ThemeStatus = $"已切换到「{value.Name}」";
+            }
+        }
+
+        /// <summary>内置主题不可删除。</summary>
+        public bool CanDeleteTheme => _selectedThemePackage?.CanDelete == true;
+
+        private string _themeStatus = string.Empty;
+
+        /// <summary>主题那一行的结果文案（安装成功、删除失败都写这里，不弹窗）。</summary>
+        public string ThemeStatus
+        {
+            get => _themeStatus;
+            private set => SetProperty(ref _themeStatus, value);
+        }
+
+        /// <summary>
+        /// 重扫主题目录并刷新列表。进入设置页时调一次 ——
+        /// 用户很可能是直接往 themes 目录里丢文件夹，不重扫就看不见。
+        /// </summary>
+        public void ReloadThemes()
+        {
+            ThemeService.Initialize();
+
+            var keep = _selectedThemePackage?.Id ?? SettingsService.Current.ThemePackage;
+
+            ThemePackages.Clear();
+            foreach (var package in ThemeService.Packages)
+                ThemePackages.Add(package);
+
+            var selected = ThemePackages.FirstOrDefault(p => p.Id.Equals(keep, StringComparison.OrdinalIgnoreCase))
+                           ?? ThemePackages.FirstOrDefault();
+
+            // 走字段而不是属性：属性 setter 会「应用主题」，列表重建不该触发一次全量重绘
+            _selectedThemePackage = selected;
+            OnPropertyChanged(nameof(SelectedThemePackage));
+            OnPropertyChanged(nameof(CanDeleteTheme));
+        }
+
+        /// <summary>导入一份主题包（zip）。</summary>
+        public async Task ImportThemeAsync(string path)
+        {
+            var (ok, message, package) = await ThemeService.ImportAsync(path);
+            ThemeStatus = message;
+
+            if (!ok)
+            {
+                AppServices.Notifications?.Warning(message);
+                return;
+            }
+
+            ReloadThemes();
+
+            if (package is not null)
+                SelectedThemePackage = ThemePackages.FirstOrDefault(p => p.Id == package.Id) ?? SelectedThemePackage;
+
+            AppServices.Notifications?.Success(message);
+        }
+
+        /// <summary>删掉当前选中的那套用户主题。</summary>
+        public async Task DeleteThemeAsync()
+        {
+            var package = _selectedThemePackage;
+            if (package is null || !package.CanDelete)
+                return;
+
+            var dialogs = AppServices.Dialogs;
+            if (dialogs is null)
+                return;
+
+            var confirmed = await dialogs.ConfirmAsync(
+                $"删除主题「{package.Name}」",
+                "会把这份主题从磁盘上删掉。正在用的话会立刻退回默认主题，确定继续吗？",
+                "删除", "取消");
+
+            if (!confirmed)
+                return;
+
+            if (!ThemeService.Delete(package.Id))
+            {
+                ThemeStatus = "删除失败，可能没有权限";
+                AppServices.Notifications?.Warning(ThemeStatus);
+                return;
+            }
+
+            ReloadThemes();
+            ThemeStatus = $"已删除「{package.Name}」";
+            AppServices.Notifications?.Success(ThemeStatus);
+        }
     }
 }

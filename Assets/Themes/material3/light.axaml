@@ -1,0 +1,41 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Material Design 3 · 亮色
+
+        用 M3 baseline 的语义色板：surface 带一点紫调（#FEF7FF 而不是纯白），
+        卡片用 surfaceContainerLow，描边用 outlineVariant 且非常淡 ——
+        M3 靠「色阶」分层，不靠阴影和硬边框。
+    -->
+
+    <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFFEF7FF" />
+    <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FFF3EDF7" />
+    <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FFECE6F0" />
+    <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FFF7F2FA" />
+    <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FFF3EDF7" />
+    <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FFECE6F0" />
+
+    <SolidColorBrush x:Key="HairlineBrush" Color="#33CAC4D0" />
+    <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FFCAC4D0" />
+    <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00FFFFFF" />
+
+    <!--  没有极光：M3 的层次来自色阶，彩色光斑会把它打乱  -->
+    <SolidColorBrush x:Key="AuroraOneBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraTwoBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraThreeBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraColdBlobBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraWarmBlobBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="AuroraCoolBlobBrush" Color="#00000000" />
+
+    <SolidColorBrush x:Key="ScrimBrush" Color="#661D1B20" />
+
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#FFFEF7FF" />
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFFEF7FF" />
+    <SolidColorBrush x:Key="AppDropPanelBrush" Color="#FFF7F2FA" />
+
+    <!--  primaryContainer：M3 的「浅底强调」就是这个色  -->
+    <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FFEADDFF" />
+    <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FFD0BCFF" />
+
+</ResourceDictionary>

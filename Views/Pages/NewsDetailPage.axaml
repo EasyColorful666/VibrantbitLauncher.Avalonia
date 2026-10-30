@@ -26,7 +26,7 @@
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="{StaticResource RadiusL}">
+                CornerRadius="{DynamicResource RadiusL}">
             <Image MaxHeight="358" Stretch="Uniform" Source="{Binding Image}" />
         </Border>
 

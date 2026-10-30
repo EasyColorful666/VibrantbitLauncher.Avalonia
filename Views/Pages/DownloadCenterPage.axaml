@@ -82,7 +82,7 @@
                                     <StackPanel Orientation="Horizontal">
                                         <Border Padding="6,2"
                                                 Background="{DynamicResource AccentFillColorTertiaryBrush}"
-                                                CornerRadius="{StaticResource RadiusS}">
+                                                CornerRadius="{DynamicResource RadiusS}">
                                             <TextBlock Classes="caption"
                                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                                        Text="{Binding TypeDisplay}" />

@@ -36,7 +36,7 @@
                             <Setter Property="Margin" Value="0,1" />
                             <Setter Property="Padding" Value="12,9" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="CornerRadius" Value="{StaticResource RadiusS}" />
+                            <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
                         </Style>
                         <!--  分组标题：不可选中的装饰项  -->
                         <Style Selector="ListBoxItem.groupHeader">
