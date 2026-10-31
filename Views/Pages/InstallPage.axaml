@@ -19,8 +19,8 @@
         </Style>
         <!--  加载器卡片  -->
         <Style Selector="Border.loaderCard">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}" />
         </Style>
@@ -42,12 +42,12 @@
                 否则按钮点了没反应，比没有按钮更糟。
             -->
             <Button Grid.Column="0"
-                    Margin="0,0,12,0"
-                    Padding="16,10"
+                    Margin="0,0,14,0"
                     VerticalAlignment="Center"
+                    Classes="subtle"
                     ToolTip.Tip="返回上一页"
                     Click="OnBack">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="6">
                     <ui:FASymbolIcon Symbol="Back" />
                     <TextBlock Text="返回" />
                 </StackPanel>

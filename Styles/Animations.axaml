@@ -4,173 +4,137 @@
 
     <!--
         ============================================================================
-        动效系统（Fluent 2 Motion · 全部落在 50ms 网格上）
+        动效层 · 明亮清爽
         ============================================================================
 
-        三档节奏，全应用只用这三档：
+        一条原则：**动的是状态，不是物体**。
 
-            100ms  反馈   —— 手指按下去的那一刻（按下回缩、勾选、开关）
-            200ms  转场   —— 一个东西变成另一个东西（展开、卡片浮起、底色切换）
-            300ms  入场   —— 一块内容从无到有（页面切换、浮层弹出）
+        上一版有卡片悬停抬升、按钮按压缩放、启动按钮光晕呼吸。
+        这些在深色沉浸式界面里是"质感"，在明亮清爽的界面里是"晃动"——
+        白底上任何位移和缩放都格外显眼，会让人觉得界面不稳。
 
-        缓动的分工也是固定的：
-            进（出现 / 变大 / 变亮）  → CubicEaseOut（先快后慢，像被"投放"到位）
-            出（消失 / 变小 / 变暗）  → CubicEaseIn （先慢后快，像被"抽走"）
-            需要一点手感的按压反馈    → BackEaseOut （轻微过冲就是那一下"弹"）
+        现在只保留三类：
+          · 颜色过渡    —— 悬停 / 按下 / 选中，120~160ms
+          · 入场位移     —— 页面切换时 8px 上浮淡入，250ms
+          · 滚动 / 背景 —— 平滑滚动、壁纸缓慢呼吸（默认关闭）
 
-        linear 只允许出现在进度条 / 加载环 / 时间轴上，其余一律非线性。
-
-        以下控件自带过渡，这里不重复添加：
-        TextBox(焦点下划线) · ComboBox(弹出层) · CheckBox/RadioButton ·
-        ToggleSwitch · Slider · ProgressBar/ProgressRing · Expander · InfoBar ·
-        ContentDialog · ToolTip · ScrollBar · FATabView · FANavigationView
+        时长只允许 120 / 160 / 250 三档，落在 20ms 网格。
+        进 CubicEaseOut、出 CubicEaseIn；linear 只给进度条。
 
         ⚠️ 性能模式（设置 → 个性化）会给 Application 打上 performanceMode 类，
-        文件末尾的 `.performanceMode` 系列样式把上面所有效果整体清零。
+        本文件末尾的 `.performanceMode` 系列把上面所有效果整体清零。
         加新动效时**必须**同步补一条 performanceMode 关闭规则。
+
+        ⚠️ xmlns:helpers 不能删：RenderTransform 相关的补丁动画器靠它注册。
     -->
 
-    <!--  ==================== 1. 按钮  ====================  -->
+    <!--  ==================== 1. 按钮  ====================
+
+        只过渡底色与描边。不做 RenderTransform ——
+        按钮位移会让同一行内的相邻按钮看起来在"跳"。
+    -->
 
     <Style Selector="Button">
-        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-        <!--
-            基准值显式写成 scale(1)：过渡双方都是 TransformOperations 时插值才自然，
-            否则「无值 → 有值」的第一下会直接跳变。
-        -->
-        <Setter Property="RenderTransform" Value="scale(1)" />
         <Setter Property="Transitions">
             <Transitions>
-                <TransformOperationsTransition Property="RenderTransform"
-                                               Duration="0:0:0.15"
-                                               Easing="BackEaseOut" />
-                <BrushTransition Property="Background"
-                                 Duration="0:0:0.10"
-                                 Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush"
-                                 Duration="0:0:0.10"
-                                 Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
-    <Style Selector="Button:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1.02)" />
+    <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
     </Style>
 
-    <Style Selector="Button:pressed">
-        <Setter Property="RenderTransform" Value="scale(0.97)" />
+    <Style Selector="RepeatButton">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
     </Style>
 
-    <!--  主操作按得更深一点，分量感来自"更深"而不是"更大"  -->
-    <Style Selector="Button.accent:pressed">
-        <Setter Property="RenderTransform" Value="scale(0.965)" />
+    <Style Selector="Button:disabled">
+        <Setter Property="Opacity" Value="0.45" />
     </Style>
 
-    <!--  危险按钮不放大：不引导用户去点  -->
-    <Style Selector="Button.danger:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <!--  低权重按钮也不放大，只换底色（否则一行工具栏会在鼠标扫过时"跳舞"）  -->
-    <Style Selector="Button.subtle:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <!--  ==================== 2. 列表项  ====================  -->
+    <!--  ==================== 2. 列表  ====================  -->
 
     <Style Selector="ListBoxItem">
-        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-        <Setter Property="RenderTransform" Value="scale(1)" />
         <Setter Property="Transitions">
             <Transitions>
-                <TransformOperationsTransition Property="RenderTransform"
-                                               Duration="0:0:0.10"
-                                               Easing="CubicEaseOut" />
-                <BrushTransition Property="Background"
-                                 Duration="0:0:0.10"
-                                 Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
-    <Style Selector="ListBoxItem:pressed">
-        <Setter Property="RenderTransform" Value="scale(0.99)" />
+    <Style Selector="ListBox">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
     </Style>
 
-    <!--  ==================== 3. 卡片  ====================  -->
+    <!--  ==================== 3. 卡片  ====================
+
+        悬停只加深描边，不抬阴影、不位移。
+        白底上的投影一旦动起来，整块内容会跟着"呼吸"，读起来很累。
+    -->
 
     <Style Selector="Border.card">
         <Setter Property="Transitions">
             <Transitions>
-                <BoxShadowsTransition Property="BoxShadow"
-                                       Duration="0:0:0.20"
-                                       Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush"
-                                 Duration="0:0:0.20"
-                                 Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
     <Style Selector="Border.card:pointerover">
-        <Setter Property="BoxShadow" Value="0 2 4 0 #12000000, 0 12 28 0 #14000000" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
     </Style>
 
-    <!--
-        可点卡片：hover 时浮起 + 描边转主色。
-        放大只用 1.2%：再大就会把旁边卡片"挤"得视觉上在动。
-    -->
     <Style Selector="Border.hoverCard">
-        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-        <Setter Property="RenderTransform" Value="scale(1)" />
         <Setter Property="Transitions">
             <Transitions>
-                <TransformOperationsTransition Property="RenderTransform"
-                                               Duration="0:0:0.20"
-                                               Easing="BackEaseOut" />
-                <BoxShadowsTransition Property="BoxShadow"
-                                       Duration="0:0:0.20"
-                                       Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush"
-                                 Duration="0:0:0.20"
-                                 Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
     <Style Selector="Border.hoverCard:pointerover">
-        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentHairlineBrush}" />
-        <Setter Property="RenderTransform" Value="scale(1.012)" />
-        <Setter Property="BoxShadow" Value="0 3 6 0 #14000000, 0 16 36 0 #1F000000" />
-        <Setter Property="ZIndex" Value="10" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
     </Style>
 
-    <!--  ==================== 4. 输入控件  ====================  -->
+    <!--  ==================== 4. 输入  ====================  -->
 
     <Style Selector="TextBox">
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="BorderBrush"
-                                 Duration="0:0:0.10"
-                                 Easing="CubicEaseOut" />
-                <BrushTransition Property="Background"
-                                 Duration="0:0:0.10"
-                                 Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
-    <!--  ==================== 5. 平滑滚动（按需挂载）  ====================  -->
+    <!--  ==================== 5. 滚动  ====================  -->
 
-    <!--
-        给滚动容器加 Classes="smoothScroll"，滚轮 / 键盘翻页改位移时走补间。
-        故意不做成全局：拖动滚动条时补间会带来"跟不上手"的拖影感。
-    -->
     <Style Selector="ScrollViewer.smoothScroll">
         <Setter Property="Transitions">
             <Transitions>
-                <VectorTransition Property="Offset" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
@@ -178,288 +142,134 @@
     <Style Selector="ListBox.smoothScroll /template/ ScrollViewer">
         <Setter Property="Transitions">
             <Transitions>
-                <VectorTransition Property="Offset" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
             </Transitions>
         </Setter>
     </Style>
 
-    <!--  ==================== 6. 入场：上浮淡入  ====================
+    <!--  ==================== 6. 入场  ====================
 
-        用法：给块级元素加 Classes="rise"（或 rise1/rise2/rise3 做依次入场）。
-        Animation 在样式命中时自动播放一次，不需要代码。
-
-        Delay 只有 0 / 50 / 100 / 150 四档，全在网格上；
-        再长的级联会让用户"等界面"，反而更慢。
+        页面切换时内容上浮 8px 淡入。
+        位移 8px 是"刚好能感知到方向"的最小值；再大就变成幻灯片。
     -->
 
     <Style Selector="Control.rise1">
-        <Style.Animations>
-            <Animation Duration="0:0:0.30" FillMode="Forward" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Opacity" Value="0" />
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector="Control.rise2">
-        <Style.Animations>
-            <Animation Duration="0:0:0.30" Delay="0:0:0.05" FillMode="Forward" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Opacity" Value="0" />
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector="Control.rise3">
-        <Style.Animations>
-            <Animation Duration="0:0:0.30" Delay="0:0:0.10" FillMode="Forward" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Opacity" Value="0" />
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector="Control.rise4">
-        <Style.Animations>
-            <Animation Duration="0:0:0.30" Delay="0:0:0.15" FillMode="Forward" Easing="CubicEaseOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Opacity" Value="0" />
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <!--  ==================== 7. 唯一允许的循环：主按钮呼吸光晕  ====================
-
-        全屏只有这一处无限动画。它的作用不是"炫"，而是把视线钉在"启动"上 ——
-        其他所有动画都只在交互时出现一次。
-
-        光晕本身是一个径向渐变 Border，这里只动它的 Opacity：
-        透明度动画不触发重排，低端核显上也是零成本。
-    -->
-
-    <Style Selector="Border.halo">
-        <Style.Animations>
-            <Animation Duration="0:0:3" IterationCount="INFINITE"
-                       PlaybackDirection="Alternate" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%">
-                    <Setter Property="Opacity" Value="0.35" />
-                </KeyFrame>
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="0.85" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <!--  ==================== 8. 例外：保持原样  ====================  -->
-
-    <!--  ScrollBar 的行按钮只有十几像素，放大 2% 会糊，显式还原  -->
-    <Style Selector="RepeatButton">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
         <Setter Property="Transitions">
-            <Transitions />
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
+            </Transitions>
         </Setter>
-    </Style>
-
-    <!--  禁用态不得有任何缩放（悬停在禁用按钮上时仍会置 :pointerover）  -->
-    <Style Selector="Button:disabled">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector="Button:disabled:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <!--  ==================== 9. 列表逐项飞入  ====================
-
-        所有 ListBox 统一挂附加属性，页面不用写代码：
-        列表挂上视觉树时按视觉顺序从上到下、每项错开 45ms 从左滑入。
-        ListMotion 内部已按 MotionSettings.Enabled 自行短路。
-    -->
-    <Style Selector="ListBox">
-        <Setter Property="helpers:ListMotion.EnableStaggeredFlyIn" Value="True" />
-    </Style>
-
-    <!--  ==================== 10. 减动效（性能模式）  ====================
-
-        以下样式在根节点带 performanceMode 类时生效。
-        目标：一帧都不多画 —— 过渡清空、缩放复位、阴影去掉、入场动画直接跳到终态。
-        必须排在文件最后：同优先级下后出现的样式才生效。
-    -->
-
-    <Style Selector=".performanceMode Button">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode Button:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode Button:pressed">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode Button.accent:pressed">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode ListBoxItem">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode ListBoxItem:pressed">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode Border.card">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode Border.card:pointerover">
-        <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000" />
-    </Style>
-
-    <Style Selector=".performanceMode Border.hoverCard">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode Border.hoverCard:pointerover">
-        <Setter Property="BoxShadow" Value="0 1 2 0 #0D000000" />
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".performanceMode Border.halo">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-        <Setter Property="Opacity" Value="0.6" />
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" IterationCount="1" />
-        </Style.Animations>
-    </Style>
-
-    <Style Selector=".performanceMode Control.rise1">
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" FillMode="Forward">
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector=".performanceMode Control.rise2">
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" FillMode="Forward">
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector=".performanceMode Control.rise3">
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" FillMode="Forward">
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector=".performanceMode Control.rise4">
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" FillMode="Forward">
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="1" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-
-    <Style Selector=".performanceMode ScrollViewer.smoothScroll">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode ListBox.smoothScroll /template/ ScrollViewer">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <!--  ==================== 11. 精简档  ====================
-
-         「外观 → 动效 → 精简」时根节点挂 motionReduced。
-         与性能模式的区别：**保留**表达状态变化的反馈（颜色、透明度），
-         只砍掉纯装饰的位移与缩放 —— 界面仍然是"活的"，只是不再"飘"。
-         必须排在 performanceMode 之后：性能模式优先级更高。
-    -->
-
-    <Style Selector=".motionReduced Button:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".motionReduced Button:pressed">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".motionReduced ListBoxItem:pressed">
-        <Setter Property="RenderTransform" Value="scale(1)" />
-    </Style>
-
-    <Style Selector=".motionReduced Border.card:pointerover">
+        <Setter Property="Opacity" Value="1" />
         <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
 
-    <Style Selector=".motionReduced Border.hoverCard:pointerover">
-        <Setter Property="RenderTransform" Value="scale(1)" />
+    <Style Selector="Control.rise2">
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
 
-    <Style Selector=".motionReduced Border.halo">
-        <Setter Property="Opacity" Value="0.55" />
-        <Style.Animations>
-            <Animation Duration="0:0:0.01" FillMode="Forward">
-                <KeyFrame Cue="100%">
-                    <Setter Property="Opacity" Value="0.55" />
-                </KeyFrame>
-            </Animation>
-        </Style.Animations>
+    <Style Selector="Control.rise3">
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
 
-    <!--  ==================== 12. 动态背景  ====================
+    <Style Selector="Control.rise4">
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="RenderTransform" Value="translateY(0px)" />
+    </Style>
 
-         壁纸缓慢呼吸缩放（24 秒一个来回）。全应用唯一一个长时间运行的动画，
-         所以只动 Transform（合成层内完成，不触发重排），且默认关闭。
+    <!--  光晕：新语言里已无呼吸动画，保留空壳让历史引用不报错  -->
+    <Style Selector="Border.halo">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+
+    <!--  ==================== 7. 性能模式  ====================
+
+        低端机（核显 / Win7 老机）在设置里打开这个开关后，全部过渡立即归零。
+        注意这里是**逐个覆盖**而不是给根节点设一个开关：
+        Transitions 是控件级属性，父级的设置不会自动往下传。
+    -->
+
+    <Style Selector=".performanceMode Button, .performanceMode Button /template/ ContentPresenter#PART_ContentPresenter, .performanceMode RepeatButton">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode ListBoxItem, .performanceMode ListBox">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode Border.card, .performanceMode Border.hoverCard">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode TextBox">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode Control.rise1, .performanceMode Control.rise2, .performanceMode Control.rise3, .performanceMode Control.rise4">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode ScrollViewer.smoothScroll, .performanceMode ListBox.smoothScroll /template/ ScrollViewer">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode Image.bgAnimated">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <!--  ==================== 8. 减少动态效果  ====================
+
+        系统开了"减少动态效果"时，位移全部取消，只留极短的颜色过渡 ——
+        保留颜色反馈是因为它不含运动，对前庭敏感人群无害。
+    -->
+
+    <Style Selector=".motionReduced Control.rise1, .motionReduced Control.rise2, .motionReduced Control.rise3, .motionReduced Control.rise4">
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+            </Transitions>
+        </Setter>
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <!--  ==================== 9. 动态背景  ====================
+
+        壁纸缓慢呼吸缩放（24 秒一个来回）。默认关闭，只在用户开了「背景动画」时生效。
+        只动 Transform（合成层内完成，不触发重排）。
     -->
 
     <Style Selector="Image.bgAnimated">

@@ -4,25 +4,29 @@
 
     <!--
         ============================================================
-        自定义标题栏 TitleBar（仿 WPF-UI 的 ui:TitleBar）
+        自定义标题栏 · 明亮清爽
         ============================================================
 
+        这一版把它做成「一条极安静的横带」：
+
+          · 背景与画布同色，**没有下边框、没有分隔线** ——
+            标题栏和内容连成一整块白，而不是被切成两段；
+          · 标题 13px 常规字重、压到次级灰：
+            窗口标题是"身份标识"，不是"页面标题"，不该跟页头抢注意力；
+          · 系统按钮压到 40px 宽，比 Windows 原生的 46 窄一点，
+            悬停高亮是浅灰圆角块而不是通栏色条 —— 原生那条大红/深灰块
+            在纯白界面上太突兀。
+
         这里用「应用级 Style + Template」而不是 ControlTheme：
-        本工程没有为自定义控件建 ControlTheme 的先例，
-        而且应用级样式里可以用普通的后代选择器直接命中模板里的命名部件，
+        应用级样式里可以用普通的后代选择器直接命中模板里的命名部件，
         省掉 ControlTheme 作用域下 `^ /template/` 的层级坑（踩过）。
 
-        配色全部走 FluentAvalonia 的语义键，明暗主题自动适配；
+        配色全部走本工程的标题栏资源键，明暗自动适配；
         只有「关闭按钮悬停红」是国内 Windows 约定的固定色，直接写死。
     -->
 
     <Style Selector="ctrl|TitleBar">
-        <Setter Property="Height" Value="40" />
-        <!--
-            底色与文字色都走「标题栏专用」的一组资源键，默认值 = 透明 + 正文色，
-            观感和以前完全一致；主题包（如 PCL2）把它们改成蓝色 + 白字，
-            顶栏就成了一根真的彩色标题栏，不需要为它再写一套控件模板。
-        -->
+        <Setter Property="Height" Value="44" />
         <Setter Property="Background" Value="{DynamicResource AppHeaderBarBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
@@ -38,19 +42,14 @@
                 <Border Name="PART_Root"
                         Background="{TemplateBinding Background}"
                         WindowDecorationProperties.ElementRole="TitleBar">
-                    <!--
-                        三列：图标 + 标题 / 中间的内容区 / 系统按钮。
-                        中间那列吃满剩余宽度，所以标题栏里的导航项是「居中」的 ——
-                        不是贴着标题，也不是贴着右边按钮。
-                    -->
                     <Grid ColumnDefinitions="Auto,*,Auto">
 
                         <!--  应用图标 + 标题：图标没设时整块隐藏（不占位）  -->
                         <StackPanel Grid.Column="0"
-                                    Margin="14,0,0,0"
+                                    Margin="18,0,0,0"
                                     VerticalAlignment="Center"
                                     Orientation="Horizontal"
-                                    Spacing="10">
+                                    Spacing="9">
                             <Image Name="PART_Icon"
                                    Width="16"
                                    Height="16"
@@ -64,11 +63,7 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!--
-                            自定义内容区（导航项 / 搜索框 / 面包屑），默认空。
-                            横向居中 + 纵向居中：标题栏里的东西自己决定多宽，
-                            这一层只负责把它摆在「标题之后、按钮之前」的正中间。
-                        -->
+                        <!--  自定义内容区（搜索框 / 面包屑），默认空  -->
                         <ContentPresenter Name="PART_ContentPresenter"
                                           Grid.Column="1"
                                           HorizontalAlignment="Center"
@@ -79,8 +74,12 @@
                                           ContentTemplate="{TemplateBinding ContentTemplate}"
                                           WindowDecorationProperties.ElementRole="User" />
 
-                        <!--  系统按钮：与原生一致，通栏高度、悬停整块高亮  -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <!--  系统按钮：紧凑、圆角、不占满高度  -->
+                        <StackPanel Grid.Column="2"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="2">
                             <Button Name="PART_MinimizeButton"
                                     Classes="captionButton"
                                     ToolTip.Tip="最小化"
@@ -120,18 +119,18 @@
         <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
 
-    <!--  标题：主文字色，常规字重（对齐 WPF-UI / Windows 11 标题栏）  -->
+    <!--  标题：次级灰 + 常规字重。它是身份标识，不是页面标题  -->
     <Style Selector="ctrl|TitleBar TextBlock#PART_Title">
         <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <!--  副标题：小一号 + 压暗，默认隐藏（没设 Subtitle 时不占位）  -->
     <Style Selector="ctrl|TitleBar TextBlock#PART_Subtitle">
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
-        <Setter Property="Opacity" Value="0.75" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
@@ -142,12 +141,13 @@
     <!--  ==================== 系统按钮  ====================  -->
 
     <Style Selector="ctrl|TitleBar Button.captionButton">
-        <Setter Property="Width" Value="46" />
-        <Setter Property="Height" Value="46" />
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="32" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
+        <Setter Property="MinHeight" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
@@ -155,7 +155,7 @@
     <Style Selector="ctrl|TitleBar Button.captionButton /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
     </Style>
 
     <Style Selector="ctrl|TitleBar Button.captionButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -190,55 +190,15 @@
         <Setter Property="Stretch" Value="None" />
         <Setter Property="StrokeThickness" Value="1" />
         <Setter Property="StrokeLineCap" Value="Square" />
-        <Setter Property="Stroke" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
+        <Setter Property="Stroke" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!--  不可用的最大化按钮：跟着标题栏前景色淡出，而不是换成一套灰
-         （主窗口是固定尺寸，这颗按钮常年是禁用态，在蓝底上换成灰色很跳）  -->
+    <!--  不可用的最大化按钮：跟着文字色淡出，而不是换成一套灰  -->
     <Style Selector="ctrl|TitleBar Button.captionButton:disabled Path.captionGlyph">
-        <Setter Property="Stroke" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
-        <Setter Property="Opacity" Value="0.4" />
-    </Style>
-
-    <!--  ==================== 标题栏导航项（navigation=header）  ====================  -->
-
-    <Style Selector="Button.headerNav">
-        <Setter Property="Height" Value="30" />
-        <Setter Property="Padding" Value="12,0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="{DynamicResource RadiusHeaderNav}" />
-        <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
-        <Setter Property="FontSize" Value="{DynamicResource FontSizeBodyLarge}" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-
-    <Style Selector="Button.headerNav /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="{DynamicResource RadiusHeaderNav}" />
-    </Style>
-
-    <Style Selector="Button.headerNav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AppHeaderBarHoverBrush}" />
-    </Style>
-
-    <Style Selector="Button.headerNav:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AppHeaderBarPressedBrush}" />
-    </Style>
-
-    <!--  选中项：一块实心色块顶替「下划线」。蓝色顶栏配白色块 + 主色文字，
-         是 PCL2 那种「工具软件」的选中语言 —— 和 Fluent 的胶囊高亮不是一回事  -->
-    <Style Selector="Button.headerNav.selected /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AppHeaderNavSelectedBrush}" />
-    </Style>
-
-    <Style Selector="Button.headerNav.selected">
-        <Setter Property="Foreground" Value="{DynamicResource AppHeaderNavSelectedForegroundBrush}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Stroke" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Opacity" Value="0.35" />
     </Style>
 
 </Styles>

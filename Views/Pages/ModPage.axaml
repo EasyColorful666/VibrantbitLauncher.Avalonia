@@ -18,12 +18,12 @@
         -->
         <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="Auto,*">
             <Button Grid.Column="0"
-                    Margin="0,0,12,0"
-                    Padding="16,10"
+                    Margin="0,0,14,0"
                     VerticalAlignment="Center"
+                    Classes="subtle"
                     ToolTip.Tip="返回上一页"
                     Click="OnBack">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="6">
                     <ui:FASymbolIcon Symbol="Back" />
                     <TextBlock Text="返回" />
                 </StackPanel>
@@ -31,7 +31,7 @@
 
             <StackPanel Grid.Column="1">
                 <TextBlock x:Name="headerTitle" Classes="display" Text="模组文件" />
-                <TextBlock x:Name="headerSubtitle" Classes="caption" Margin="0,6,0,0"
+                <TextBlock x:Name="headerSubtitle" Classes="caption" Margin="0,4,0,0"
                            Text="选择游戏版本与加载器，查看可下载的模组文件；只有加载器匹配的实例才能直接添加" />
             </StackPanel>
         </Grid>

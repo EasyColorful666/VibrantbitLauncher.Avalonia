@@ -9,108 +9,111 @@
              d:DesignWidth="800"
              d:DesignHeight="450">
 
-    <!--  版式：页头 → 左侧分类单选栏 + 右侧内容区  -->
+    <!--  版式：页头 → 左侧分类栏 + 右侧内容区  -->
     <Grid Classes="page" RowDefinitions="Auto,*">
 
         <ctrl:PageHeader
             Grid.Row="0"
-            Eyebrow="CONTENT"
             Subtitle="原版游戏、模组、整合包、资源包、光影与 Java 运行环境"
             Title="下载中心" />
 
-        <Grid Grid.Row="1" ColumnDefinitions="216,*">
+        <Grid Grid.Row="1" ColumnDefinitions="196,*" ColumnSpacing="28">
 
             <!--
-                分类栏装在玻璃面板里：它是一组"并列的选项"，
-                和右侧"当前选中的内容"必须看起来是两个层。
+                分类栏**不装框**。
+                以前它是一块玻璃面板，和右侧内容形成"两个层"；
+                但在一屏纯白的界面里，那个框其实只是多了一圈线 ——
+                分类和内容是并列关系，不是包含关系，用留白分开就够了。
+                选中态靠浅灰底表达（Fluent 列表默认行为）。
             -->
-            <Border Grid.Column="0" Classes="glass" Margin="0,0,20,0" Padding="6" VerticalAlignment="Top">
-                <ListBox x:Name="CategoryList"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         SelectionChanged="CategoryList_SelectionChanged">
+            <ListBox x:Name="CategoryList"
+                     Grid.Column="0"
+                     Padding="0"
+                     VerticalAlignment="Top"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionChanged="CategoryList_SelectionChanged">
 
-                    <ListBox.Styles>
-                        <Style Selector="ListBoxItem">
-                            <Setter Property="Margin" Value="0,1" />
-                            <Setter Property="Padding" Value="12,9" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
-                        </Style>
-                        <!--  分组标题：不可选中的装饰项  -->
-                        <Style Selector="ListBoxItem.groupHeader">
-                            <Setter Property="IsEnabled" Value="False" />
-                            <Setter Property="Padding" Value="12,18,12,6" />
-                        </Style>
-                    </ListBox.Styles>
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Margin" Value="0,1" />
+                        <Setter Property="Padding" Value="12,9" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
+                    </Style>
+                    <!--  分组标题：不可选中的装饰项  -->
+                    <Style Selector="ListBoxItem.groupHeader">
+                        <Setter Property="IsEnabled" Value="False" />
+                        <Setter Property="Padding" Value="12,18,12,6" />
+                    </Style>
+                </ListBox.Styles>
 
-                    <!--
-                        原版游戏：把原来的「Minecraft」分组标题与「原版游戏」条合并成一条
-                        （分组标题本是不可选中的装饰项，合并后点一次就能进原版下载页）。
-                    -->
-                    <ListBoxItem IsSelected="True" Tag="0">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Globe" />
-                            <TextBlock Text="Minecraft" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <!--
+                    原版游戏：把原来的「Minecraft」分组标题与「原版游戏」条合并成一条
+                    （分组标题本是不可选中的装饰项，合并后点一次就能进原版下载页）。
+                -->
+                <ListBoxItem IsSelected="True" Tag="0">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Globe" />
+                        <TextBlock Text="Minecraft" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <ListBoxItem Classes="groupHeader">
-                        <TextBlock Classes="caption" Text="社区资源" />
-                    </ListBoxItem>
+                <ListBoxItem Classes="groupHeader">
+                    <TextBlock Classes="caption" Text="社区资源" />
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="1">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="AllApps" />
-                            <TextBlock Text="模组" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <ListBoxItem Tag="1">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="AllApps" />
+                        <TextBlock Text="模组" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="2">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Library" />
-                            <TextBlock Text="整合包" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <ListBoxItem Tag="2">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Library" />
+                        <TextBlock Text="整合包" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="3">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Code" />
-                            <TextBlock Text="数据包" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <ListBoxItem Tag="3">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Code" />
+                        <TextBlock Text="数据包" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="4">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Page" />
-                            <TextBlock Text="资源包" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <ListBoxItem Tag="4">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Page" />
+                        <TextBlock Text="资源包" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="5">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Preview" />
-                            <TextBlock Text="光影" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
+                <ListBoxItem Tag="5">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Preview" />
+                        <TextBlock Text="光影" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
 
-                    <!--
-                        Java 运行环境：不是 Modrinth 资源，单独一组。
-                        下载数据来自 Adoptium 的公开 API（见 JavaRuntimeService）。
-                    -->
-                    <ListBoxItem Classes="groupHeader">
-                        <TextBlock Classes="caption" Text="运行环境" />
-                    </ListBoxItem>
+                <!--
+                    Java 运行环境：不是 Modrinth 资源，单独一组。
+                    下载数据来自 Adoptium 的公开 API（见 JavaRuntimeService）。
+                -->
+                <ListBoxItem Classes="groupHeader">
+                    <TextBlock Classes="caption" Text="运行环境" />
+                </ListBoxItem>
 
-                    <ListBoxItem Tag="6">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon Symbol="Code" />
-                            <TextBlock Text="Java" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                </ListBox>
-            </Border>
+                <ListBoxItem Tag="6">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ui:FASymbolIcon Symbol="Code" />
+                        <TextBlock Text="Java" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ListBoxItem>
+            </ListBox>
 
             <!--
                 每个分类各自持有一个页面实例，切换时只改 IsVisible。

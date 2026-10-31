@@ -23,15 +23,15 @@ namespace VibrantbitLauncher.Helpers;
 /// </list>
 ///
 /// <para>
-/// <b>与陶瓦联机（Terracotta）双向通用</b>：字符集、位序、校验、派生规则、
-/// 连中继节点都完全照搬它的算法，所以同一串码在两边解出来的网络凭据是同一份 ——
-/// 我们生成的码陶瓦客户端能进，陶瓦的码我们也能进。
+/// <b>联机码与陶瓦联机（Terracotta）通用</b>：字符集、位序、校验、派生规则完全照搬它的算法，
+/// 所以同一串码在两边解出来的网络凭据是同一份。默认中继已改为本项目自己的节点，
+/// 但备用清单里仍然保留陶瓦的节点 —— 只要房间还挂在陶瓦的节点上，陶瓦客户端就照样能进。
 /// </para>
 ///
 /// <para>
 /// 网名里的 <c>scaffolding-mc-</c> 不是随便起的前缀，是双方约定的固定串，改了就通不了。
 /// 它跟「陶瓦联机服务」无关 —— 我们跑的仍然是自己随包下载的 EasyTier 核心，
-/// 只是用同一套网络凭据和同一批公共中继节点，好让两个启动器的人能进同一个房间。
+/// 只是用同一套网络凭据，好让两个客户端的人能进同一个房间。
 /// </para>
 ///
 /// <para>
@@ -65,22 +65,46 @@ public sealed class RoomCode
     /// <summary>可表示的空间 34^16 ≈ 3.19e24；超过 <see cref="ulong"/> 上限，只能用 <see cref="UInt128"/>。</summary>
     private static readonly UInt128 Space = ComputeSpace();
 
+    /// <summary>本项目的直连中继节点 —— 不勾「陶瓦兼容模式」时用它。</summary>
+    public const string OwnRelay = "tcp://easytier.weiai.org.cn:11010";
+
+    /// <summary>陶瓦联机的默认节点 —— 勾了「陶瓦兼容模式」时用它。</summary>
+    public const string TerracottaRelay = "https://etnode.zkitefly.eu.org/node1";
+
+    /// <summary>页面上「中继服务器」输入框的默认值：本项目的节点。</summary>
+    public const string DefaultRelay = OwnRelay;
+
     /// <summary>
-    /// 互通所必需的公共中继节点，顺序与陶瓦一致。
+    /// 自家节点池。第一条是主节点，其余是同批备用（核心会依次尝试）。
     ///
-    /// 网络名与密码一致还不够 —— 两边还得连到同一个节点池，否则各自在各自的「火车站」
-    /// 上等对方，永远碰不到。第一条是陶瓦默认用的节点（页面上的默认值），其余作为备用依次尝试。
+    /// <para>
+    /// 备用是 EasyTier 官方的两个公共节点：自家节点临时抽风时，房主和房客会
+    /// 一起落到同一个备用节点上，房间不至于直接组不起来。
+    /// </para>
     /// </summary>
-    public static readonly IReadOnlyList<string> PublicRelays = new[]
+    public static readonly IReadOnlyList<string> OwnRelays = new[]
     {
-        "https://etnode.zkitefly.eu.org/node1",
-        "https://etnode.zkitefly.eu.org/node2",
+        OwnRelay,
         "tcp://public.easytier.top:11010",
         "tcp://public2.easytier.cn:54321"
     };
 
-    /// <summary>页面上「中继服务器」输入框的默认值 —— 与陶瓦的默认节点相同。</summary>
-    public const string DefaultRelay = "https://etnode.zkitefly.eu.org/node1";
+    /// <summary>
+    /// 陶瓦联机的节点池。第一条与 <see cref="TerracottaRelay"/> 相同。
+    ///
+    /// <para>
+    /// 要跟陶瓦客户端的人进同一张网，双方得连在同一个节点池里 ——
+    /// 网名密码对上还不够。陶瓦的节点填的是「发地址的接口」，
+    /// 启动前会先去问一次真正的服务器地址（见 <c>PublicRelayResolver</c>）。
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> TerracottaRelays = new[]
+    {
+        TerracottaRelay,
+        "https://etnode.zkitefly.eu.org/node2",
+        "tcp://public.easytier.top:11010",
+        "tcp://public2.easytier.cn:54321"
+    };
 
     private RoomCode(string code, string digits, UInt128 value)
     {
@@ -112,37 +136,42 @@ public sealed class RoomCode
     public UInt128 Value { get; }
 
     /// <summary>
-    /// 主中继是公共节点时，把其余节点一并挂上做备用。
+    /// 主中继是我们认识的节点时，把同池的其余节点一并挂上做备用。
     ///
     /// 只连一个节点时，只要那个节点当时抽风，两边就组不上网；多挂几个能让核心自己换。
     /// 玩家自己填了别处（自建节点）时返回 null —— 那是他的选择，不该被我们塞几个节点进去。
     /// </summary>
     public static IReadOnlyList<string>? ExtraRelaysFor(string? primary)
     {
-        if (!IsPublicRelay(primary))
-            return null;
-
         var value = NormalizeRelay(primary);
-        var extras = new List<string>(PublicRelays.Count);
 
-        foreach (var relay in PublicRelays)
+        foreach (var pool in new[] { OwnRelays, TerracottaRelays })
         {
-            if (!string.Equals(relay, value, StringComparison.OrdinalIgnoreCase))
-                extras.Add(relay);
+            if (!string.Equals(pool[0], value, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var extras = new List<string>(pool.Count);
+            for (var i = 1; i < pool.Count; i++)
+                extras.Add(pool[i]);
+
+            return extras;
         }
 
-        return extras;
+        return null;
     }
 
-    /// <summary>是不是我们认识的公共节点（含省略 <c>tcp://</c> 的写法）。</summary>
-    public static bool IsPublicRelay(string? relay)
+    /// <summary>是不是我们认识的节点（含省略 <c>tcp://</c> 的写法）。</summary>
+    public static bool IsKnownRelay(string? relay)
     {
         var value = NormalizeRelay(relay);
 
-        foreach (var known in PublicRelays)
+        foreach (var pool in new[] { OwnRelays, TerracottaRelays })
         {
-            if (string.Equals(known, value, StringComparison.OrdinalIgnoreCase))
-                return true;
+            foreach (var known in pool)
+            {
+                if (string.Equals(known, value, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
         }
 
         return false;

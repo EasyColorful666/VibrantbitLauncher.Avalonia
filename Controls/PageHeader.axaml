@@ -4,16 +4,22 @@
 
     <!--
         ============================================================================
-        页头（所有一级页面共用）
+        页头（所有一级页面共用）· 明亮清爽
         ============================================================================
 
-        结构固定为四行：眉标 → 大标题 → 28×2 主色短横 → 说明。
-        右侧留一个 Actions 槽，放「刷新 / 新建 / 筛选」这类页级操作。
+        结构只有两行：
 
-        为什么把页头抽成控件：
-        之前 15 个页面各写一遍「display + accentRule + caption」，
-        结果字号、间距、短横长度各自漂移了三个版本。
-        抽出来之后改一次全站生效 —— 这是"体系"和"随手写"的分界线。
+            EYEBROW（可选，12px 宽字距三级灰）
+            页面标题（28px SemiBold）              [右侧操作槽]
+            一句话说明（12px 次级灰，可选）
+
+        和上一版的区别：**去掉了主色短横**。
+        那道 28×2 的横线在深色界面上是个不错的"视觉锚点"，
+        但在白底大留白的布局里，它反而把标题和说明割开，
+        让本来就该连读的两行信息变成三段。
+
+        层级现在完全靠字号与字重：28 SemiBold → 12 灰，
+        中间不留任何装饰物。这需要标题足够大才撑得住，所以 display 档没有再缩小。
 
         ⚠️ 这里不用 {Binding} 也不用 {TemplateBinding}：
         UserControl 的 x:Name 进不了同名 namescope，ElementName / $parent 这类
@@ -21,23 +27,31 @@
         文案由代码在属性变更时直接写进控件，行为完全确定。
     -->
 
-    <Grid Margin="0,0,0,24" ColumnDefinitions="*,Auto">
+    <Grid Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="*,Auto">
 
-        <StackPanel Grid.Column="0" Spacing="6">
+        <StackPanel Grid.Column="0" Spacing="4">
             <TextBlock x:Name="PART_Eyebrow" Classes="eyebrow" IsVisible="False" />
             <TextBlock x:Name="PART_Title" Classes="display" />
-            <Border Classes="accentRule" Margin="0,2,0,2" />
+            <!--
+                说明文字必须显式 Left。
+                `MaxWidth` + 默认 HorizontalAlignment=Stretch 时，Avalonia 会把
+                被限宽的那个控件**在可用宽度里居中**（WPF 同款行为），
+                于是大窗口下这段说明会整体右移 (内容宽-720)/2 ≈ 86px，
+                和标题左边缘对不齐。数据显示：改前页头内容宽 892 时实测偏移 86。
+            -->
             <TextBlock x:Name="PART_Subtitle"
                        Classes="caption"
-                       MaxWidth="760"
+                       Margin="0,2,0,0"
+                       HorizontalAlignment="Left"
+                       MaxWidth="720"
                        TextWrapping="Wrap"
                        IsVisible="False" />
         </StackPanel>
 
         <ContentPresenter x:Name="PART_Actions"
                           Grid.Column="1"
-                          Margin="24,0,0,4"
-                          VerticalAlignment="Bottom"
+                          Margin="24,0,0,0"
+                          VerticalAlignment="Center"
                           HorizontalAlignment="Right" />
     </Grid>
 </UserControl>

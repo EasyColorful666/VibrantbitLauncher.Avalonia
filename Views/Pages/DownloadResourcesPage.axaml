@@ -103,7 +103,7 @@
                                 <!--  项目图标  -->
                                 <Border Grid.Column="0" Width="56" Height="56" Margin="0,0,14,0"
                                         VerticalAlignment="Top"
-                                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                        Background="{DynamicResource SurfaceCanvasSubtleBrush}"
                                         CornerRadius="{DynamicResource RadiusM}">
                                     <Image Width="48" Height="48" Source="{Binding Icon}" />
                                 </Border>
@@ -125,7 +125,7 @@
                                     <!--  标签行 + 下载量 + 时间  -->
                                     <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
                                         <Border Padding="8,2" VerticalAlignment="Center"
-                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                BorderBrush="{DynamicResource HairlineBrush}"
                                                 BorderThickness="1"
                                                 CornerRadius="{DynamicResource RadiusS}">
                                             <TextBlock Classes="caption" Text="{Binding Tags}" />

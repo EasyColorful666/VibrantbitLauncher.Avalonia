@@ -46,8 +46,8 @@
                 Grid.Row="2"
                 Margin="0,14,0,0"
                 Padding="16,10"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                Background="{DynamicResource SurfaceCardBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}"
                 BorderThickness="1"
                 CornerRadius="{DynamicResource RadiusM}">
                 <TextBlock

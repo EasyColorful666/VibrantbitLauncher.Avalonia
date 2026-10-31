@@ -3,119 +3,123 @@
                     xmlns:sys="using:System">
 
     <!--
-        VibrantbitLauncher 全局视觉规范（Avalonia 版）
+        ============================================================================
+        VibrantbitLauncher 视觉规范 · 明亮清爽（Light & Airy）
+        ============================================================================
 
-        颜色使用 FluentAvalonia 的语义化画刷键（TextFillColor* / CardBackground* 等），
-        以便 Light / Dark 主题自动适配，不要再硬编码 #RRGGBB。
-        间距走 4 的倍数，页面内容统一用 PagePadding。
+        设计取向只有三个词：**白、留白、克制**。
+
+        整个界面靠三样东西建立层级，不靠颜色、不靠阴影、不靠渐变：
+          1. 留白   —— 区块之间用 24~32px 的空，而不是分割线或色块；
+          2. 细线   —— 1px 极浅描边，只用来「圈住」可交互的实体，不用来装饰；
+          3. 字重   —— 同一档字号靠 SemiBold / Normal / 三级灰拉开远近。
+
+        因此本文件里**没有**渐变、没有强色块。风格化留给用户在设置里开的强调色，
+        强调色只出现在三处：主按钮实心底、当前选中项、极少数图标。
+
+        ⚠️ 颜色一律走 FluentAvalonia 的语义键（TextFillColor* / CardBackground*），
+        随明暗自动适配，不要在这里硬编码 #RRGGBB 去做正文色。
+        只有品牌语义色（成功 / 危险 / 警告 / 强调）才自己定义。
     -->
 
     <!--  ==================== 语义色  ====================  -->
 
-    <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF10893E" />
-    <SolidColorBrush x:Key="AppCriticalBrush" Color="#FFD13438" />
-    <SolidColorBrush x:Key="AppCautionBrush" Color="#FFCC8800" />
+    <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF14804A" />
+    <SolidColorBrush x:Key="AppCriticalBrush" Color="#FFD92D20" />
+    <SolidColorBrush x:Key="AppCautionBrush" Color="#FFB54708" />
 
-    <!--
-        愚人节版本的类型标识色（下载页筛选圆点用）。
+    <!--  愚人节版本的类型标识色（下载页筛选圆点用，6px 面积）  -->
+    <SolidColorBrush x:Key="AppAprilFoolsBrush" Color="#FF9B51E0" />
 
-        只有 6px 的面积，所以取一个**亮而低饱和**的紫：浅色主题下能看清，
-        深色主题下也不刺眼。这是全工程唯一用到紫色系的地方 ——
-        它标记的是「梗版本」这个一次性的语义，不参与常规配色。
-    -->
-    <SolidColorBrush x:Key="AppAprilFoolsBrush" Color="#FFB146C2" />
-    <SolidColorBrush x:Key="AppCriticalSurfaceBrush" Color="#FFD13438" Opacity="0.12" />
-    <SolidColorBrush x:Key="AppCautionSurfaceBrush" Color="#FFCC8800" Opacity="0.14" />
-    <SolidColorBrush x:Key="AppSuccessSurfaceBrush" Color="#FF10893E" Opacity="0.12" />
-    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="AppCriticalSurfaceBrush" Color="#FFD92D20" Opacity="0.08" />
+    <SolidColorBrush x:Key="AppCautionSurfaceBrush" Color="#FFB54708" Opacity="0.10" />
+    <SolidColorBrush x:Key="AppSuccessSurfaceBrush" Color="#FF14804A" Opacity="0.08" />
+
+    <SolidColorBrush x:Key="AppWindowBackgroundBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="AppOnImageTextBrush" Color="#FFFFFFFF" />
 
     <!--
         ApplicationBackgroundBrush：所有窗口（含二级窗口）的整窗底色。
+        纯白 —— 明亮清爽的底就是白，靠内容自己形成层次。
 
-        ⚠️ 它是**一次性定义 + 运行时手写**的键，不随主题变体自动换色 ——
-        正因如此，主题变体和这个手写值必须始终同步：唯一写入口是
-        <see cref="VibrantbitLauncher.Services.SettingsService.ApplyTheme"/>，
-        而它现在保证「先关掉 FluentAvalonia 的跟随系统，最后才切变体」，
-        两边不会再各走各的（1.0.7.14 之前会出现「浅色底 + 浅色字」的整窗发白）。
-
-        ⚠️ 别改成 FluentAvalonia 的 SolidBackgroundFillColorBase：那是 **Color** 资源，
-        赋给 IBrush 类型的 Background 会因类型不匹配静默失效 → 窗口无背景 → 白屏。
+        ⚠️ 这是「一次性定义 + 运行时手写」的键，不随主题变体自动换色，
+        唯一写入口是 SettingsService.ApplyTheme()，必须与变体始终同步。
     -->
-    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFF3F3F3" />
-
-    <!--  主题色渐变，运行时由 SettingsService.ApplyAccent() 覆盖  -->
-    <LinearGradientBrush x:Key="AppAccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
-        <GradientStop Offset="0" Color="#FF0078D4" />
-        <GradientStop Offset="1" Color="#FF00B7C3" />
-    </LinearGradientBrush>
-
-    <!--  背景图遮罩  -->
-    <SolidColorBrush x:Key="AppBackgroundScrimBrush" Color="#80FFFFFF" />
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFFFFFFF" />
 
     <!--
-        强调色浅底（图标块 / 计数徽标 / 选中卡片底板）。
-
-        这里只是启动早期的兜底值，真实值由 SettingsService.ApplyAccentCore 在运行时
-        按当前主题色覆写成「主色 + 12% / 20% 透明度」。页面里请用这两个键，
-        不要硬编码 #1F0078D4 之类的值 —— 换主题色时硬编码不会跟着变。
+        主操作底色。曾经是蓝→青的 135° 渐变，现在收成纯色：
+        渐变按钮在工作型界面里属于"装饰"，会把注意力从内容抢到按钮上。
+        键名保留 AppAccentGradientBrush 是为了不让历史页面集体失配。
     -->
-    <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1F0078D4" />
-    <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#330078D4" />
+    <SolidColorBrush x:Key="AppAccentGradientBrush" Color="#FF2F6BF0" />
+
+    <!--  主操作的悬停 / 按下色：主色加深一档，运行时由 ApplyAccentCore 覆写  -->
+    <SolidColorBrush x:Key="AppAccentDeepBrush" Color="#FF2559CE" />
+
+    <!--  壁纸遮罩：让任何一张图上的文字都读得清（亮色偏白、暗色偏黑，见 Surfaces）  -->
+    <SolidColorBrush x:Key="AppBackgroundScrimBrush" Color="#B8FFFFFF" />
+
+    <!--
+        强调色浅底：图标块 / 计数徽标 / 选中卡片底板。
+        真实值由 SettingsService.ApplyAccentCore 按当前强调色覆写成 8% / 14% 透明度，
+        页面里不要硬编码。
+    -->
+    <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#142F6BF0" />
+    <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#242F6BF0" />
 
     <!--
         强调色光晕：主色向外衰减到全透明。
-        只给"全应用唯一的主角"用（启动页的主按钮），页面里别处不要引用 ——
-        一旦光晕出现两次，主角就不成立了。
+        新语言里光晕基本退场（启动按钮改为实心 + 微阴影），
+        这里保留键名但把透明度压到很淡，只在启动页做一层极弱的存在感。
     -->
     <RadialGradientBrush x:Key="AppAccentHaloBrush" Center="50%,50%" GradientOrigin="50%,50%" RadiusX="50%" RadiusY="50%">
-        <GradientStop Offset="0" Color="#8C0078D4" />
-        <GradientStop Offset="1" Color="#000078D4" />
+        <GradientStop Offset="0" Color="#1F2F6BF0" />
+        <GradientStop Offset="1" Color="#002F6BF0" />
     </RadialGradientBrush>
-    <SolidColorBrush x:Key="AppAccentHairlineBrush" Color="#730078D4" />
 
-    <!--  拖入整合包时的整窗提示层：半透明压暗 + 内嵌面板跟随主题  -->
-    <SolidColorBrush x:Key="AppDropOverlayBrush" Color="#66000000" />
-    <SolidColorBrush x:Key="AppDropPanelBrush" Color="#F2FFFFFF" />
-    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF0078D4" />
+    <SolidColorBrush x:Key="AppAccentHairlineBrush" Color="#4D2F6BF0" />
 
-    <!--  ==================== 字体  ====================  -->
+    <!--  拖入整合包时的整窗提示层  -->
+    <SolidColorBrush x:Key="AppDropOverlayBrush" Color="#4D0B0E14" />
+    <SolidColorBrush x:Key="AppDropPanelBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF2F6BF0" />
 
-    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI</FontFamily>
-    <FontFamily x:Key="AppDisplayFont">avares://VibrantbitLauncher.Avalonia/Assets#HarmonyOS Sans Black</FontFamily>
+    <!--  ==================== 字体  ====================
+
+        正文与标题同族，层级靠字号 + 字重，不换字体。
+        以前标题用 HarmonyOS Sans Black，太重，在 28px 上像海报不像工具。
+    -->
+
+    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI, PingFang SC</FontFamily>
+    <FontFamily x:Key="AppDisplayFont">Segoe UI Variable Display, Microsoft YaHei UI, Segoe UI, PingFang SC</FontFamily>
 
     <!--  ==================== 字号阶梯（严格 5 档）  ====================
 
-        32 / 22 / 17 / 14 / 12 —— 相邻级差 1.45x ~ 1.45x，是"看得见的台阶"。
-        再多一档就会变成"随便调了几次大小"，层级立刻塌掉。
-
-        FontSizeHero / FontSizeBodyLarge 是历史别名，值并入相邻档位，
-        老页面引用这两个键不会挂，但视觉上不再多出第 6、第 7 档。
+        28 / 20 / 16 / 14 / 12 —— 相邻级差 1.4x / 1.25x / 1.14x / 1.17x。
+        页标题 28 保持分量，其余三档收紧间距，让一屏能装下更多内容
+        ——「清爽」不等于「空旷」，信息密度同样是它的一部分。
     -->
 
-    <x:Double x:Key="FontSizeDisplay">32</x:Double>
-    <x:Double x:Key="FontSizeHero">22</x:Double>
-    <x:Double x:Key="FontSizeTitle">22</x:Double>
-    <x:Double x:Key="FontSizeSubtitle">17</x:Double>
+    <x:Double x:Key="FontSizeDisplay">28</x:Double>
+    <x:Double x:Key="FontSizeHero">20</x:Double>
+    <x:Double x:Key="FontSizeTitle">20</x:Double>
+    <x:Double x:Key="FontSizeSubtitle">16</x:Double>
     <x:Double x:Key="FontSizeBodyLarge">14</x:Double>
     <x:Double x:Key="FontSizeBody">14</x:Double>
     <x:Double x:Key="FontSizeCaption">12</x:Double>
 
-    <!--  行高：跟字号成对出现，正文 1.55 倍行距是中文长文本的舒适区  -->
-    <x:Double x:Key="LineHeightDisplay">42</x:Double>
-    <x:Double x:Key="LineHeightSubtitle">26</x:Double>
+    <x:Double x:Key="LineHeightDisplay">38</x:Double>
+    <x:Double x:Key="LineHeightSubtitle">24</x:Double>
     <x:Double x:Key="LineHeightBody">22</x:Double>
 
-    <!--
-        图标尺寸单独一套，不参与文字阶梯。
-        图标是"形状"，它的视觉重量取决于笔画占比，和文字的字号没有可比性。
-    -->
+    <!--  图标尺寸单独一套，不参与文字阶梯  -->
     <x:Double x:Key="IconSizeCaption">12</x:Double>
     <x:Double x:Key="IconSizeBody">16</x:Double>
-    <x:Double x:Key="IconSizeLarge">24</x:Double>
-    <x:Double x:Key="IconSizeDisplay">32</x:Double>
-    <x:Double x:Key="IconSizeHero">44</x:Double>
-    <x:Double x:Key="IconSizeJumbo">64</x:Double>
+    <x:Double x:Key="IconSizeLarge">20</x:Double>
+    <x:Double x:Key="IconSizeDisplay">28</x:Double>
+    <x:Double x:Key="IconSizeHero">36</x:Double>
+    <x:Double x:Key="IconSizeJumbo">56</x:Double>
 
     <!--  ==================== 间距  ====================  -->
 
@@ -126,32 +130,32 @@
     <x:Double x:Key="SpaceXL">24</x:Double>
     <x:Double x:Key="SpaceXXL">32</x:Double>
 
-    <Thickness x:Key="PagePadding">32,28,32,32</Thickness>
-    <Thickness x:Key="PageHeaderMargin">0,0,0,24</Thickness>
+    <!--
+        页内边距。明亮清爽的呼吸感主要来自这里：
+        左右 40 让内容不贴边，上 32 给标题留白，下 36 让滚动到底时不局促。
+    -->
+    <Thickness x:Key="PagePadding">40,32,40,36</Thickness>
+    <Thickness x:Key="PageHeaderMargin">0,0,0,28</Thickness>
     <Thickness x:Key="CardGap">0,0,16,16</Thickness>
 
     <!--  ==================== 圆角（严格 4 档）  ====================
 
-        4  控件（按钮 / 输入框 / 标签）
-        8  卡片
-        12 面板（浮层 / 大块容器）
-        ∞  胶囊（只在"一次性的强调控件"上用：启动按钮 / 分段选择 / 计数徽标）
+        6   控件（按钮 / 输入框 / 标签）
+        10  卡片 / 列表行
+        16  浮层 / 大块容器
+        ∞   胶囊（分段选择 / 计数徽标）
 
-        圆角越大越"圆润"，但大面积 12 会显得软塌；所以 12 只给浮层这类
-        "临时浮起来的东西"，日常卡片恒为 8。
+        比上一版（4/8/12）整体放大一档：直角偏"工程"，圆角偏"生活"，
+        明亮清爽要的是后者。但 16 只给浮层 —— 大面积用大会显得软塌。
     -->
 
     <CornerRadius x:Key="RadiusNone">0</CornerRadius>
-    <CornerRadius x:Key="RadiusS">4</CornerRadius>
-    <CornerRadius x:Key="RadiusM">8</CornerRadius>
-    <CornerRadius x:Key="RadiusL">12</CornerRadius>
+    <CornerRadius x:Key="RadiusS">6</CornerRadius>
+    <CornerRadius x:Key="RadiusM">10</CornerRadius>
+    <CornerRadius x:Key="RadiusL">16</CornerRadius>
     <CornerRadius x:Key="RadiusPill">999</CornerRadius>
-    <!--
-        标题栏导航项的选中块。单独一支而不是复用 RadiusPill：
-        PCL2 那套主题把所有圆角归零（直角是它的性格），
-        但顶栏上的选中块在参考样式里是个胶囊 —— 只有它该保持圆的。
-    -->
+    <!--  标题栏导航项选中块：保留独立一支，避免"圆角统一"时把胶囊也抹平  -->
     <CornerRadius x:Key="RadiusHeaderNav">999</CornerRadius>
-    <CornerRadius x:Key="CardRadius">8</CornerRadius>
+    <CornerRadius x:Key="CardRadius">10</CornerRadius>
 
 </ResourceDictionary>

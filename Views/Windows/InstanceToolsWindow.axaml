@@ -365,10 +365,12 @@
                                         <TextBlock Text="导出整合包" />
                                     </StackPanel>
                                 </Button>
+                                <!--  MaxWidth + 默认 Stretch 会被居中，这里必须 Left  -->
                                 <TextBlock
                                     x:Name="PackStatus"
                                     Classes="caption"
                                     MaxWidth="480"
+                                    HorizontalAlignment="Left"
                                     TextWrapping="Wrap"
                                     VerticalAlignment="Center" />
                             </StackPanel>

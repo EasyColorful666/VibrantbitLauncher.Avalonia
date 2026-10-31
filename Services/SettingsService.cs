@@ -20,15 +20,10 @@ namespace VibrantbitLauncher.Services
     public class AppSettings
     {
         public string Theme { get; set; } = "Light";
-        /// <summary>
-        /// 当前主题包 id（<c>Styles/Themes</c> 里的内置主题，或 <c>VBL/themes</c> 下用户装的）。
-        /// 空串与 "default" 等价：内置默认主题，不覆盖任何外观。
-        /// </summary>
-        public string ThemePackage { get; set; } = "default";
-        public string AccentColor { get; set; } = "#FF0078D4";
-        /// <summary>主题渐变色的终点色（UseAccentGradient 为 true 时生效）。</summary>
-        public string AccentColorEnd { get; set; } = "#FF00B7C3";
-        /// <summary>是否启用「主题渐变色」。关闭时全程使用 AccentColor 单色。</summary>
+        public string AccentColor { get; set; } = "#FF2F6BF0";
+        /// <summary>主题渐变色的终点色（历史字段，1.0.27.0 起界面不再提供渐变，保留以免旧配置读不出来）。</summary>
+        public string AccentColorEnd { get; set; } = "#FF2F6BF0";
+        /// <summary>是否启用「主题渐变色」。历史字段，新设计固定为纯色，不再生效。</summary>
         public bool UseAccentGradient { get; set; }
         /// <summary>背景图路径：本地绝对路径，或内置壁纸的资源 URI；空表示不使用背景图。</summary>
         public string BackgroundImagePath { get; set; } = string.Empty;
@@ -241,8 +236,20 @@ namespace VibrantbitLauncher.Services
         public int DownloadRetryCount { get; set; } = 4;
 
         // ===== 联机（EasyTier） =====
-        /// <summary>EasyTier 中继节点地址，默认用社区免费共享节点。</summary>
+        /// <summary>EasyTier 中继节点地址，默认用本项目自己的节点。</summary>
         public string EasyTierRelayServer { get; set; } = "tcp://easytier.weiai.org.cn:11010";
+
+        /// <summary>
+        /// 陶瓦联机兼容模式（默认关）。
+        ///
+        /// <para>
+        /// 勾上就改用陶瓦联机的节点池。网络名 / 密码本来就是同一套算法，
+        /// 所以只要节点也对上，两边同一个联机码就能进同一张网 —— 用陶瓦客户端的玩家也能进来。
+        /// 关掉则只走本项目自己的节点。
+        /// </para>
+        /// </summary>
+        public bool EasyTierTerracottaCompat { get; set; }
+
         /// <summary>上次房主侧使用的联机密钥（同时作为网络名与网络密码）。</summary>
         public string EasyTierNetworkKey { get; set; } = string.Empty;
 
@@ -869,7 +876,7 @@ namespace VibrantbitLauncher.Services
             },
             ["appearance"] = new[]
             {
-                nameof(AppSettings.Theme), nameof(AppSettings.ThemePackage),
+                nameof(AppSettings.Theme),
                 nameof(AppSettings.AccentColor),
                 nameof(AppSettings.AccentColorEnd), nameof(AppSettings.UseAccentGradient),
                 nameof(AppSettings.BackgroundMode), nameof(AppSettings.BackgroundColor),
@@ -885,6 +892,7 @@ namespace VibrantbitLauncher.Services
                 nameof(AppSettings.DownloadTimeoutSeconds), nameof(AppSettings.UseBmclMirror),
                 nameof(AppSettings.DownloadConcurrency), nameof(AppSettings.DownloadChunkCount),
                 nameof(AppSettings.DownloadRetryCount), nameof(AppSettings.EasyTierRelayServer),
+                nameof(AppSettings.EasyTierTerracottaCompat),
                 nameof(AppSettings.KeepMultiplayerAlive)
             },
             ["advanced"] = new[]
@@ -1038,10 +1046,6 @@ namespace VibrantbitLauncher.Services
             }
 
             _lastAppliedVariant = actual;
-
-            // ⑤ 最后叠主题包。必须排在所有手写资源之后 —— 主题也可能想改窗口底色，
-            //    而上面第 ② 步是直接往根资源字典里写的，只有后写的那一方才有效。
-            ThemeService.Apply();
         }
 
         /// <summary>上一次应用时实际生效的主题变体，用于抑制「自己改、自己又收到事件」的回环。</summary>
@@ -1088,22 +1092,14 @@ namespace VibrantbitLauncher.Services
             ApplyAccentCore(ResolvePrimary(), ResolveEnd(), Current.UseAccentGradient, IsDarkTheme);
         }
 
-        /// <summary>
-        /// 主色。主题包声明了 accent 就以它为准 —— 一套主题的识别度多半就在这个色上，
-        /// 用户在设置里挑的强调色这时候让位；主题没声明则仍听用户的。
-        /// </summary>
+        /// <summary>主色。只来自用户在「设置 → 外观」里挑的颜色。</summary>
         private static Color ResolvePrimary() =>
-            ThemeService.TryGetAccent(out var themed) ? themed
-            : TryParseColor(Current.AccentColor, out var parsed) ? parsed
-            : DefaultAccentColor;
+            TryParseColor(Current.AccentColor, out var parsed) ? parsed : DefaultAccentColor;
 
         private static Color ResolveEnd()
         {
-            // 主题给了强调色，渐变终点也跟它算，别让旧设置里的青色掺进来
-            if (ThemeService.TryGetAccent(out _))
-                return ResolvePrimary();
-
-            return TryParseColor(Current.AccentColorEnd, out var parsed) ? parsed : ResolvePrimary();
+            // 新设计固定纯色，终点色与主色一致（保留方法签名给历史调用点）
+            return ResolvePrimary();
         }
 
         /// <summary>
@@ -1148,8 +1144,14 @@ namespace VibrantbitLauncher.Services
             resources["AccentTextFillColorPrimaryBrush"] = new SolidColorBrush(Colors.White);
             resources["AccentTextFillColorSecondaryBrush"] = new SolidColorBrush(Colors.White) { Opacity = 0.7 };
 
-            // 页面里的渐变强调条、渐变预览统一读这个键
-            resources["AppAccentGradientBrush"] = BuildAccentBrush(primary, end, useGradient);
+            // 主操作底色。
+            //
+            // 新语言里它是**纯色**，不再走蓝→青的渐变：渐变按钮属于装饰，
+            // 在明亮清爽的界面里会把注意力从内容抢到按钮上。
+            // 键名沿用 AppAccentGradientBrush，是为了不让历史页面集体失配。
+            // 同时补一支加深色，供按钮 hover / pressed 用 —— 只靠透明度做反馈会连文字一起变淡。
+            resources["AppAccentGradientBrush"] = new SolidColorBrush(primary);
+            resources["AppAccentDeepBrush"] = new SolidColorBrush(Darken(primary, 0.16));
 
             // 强调色浅底：图标块、计数徽标、选中卡片的底板。
             // 用固定透明度的主色而不是硬编码 #1F0078D4 —— 换主题色时这些浅底要跟着变。

@@ -1,8 +1,0 @@
-{
-  "id": "default",
-  "name": "默认",
-  "author": "Vibrantbit",
-  "version": "1.0",
-  "description": "启动器原本的样子：Fluent 2 圆角、左侧图标栏、跟随你选的强调色。",
-  "navigation": "compact"
-}

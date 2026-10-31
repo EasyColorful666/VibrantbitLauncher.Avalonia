@@ -1,9 +1,0 @@
-{
-  "id": "pcl2",
-  "name": "PCL2 风格",
-  "author": "Vibrantbit",
-  "version": "2.0",
-  "description": "浅灰画布、白色方块、看得见的细描边、直角、微软雅黑、蓝色标题栏。整套界面收成一件朴素的工具。",
-  "navigation": "header",
-  "accent": "#FF128BFA"
-}

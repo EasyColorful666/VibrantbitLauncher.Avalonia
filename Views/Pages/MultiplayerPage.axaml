@@ -15,12 +15,17 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  ===== 页头 =====  -->
-        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连。联机码与陶瓦联机的码通用，两边互相都认" />
+        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连。联机码与陶瓦联机是同一套算法，勾上兼容模式后两边还能进同一个房间。" />
 
         <ScrollViewer Grid.Row="1" Margin="0,16,0,0"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="880" HorizontalAlignment="Stretch">
+            <!--
+                限宽 880 是为了长文案的阅读宽度，但**必须 Left**：
+                MaxWidth + Stretch 会让 Avalonia 把它在更宽的内容区里居中，
+                正文就会比上面的页头整体右移一截。
+            -->
+            <StackPanel MaxWidth="880" HorizontalAlignment="Left">
 
                 <!--  ===== ① 联机服务 =====  -->
                 <Border Padding="18" Classes="card">
@@ -28,7 +33,7 @@
                         <TextBlock Classes="sectionTitle" Text="联机服务" />
                         <TextBlock Margin="0,6,0,0"
                                    Classes="caption"
-                                   Text="默认使用与陶瓦联机相同的公共节点牵线，无需自建服务器；房主与房客填同一个地址即可，只有这样两边才碰得到一起。公共节点填的是「发地址的接口」，启动时会先问接口拿到当前真正的服务器地址，再连过去。"
+                                   Text="不勾兼容模式时走本项目自己的直连服务器，房主与房客填同一个地址才碰得到一起；主节点不可达时会自动改用同批公共节点。填 https:// 开头的接口地址时，启动前会先访问它换取当前真正的服务器地址。"
                                    TextWrapping="Wrap" />
 
                         <!--  缺少核心时的引导  -->
@@ -91,8 +96,8 @@
                                        Classes="body"
                                        Text="中继服务器" />
                             <TextBox Grid.Column="1" VerticalAlignment="Center"
-                                     IsEnabled="{Binding CanEditKey}"
-                                     PlaceholderText="https://etnode.zkitefly.eu.org/node1"
+                                     IsEnabled="{Binding CanEditRelay}"
+                                     PlaceholderText="tcp://easytier.weiai.org.cn:11010"
                                      Text="{Binding RelayServer, Mode=TwoWay}"
                                      ToolTip.Tip="可以直接填 tcp:// 开头的服务器地址；填 https:// 开头的接口地址时，启动前会先访问它换取当前真正的服务器地址" />
                             <Button Grid.Column="2" MinWidth="112" Margin="12,0,0,0"
@@ -115,6 +120,22 @@
                                 </StackPanel>
                             </Button>
                         </Grid>
+
+                        <!--
+                            陶瓦联机兼容模式：勾上就换用陶瓦的节点池。
+                            联机码本来就是同一套算法，节点对上之后用陶瓦客户端的玩家才进得来；
+                            不勾则走本项目自己的节点，两边都是本启动器时更快，也不受第三方接口影响。
+                        -->
+                        <CheckBox Margin="0,12,0,0"
+                                  IsChecked="{Binding IsTerracottaCompat, Mode=TwoWay}"
+                                  IsEnabled="{Binding CanEditKey}">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="陶瓦联机兼容模式" />
+                                <TextBlock Classes="caption"
+                                           Text="勾选后改用陶瓦联机的服务器，可以和用陶瓦客户端的玩家进同一张网；不勾则用本项目自己的服务器。"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </CheckBox>
 
                         <!--  接口解析出来的真实服务器地址（连不上时先看这一行）  -->
                         <TextBlock Margin="0,8,0,0"
@@ -374,7 +395,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,0,0,6" Padding="12,8"
-                                            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                            Background="{DynamicResource SurfaceCanvasSubtleBrush}"
                                             CornerRadius="{DynamicResource RadiusM}">
                                         <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                                             <TextBlock Grid.Column="0" Margin="0,0,12,0"

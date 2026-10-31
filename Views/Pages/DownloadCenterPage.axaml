@@ -15,30 +15,33 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  页面标题区：标题 + 右侧操作  -->
-        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="*,Auto">
-            <ctrl:PageHeader Title="下载任务" Subtitle="查看安装与下载进度，或前往下载中心添加新任务" />
-
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
-                <Button Command="{Binding GoToVersionDownloadCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:FASymbolIcon Symbol="Globe" />
-                        <TextBlock Text="下载游戏版本" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding GoToModDownloadCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:FASymbolIcon Symbol="AllApps" />
-                        <TextBlock Text="下载模组资源" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{Binding ClearCompletedCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:FASymbolIcon Symbol="Delete" />
-                        <TextBlock Text="清空已完成" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Grid>
+        <ctrl:PageHeader
+            Grid.Row="0"
+            Subtitle="查看安装与下载进度，或前往下载中心添加新任务"
+            Title="下载任务">
+            <ctrl:PageHeader.Actions>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Command="{Binding GoToVersionDownloadCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <ui:FASymbolIcon Symbol="Globe" />
+                            <TextBlock Text="下载游戏版本" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding GoToModDownloadCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <ui:FASymbolIcon Symbol="AllApps" />
+                            <TextBlock Text="下载模组资源" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="subtle" Command="{Binding ClearCompletedCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <ui:FASymbolIcon Symbol="Delete" />
+                            <TextBlock Text="清空已完成" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </ctrl:PageHeader.Actions>
+        </ctrl:PageHeader>
 
         <Grid Grid.Row="1">
             <!--  空状态提示  -->

@@ -66,10 +66,6 @@ public partial class App : Application
             // ② 先读配置再建窗口：页面初始化会读写 SettingsService.Current
             SettingsService.Load();
 
-            // ②.5 主题包要在建窗口之前扫出来：主窗口的导航栏模式由它决定，
-            //      晚一步就会先按默认形态排一次版，再跳一下
-            ThemeService.Initialize();
-
             // ②.1 界面语言。必须**在第一个窗口出现之前**定下来 ——
             // 翻译是在「文字属性被写入的那一刻」生效的，窗口建完再初始化就会有一屏中文闪现。
             Localization.Localize.Initialize();

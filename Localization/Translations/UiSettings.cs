@@ -8,8 +8,11 @@ internal static class UiSettings
         // ===== 多人联机 =====
         d["多人联机"] = "Multiplayer";
         d["联机服务"] = "Multiplayer service";
-        d["默认使用与陶瓦联机相同的公共节点牵线，无需自建服务器；房主与房客填同一个地址即可，只有这样两边才碰得到一起。公共节点填的是「发地址的接口」，启动时会先问接口拿到当前真正的服务器地址，再连过去。"] =
-            "By default this uses the same public rendezvous nodes as Taowa multiplayer, so you don't need to host anything. Host and guest only find each other if they use the same address. The public node entry is really an address lookup endpoint: at start-up the launcher asks it for the current server address, then connects there.";
+        d["不勾兼容模式时走本项目自己的直连服务器，房主与房客填同一个地址才碰得到一起；主节点不可达时会自动改用同批公共节点。填 https:// 开头的接口地址时，启动前会先访问它换取当前真正的服务器地址。"] =
+            "With compatibility mode off the launcher uses this project's own server; host and guest only find each other if they use the same address, and it falls back to the rest of the same pool if that node is unreachable. If you enter an https:// endpoint instead, it is queried before start-up to look up the current server address.";
+        d["陶瓦联机兼容模式"] = "Taowa multiplayer compatibility";
+        d["勾选后改用陶瓦联机的服务器，可以和用陶瓦客户端的玩家进同一张网；不勾则用本项目自己的服务器。"] =
+            "When checked, the launcher uses Taowa multiplayer's servers, so players on the Taowa client can join the same virtual network. Unchecked, it uses this project's own server.";
         d["没有找到 EasyTier 核心程序，需要先下载一次（约 10 MB）。"] =
             "The EasyTier core isn't here yet — it has to be downloaded once (about 10 MB).";
         d["下载核心"] = "Download core";

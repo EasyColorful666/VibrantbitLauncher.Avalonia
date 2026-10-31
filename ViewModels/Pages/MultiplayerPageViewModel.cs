@@ -58,6 +58,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private string _hostKey = string.Empty;
         private string _guestKey = string.Empty;
         private string _relayServer = EasyTierService.DefaultRelayServer;
+        private bool _isTerracottaCompat;
 
         /// <summary>退出启动器后是否保留联机内核（与设置同源，见 <see cref="KeepAliveOnExit"/>）。</summary>
         private bool _keepAliveOnExit = true;
@@ -314,12 +315,46 @@ namespace VibrantbitLauncher.ViewModels.Pages
             set => SetProperty(ref _guestKey, value);
         }
 
-        /// <summary>EasyTier 中继服务器地址，默认用社区免费共享节点。</summary>
+        /// <summary>EasyTier 中继服务器地址。由「陶瓦兼容模式」决定，也可以手动改。</summary>
         public string RelayServer
         {
             get => _relayServer;
             set => SetProperty(ref _relayServer, value);
         }
+
+        /// <summary>
+        /// 陶瓦联机兼容模式。
+        ///
+        /// <para>
+        /// 勾上换用陶瓦联机的节点池 —— 联机码本来就是同一套算法，节点也对上之后，
+        /// 用陶瓦客户端的玩家跟我们就进得同一张网。不勾则只走本项目自己的节点。
+        /// </para>
+        ///
+        /// <para>
+        /// 中继那一栏跟着它一起变，并且在这期间锁住不让手改：两个地址同时存在的话，
+        /// 「到底连的是谁」就说不清了。
+        /// </para>
+        /// </summary>
+        public bool IsTerracottaCompat
+        {
+            get => _isTerracottaCompat;
+            set
+            {
+                if (!SetProperty(ref _isTerracottaCompat, value))
+                    return;
+
+                RelayServer = value ? RoomCode.TerracottaRelay : RoomCode.OwnRelay;
+                RelayEndpointText = string.Empty;
+
+                SettingsService.Current.EasyTierTerracottaCompat = value;
+                PersistSettings();
+
+                OnPropertyChanged(nameof(CanEditRelay));
+            }
+        }
+
+        /// <summary>中继地址能不能手改：跑起来之后不能改，兼容模式下也不改（地址由模式决定）。</summary>
+        public bool CanEditRelay => CanEditKey && !IsTerracottaCompat;
 
         /// <summary>
         /// 本次真正交给核心的中继地址。
@@ -500,18 +535,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
             var saved = SettingsService.Current;
 
-            // 老版本把「我们自己那个中继」当成默认值写进了设置。那个地址跟陶瓦不在一处，
-            // 留着它等于把互通性直接废掉，所以只认「用户真的改过」的中继：
-            // 空值、旧默认值、过渡版本的默认值都换成新默认（陶瓦默认的那个公共节点）。
+            // 中继不是自由发挥的一项：兼容模式开着就一定是陶瓦的节点，
+            // 关着就用本项目的（老配置里那些历代默认值一律拽回当前默认）。
+            _isTerracottaCompat = saved.EasyTierTerracottaCompat;
             var savedRelay = saved.EasyTierRelayServer?.Trim() ?? string.Empty;
-            if (savedRelay.Length == 0
-                || string.Equals(savedRelay, EasyTierService.LegacyDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(savedRelay, EasyTierService.TransitionalDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(savedRelay, EasyTierService.DefaultRelayServer, StringComparison.OrdinalIgnoreCase))
+            if (_isTerracottaCompat)
+            {
+                savedRelay = RoomCode.TerracottaRelay;
+            }
+            else if (savedRelay.Length == 0
+                     || string.Equals(savedRelay, EasyTierService.LegacyDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(savedRelay, EasyTierService.TransitionalDefaultRelayServer, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(savedRelay, EasyTierService.DefaultRelayServer, StringComparison.OrdinalIgnoreCase))
+            {
                 savedRelay = RoomCode.DefaultRelay;
+            }
 
             _relayServer = savedRelay;
             OnPropertyChanged(nameof(RelayServer));
+            OnPropertyChanged(nameof(IsTerracottaCompat));
+            OnPropertyChanged(nameof(CanEditRelay));
 
             // 旧版本存的是 12 位随机密钥，读不出来就当作没有 —— 直接给一个新的联机码，
             // 免得把一个过期的、对面根本认不出的串摆在输入框里。
@@ -1002,6 +1045,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OnPropertyChanged(nameof(CanStartService));
             OnPropertyChanged(nameof(CanStopService));
             OnPropertyChanged(nameof(CanEditKey));
+            OnPropertyChanged(nameof(CanEditRelay));
             OnPropertyChanged(nameof(CanSwitchRole));
             OnPropertyChanged(nameof(CanRegenerateKey));
             OnPropertyChanged(nameof(StatusText));
@@ -1022,6 +1066,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             var settings = SettingsService.Current;
             settings.EasyTierRelayServer = _relayServer.Trim();
+            settings.EasyTierTerracottaCompat = _isTerracottaCompat;
             settings.EasyTierNetworkKey = _hostKey.Trim();
             SettingsService.Save();
         }

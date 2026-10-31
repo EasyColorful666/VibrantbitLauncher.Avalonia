@@ -70,16 +70,17 @@ namespace VibrantbitLauncher.Services
     public sealed class EasyTierService : IDisposable
     {
         /// <summary>
-        /// 默认中继节点。用公共节点是为了跟「陶瓦联机码」互通 ——
-        /// 网名密码对上还不够，双方得在同一个节点池里才能碰头（见 <see cref="Helpers.RoomCode"/>）。
+        /// 默认中继节点：本项目的直连节点（<see cref="Helpers.RoomCode"/> 里维护）。
+        /// 备用节点清单同样在那边，房间会一并挂上，好让「自家节点抽风」或「对端是陶瓦客户端」
+        /// 这两种情况都还能碰头。
         /// </summary>
         public const string DefaultRelayServer = Helpers.RoomCode.DefaultRelay;
 
         /// <summary>
-        /// 1.0.13 及更早版本用过、现已停用的默认中继 —— 它跟陶瓦的节点池不在一处。
-        /// 只在迁移判断里出现：读到它就说明用户从没改过，应该换成新默认而不是继续用旧地址。
+        /// 上一版（1.0.14 ~ 1.0.27）的默认中继 —— 陶瓦的那个「发地址的接口」。
+        /// 只在迁移判断里出现：读到它就说明用户从没改过，应该换成新默认而不是继续用它。
         /// </summary>
-        public const string LegacyDefaultRelayServer = "tcp://easytier.weiai.org.cn:11010";
+        public const string LegacyDefaultRelayServer = "https://etnode.zkitefly.eu.org/node1";
 
         /// <summary>过渡版本里曾当成默认写进设置的节点，同样按「没改过」处理。</summary>
         public const string TransitionalDefaultRelayServer = "tcp://public.easytier.top:11010";

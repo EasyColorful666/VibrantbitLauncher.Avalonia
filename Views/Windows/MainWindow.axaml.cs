@@ -65,10 +65,6 @@ public partial class MainWindow : FAAppWindow
         // 点击反馈只能靠代码挂（详见 InteractionFeedback 的注释）
         AttachMenuItemFeedback();
 
-        // 标题栏里那排导航按钮：菜单只有一份定义（上面的 MenuItems / FooterMenuItems），
-        // 这里照着复刻一份横向按钮，供 navigation=header 的主题使用
-        BuildHeaderNav();
-        Localize.Changed += OnLanguageChanged;
 
         var vm = new MainWindowViewModel();
         DataContext = vm;
@@ -304,9 +300,6 @@ public partial class MainWindow : FAAppWindow
         if (!ReferenceEquals(RootNavigation.SelectedItem, item))
             RootNavigation.SelectedItem = item;
 
-        // 标题栏那排按钮的选中块：导航条被隐藏时它就是唯一的「我在哪」提示
-        _currentPageTag = pageName;
-        ApplyHeaderNavSelection(pageName);
     }
 
     private static FANavigationViewItem? FindMenuItem(System.Collections.IEnumerable? items, string tag)
@@ -379,134 +372,6 @@ public partial class MainWindow : FAAppWindow
         }
 
         return AppServices.Provider?.GetService(type) ?? Activator.CreateInstance(type);
-    }
-
-    // ==================== 标题栏导航（navigation=header） ====================
-
-    /// <summary>标签 → 标题栏按钮。切页面时按它更新选中块。</summary>
-    private readonly Dictionary<string, Button> _headerNavButtons = new(StringComparer.Ordinal);
-
-    /// <summary>当前页面对应的菜单标签；语言切换重建按钮后靠它恢复选中态。</summary>
-    private string? _currentPageTag;
-
-    /// <summary>
-    /// 把侧边栏的菜单项复刻成一排横向按钮，塞进标题栏中间。
-    ///
-    /// <para>
-    /// <b>为什么是「复刻」而不是「搬过去」</b>：菜单项是 <see cref="FANavigationViewItem"/>，
-    /// 它的外观、选中逻辑、展开动画全绑在 <see cref="FANavigationView"/> 上，搬不进标题栏。
-    /// 所以这里读同一份 Tag / 文字 / 图标，另建一排普通按钮 ——
-    /// 菜单的定义仍然只有 XAML 里那一处，加一项只改那里。
-    /// </para>
-    /// <para>
-    /// 只有主题声明了 <c>navigation: header</c> 时这排按钮才会露出来；
-    /// 其余主题它们的宿主被折叠，等于不存在。
-    /// </para>
-    /// </summary>
-    private void BuildHeaderNav()
-    {
-        HeaderNavHost.Children.Clear();
-        _headerNavButtons.Clear();
-
-        AddHeaderNavItems(RootNavigation.MenuItems);
-        AddHeaderNavItems(RootNavigation.FooterMenuItems);
-
-        ApplyHeaderNavSelection(_currentPageTag);
-    }
-
-    private void AddHeaderNavItems(System.Collections.IEnumerable? items)
-    {
-        if (items is null)
-            return;
-
-        foreach (var entry in items)
-        {
-            if (entry is not FANavigationViewItem nav)
-                continue;
-
-            var tag = nav.Tag?.ToString();
-            if (string.IsNullOrEmpty(tag) || _headerNavButtons.ContainsKey(tag))
-                continue;
-
-            // 取的是**原文**（中文）：翻译交给 TextBlock 的全局处理器去做，
-            // 直接把已经翻好的英文写进来，切回中文时这一项就回不去了
-            var text = Localize.OriginalText(nav) ?? nav.Content as string ?? string.Empty;
-
-            var button = new Button
-            {
-                Tag = tag,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            };
-            button.Classes.Add("headerNav");
-            button.Click += OnHeaderNavClick;
-
-            var content = new StackPanel
-            {
-                Orientation = Avalonia.Layout.Orientation.Horizontal,
-                Spacing = 6,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            };
-
-            if (nav.IconSource is FASymbolIconSource source)
-            {
-                var glyph = new FASymbolIcon
-                {
-                    Symbol = source.Symbol,
-                    FontSize = 14,
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-                };
-
-                // 图标跟着按钮前景色走：选中时按钮换成主色字，图标要一起换
-                glyph[!FAIconElement.ForegroundProperty] = ForegroundOf(button);
-                content.Children.Add(glyph);
-            }
-
-            var label = new TextBlock
-            {
-                Text = text,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            };
-            label[!TextBlock.ForegroundProperty] = ForegroundOf(button);
-            content.Children.Add(label);
-
-            button.Content = content;
-
-            HeaderNavHost.Children.Add(button);
-            _headerNavButtons[tag] = button;
-        }
-    }
-
-    /// <summary>「图标 / 文字取按钮的 Foreground」的绑定 —— 选中态换色只需要改按钮那一处。</summary>
-    private static Binding ForegroundOf(Button button)
-        => new(nameof(Button.Foreground)) { Source = button, Mode = BindingMode.OneWay };
-
-    private void OnHeaderNavClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { Tag: string tag })
-            return;
-
-        var page = ResolvePage(tag);
-        if (page is not null)
-            _navigation?.NavigateFromMenu(page);
-    }
-
-    /// <summary>把标题栏那一排的选中块切到 <paramref name="pageTag"/>。</summary>
-    private void ApplyHeaderNavSelection(string? pageTag)
-    {
-        foreach (var (tag, button) in _headerNavButtons)
-            button.Classes.Set("selected", string.Equals(tag, pageTag, StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// 切了语言：标题栏那排按钮的文字是代码建的，不走全局重算，只能整排重建。
-    /// 重建后按 <see cref="_currentPageTag"/> 把选中块补回去。
-    /// </summary>
-    private void OnLanguageChanged()
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-            BuildHeaderNav();
-        else
-            Dispatcher.UIThread.Post(BuildHeaderNav);
     }
 
     private void OnActualThemeVariantChanged(object? sender, EventArgs e)
@@ -747,8 +612,6 @@ public partial class MainWindow : FAAppWindow
 
     protected override void OnClosed(EventArgs e)
     {
-        // 静态事件不注销的话，关掉的窗口会被一直挂着
-        Localize.Changed -= OnLanguageChanged;
 
         // 主窗口关了，内嵌页的 await 不能永远挂着
         // （浮层自己的动画令牌在控件内部，窗口卸载后会随控件一起失效）

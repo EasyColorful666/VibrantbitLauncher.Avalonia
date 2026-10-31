@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.26.1</Version>
+    <Version>1.0.28.0</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -416,26 +416,23 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <!--
-      主题包的 XAML 只当**普通资源**打包（原样保留文本）。
+      主题包的 XAML 走**编译期** XAML：随同 AvaloniaResource 由 Avalonia 构建任务编译，
+      运行时用 AvaloniaXamlLoader.Load(avares://…) 直接取对象，不经过运行期 XAML 解析。
 
-      它们必须能被运行期解析：内置主题与用户主题走同一条加载路径
-      （读文本 → AvaloniaRuntimeXamlLoader），这样「内置的那三套」本身就是
-      主题包格式的活样本，用户照着改就能做出自己的主题。
-      如果让它们走编译期 XAML，内置那三套的写法就和用户的不一样了，
-      文档说的和代码做的是两回事。
+      1.0.23.0 曾经把它们当普通嵌入式资源（读原文 → AvaloniaRuntimeXamlLoader 解析），
+      好处是内置那三套和用户主题走完全同一条路，天然就是「主题包格式的活样本」。
+      但 1.0.26.1 实测发现那条路在**单文件发布**下必然失败：XamlX 的运行期编译器
+      拿不到程序集引用，抛 "Unable to resolve type Avalonia.Controls.Control"，
+      结果发布版里主题只剩 theme.json 的 navigation 生效，颜色 / 圆角 / 样式一条都没进来
+      （用户看到的就是「PCL2 的导航并进标题栏了，顶栏却不蓝」）。
+      剪裁不是元凶 —— 不剪裁的单文件版一样失败，所以只能让内置主题改走编译期。
 
-      注意 Remove 必须在 Include 之前求值才能生效 —— Avalonia 的默认项在
-      Avalonia.props 里，早于本文件，所以这里 Remove 有效。
-
-      ⚠️ 只 Remove 掉 AvaloniaXaml 是**不够**的（1.0.23.0 的坑）：
-      文件还挂在 AvaloniaResource 里，Avalonia 的 XAML 构建任务照样会去处理它们，
-      最后既没有编译产物、也没有可读的原始文本 —— 运行时 AssetLoader.Exists 直接返回 false，
-      于是主题包里的配色/圆角/样式**一条都没生效**，只有 theme.json 的元信息在起作用。
-      现在改成真正的普通资源（EmbeddedResource），运行时用 GetManifestResourceStream 读文本。
+      代价与补偿：
+        · 内置主题的 XAML 写错会变成**编译错误**，比运行期静默失效好；
+        · 用户主题（磁盘文件）仍走运行期解析，那条路只在非单文件运行时可用，
+          失败时 ThemeService 记一条明确日志，不会连累内置主题；
+        · 三份 XAML 在仓库里仍是明文，用户照样能照抄改出自己的主题包。
     -->
-    <AvaloniaXaml Remove="Assets\Themes\**\*.axaml" />
-    <AvaloniaResource Remove="Assets\Themes\**\*.axaml" />
-    <EmbeddedResource Include="Assets\Themes\**\*.*" />
     <!--
       协议全文也打进程序集里（约 35 KB），供「设置 → 关于 → 查看协议」离线显示。
 

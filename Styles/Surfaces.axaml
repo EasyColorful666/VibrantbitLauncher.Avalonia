@@ -3,20 +3,21 @@
 
     <!--
         ============================================================================
-        材质层（Fluent 2 · Layered Material）
+        材质层 · 明亮清爽
         ============================================================================
 
-        整个启动器的视觉语言只有一条线：**层**。
-        底层是极光（Aurora），中层是玻璃（Acrylic），上层是卡片（Solid），
-        最上层是强调（Accent）。四层之间靠「透明度 + 1px 细线 + 阴影」区分，
-        不靠颜色堆叠。
+        和上一版（极光 + 玻璃 + 卡片三层叠加）彻底断开了。
+        现在只有两种面，界线极弱：
 
-        本文件只放"随明暗主题变化"的材质键。
-        字号 / 圆角 / 间距等与主题无关的数值仍在 AppTheme.axaml 里。
+          画布  Canvas      —— 整窗底。亮色是纯白，暗色是近黑。
+          卡片  Card        —— 白底 + 1px 浅描边。不做玻璃、不做投影。
 
-        ⚠️ 这里全部用 DynamicResource 引用：
-        ThemeDictionaries 里的键无法被 StaticResource 在解析期找到，
-        写成 StaticResource 会直接抛 XamlLoadException。
+        为什么要砍掉玻璃和极光：这两样都是「装饰性」的，
+        它们在深色沉浸式界面里负责氛围，在明亮清爽的界面里只负责显脏 ——
+        半透明层叠白底的结果是灰，不是通透。
+
+        ⚠️ 全部用 DynamicResource 引用：ThemeDictionaries 里的键
+        无法被 StaticResource 在解析期找到，写成 StaticResource 直接抛 XamlLoadException。
     -->
 
     <ResourceDictionary.ThemeDictionaries>
@@ -24,104 +25,75 @@
         <!--  ==================== 亮色  ====================  -->
         <ResourceDictionary x:Key="Light">
 
-            <!--  画布：极光的底，比纯白低 2% 亮度，眼睛不累  -->
-            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFF7F8FA" />
+            <!--  画布：纯白。眼睛长时间对着它也不累，因为内容区有足够的灰阶层次  -->
+            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFFFFFFF" />
 
-            <!--  玻璃面板：带一点透明，让极光在边缘透出来  -->
-            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#D9FFFFFF" />
-            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#F2FFFFFF" />
+            <!--
+                区块底：比画布低一档的浅灰。
+                用来区分「这块是一组」—— 设置页的分组、侧栏、表格抬头。
+                不用分割线，用底色差。这是 Notion 的做法。
+            -->
+            <SolidColorBrush x:Key="SurfaceCanvasSubtleBrush" Color="#FFF7F8FA" />
 
-            <!--  卡片：实心，压在玻璃之上才有"层"的先后  -->
+            <!--  卡片：纯白 + 描边。描边是它和画布唯一的区分手段  -->
             <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#F7FFFFFF" />
+            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FFFCFCFD" />
+
+            <!--  浮层 / 弹卡：唯一比卡片更亮的存在（靠投影而非底色）  -->
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#FFFFFFFF" />
+
+            <!--  历史键：glass 类仍被页面引用，改成实心白，不再做半透明  -->
+            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FFFFFFFF" />
 
             <!--  下沉区（输入框底 / 列表底 / 代码块）  -->
-            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#0D000000" />
+            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FFF3F4F7" />
 
-            <!--  细线：1px 只用来"分", 不用来"框"  -->
-            <SolidColorBrush x:Key="HairlineBrush" Color="#17000000" />
-            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#2B000000" />
+            <!--  细线：#EAECF0 是白底上"刚好看得见"的最低对比  -->
+            <SolidColorBrush x:Key="HairlineBrush" Color="#FFEAECF0" />
+            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FFD6DAE1" />
 
-            <!--  卡片内高光：模拟玻璃上沿的一道反光  -->
-            <SolidColorBrush x:Key="CardTopSheenBrush" Color="#33FFFFFF" />
+            <!--  卡片内高光：新语言无高光，保留键名给历史页面，值为全透明  -->
+            <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00FFFFFF" />
 
             <!--
-                标题栏。默认「透明 + 正文色」= 以前的样子，切主题才变色。
-                主题包里写同名的键就能把整条顶栏刷成自己的颜色（PCL2 的蓝色就是这条），
-                标题文字、窗口按钮字形、导航项全部跟着这一组走，不用逐个去改控件。
+                标题栏：与画布同色，不加分隔线。
+                顶栏和内容连成一片，靠留白而不是色块区分 —— Linear / Notion 都是这样。
             -->
-            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#E4000000" />
-            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#0F000000" />
-            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#1A000000" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#14000000" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#E4000000" />
-
-            <!--  极光三色（低饱和，面积大但透明度低）  -->
-            <SolidColorBrush x:Key="AuroraOneBrush" Color="#330078D4" />
-            <SolidColorBrush x:Key="AuroraTwoBrush" Color="#22B146C2" />
-            <SolidColorBrush x:Key="AuroraThreeBrush" Color="#2200B7C3" />
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FF14171C" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FFF2F3F6" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FFE8EAEE" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FFF2F3F6" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FF14171C" />
 
             <!--  遮罩 / 浮层底  -->
-            <SolidColorBrush x:Key="ScrimBrush" Color="#66101618" />
-
-            <!--
-                极光光斑：三个巨大的径向渐变，叠在画布最底层。
-                中心不透明、边缘全透明，所以看不到"圆的边界"，只看到一片光。
-                刻意不做动画：三块大渐变每帧重绘在低端核显上代价太高，
-                真正动的应该是"用户操作的那一下"，不是背景。
-            -->
-            <RadialGradientBrush x:Key="AuroraColdBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#3D3B82F6" />
-                <GradientStop Offset="1" Color="#003B82F6" />
-            </RadialGradientBrush>
-            <RadialGradientBrush x:Key="AuroraWarmBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#2EB146C2" />
-                <GradientStop Offset="1" Color="#00B146C2" />
-            </RadialGradientBrush>
-            <RadialGradientBrush x:Key="AuroraCoolBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#2E22D3EE" />
-                <GradientStop Offset="1" Color="#0022D3EE" />
-            </RadialGradientBrush>
+            <SolidColorBrush x:Key="ScrimBrush" Color="#4D0B0E14" />
         </ResourceDictionary>
 
         <!--  ==================== 暗色  ====================  -->
         <ResourceDictionary x:Key="Dark">
 
-            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FF15171B" />
-            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#CC1E2026" />
-            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#F21F2228" />
-            <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FF212429" />
-            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#F2212429" />
-            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#38000000" />
-            <SolidColorBrush x:Key="HairlineBrush" Color="#1CFFFFFF" />
-            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="CardTopSheenBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FF0E1014" />
+            <SolidColorBrush x:Key="SurfaceCanvasSubtleBrush" Color="#FF14171C" />
+            <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FF171A20" />
+            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FF14171C" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#FF1C2027" />
+            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FF171A20" />
+            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FF1C2027" />
+            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FF1D2128" />
+            <SolidColorBrush x:Key="HairlineBrush" Color="#FF262A32" />
+            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FF363B45" />
+            <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00000000" />
 
-            <!--  标题栏：暗色下同样透明，白字（详见亮色那一段的说明）  -->
-            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#17FFFFFF" />
-            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#2BFFFFFF" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#1FFFFFFF" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="AuroraOneBrush" Color="#4A2B8BD4" />
-            <SolidColorBrush x:Key="AuroraTwoBrush" Color="#33A146C2" />
-            <SolidColorBrush x:Key="AuroraThreeBrush" Color="#3320C4D6" />
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FF0E1014" />
+            <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FF1A1E25" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FF232830" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FF1A1E25" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FFF2F4F7" />
+
             <SolidColorBrush x:Key="ScrimBrush" Color="#8C000000" />
-
-            <RadialGradientBrush x:Key="AuroraColdBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#4A2B6FD4" />
-                <GradientStop Offset="1" Color="#002B6FD4" />
-            </RadialGradientBrush>
-            <RadialGradientBrush x:Key="AuroraWarmBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#3DA146C2" />
-                <GradientStop Offset="1" Color="#00A146C2" />
-            </RadialGradientBrush>
-            <RadialGradientBrush x:Key="AuroraCoolBlobBrush" Center="50%,50%" GradientOrigin="50%,50%">
-                <GradientStop Offset="0" Color="#3D16B8C8" />
-                <GradientStop Offset="1" Color="#0016B8C8" />
-            </RadialGradientBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

@@ -281,7 +281,11 @@ public partial class ToolboxWindow : Window
 
             // 中继那一栏可能是「发地址的接口」而不是真节点，先把当下的真实地址取出来。
             // 取不到也照样往下走：核心自己有重试，我们这边取不到不代表它取不到。
-            var relay = SettingsService.Current.EasyTierRelayServer;
+            // 游戏里这一页没有中继设置项，直接沿用联机页的选择（含陶瓦兼容模式）。
+            var settings = SettingsService.Current;
+            var relay = settings.EasyTierTerracottaCompat
+                ? RoomCode.TerracottaRelay
+                : settings.EasyTierRelayServer;
             var chain = new List<string> { string.IsNullOrWhiteSpace(relay) ? RoomCode.DefaultRelay : relay };
             if (RoomCode.ExtraRelaysFor(chain[0]) is { } extras)
                 chain.AddRange(extras);

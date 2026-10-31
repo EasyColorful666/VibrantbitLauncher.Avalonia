@@ -22,9 +22,9 @@
         <Style Selector="TextBlock.groupLabel">
             <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="LetterSpacing" Value="0.4" />
             <Setter Property="Margin" Value="4,0,0,8" />
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
         </Style>
 
         <!--
@@ -42,25 +42,20 @@
                          Title="设置"
                          Subtitle="通用 · 游戏 · 外观 · 网络 · 高级 · 关于" />
 
-        <Grid Grid.Row="1" ColumnDefinitions="216,*">
+        <Grid Grid.Row="1" ColumnDefinitions="196,*" ColumnSpacing="28">
 
             <!--  ==================== 左栏：分类  ====================
-                 与下载中心一致：分类是一组"并列选项"，装在玻璃面板里，
-                 和右侧"当前选中的内容"分成两个层。
+                 与下载中心一致：分类**不装框**。
+                 纯白界面上多一圈线只是噪音，分类与内容之间用留白分开就够了。
             -->
-            <Border Grid.Column="0"
-                    Classes="glass"
-                    Margin="0,0,20,0"
-                    Padding="6"
-                    VerticalAlignment="Top">
-                <StackPanel>
+            <StackPanel Grid.Column="0" VerticalAlignment="Top">
 
                     <!--
                         设置项已经有五十多个，「从通用翻到外观再滚三屏」找一项越来越难受。
                         搜索框直接筛出条目、点一下就跳过去 —— 而不是让人记住它在哪一节。
                     -->
                     <TextBox x:Name="SearchBox"
-                             Margin="4,4,4,8"
+                             Margin="0,0,0,10"
                              PlaceholderText="搜索设置"
                              TextChanged="SearchBox_TextChanged" />
 
@@ -154,8 +149,7 @@
                                IsVisible="False"
                                Opacity="0.75"
                                TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+            </StackPanel>
 
             <!--
                 右栏：六个面板叠放，切换时只改 IsVisible。
@@ -531,86 +525,6 @@
                               IsVisible="False">
                     <StackPanel>
 
-                        <!--  主题包  -->
-                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
-                            <StackPanel>
-                                <TextBlock Classes="sectionTitle" Text="主题包" />
-                                <TextBlock Classes="caption" Margin="0,4,0,14" TextWrapping="Wrap"
-                                           Text="一套主题决定这界面长什么样：底色与层次、文字色、控件形状、字体。PCL2 那套是浅灰纸面配蓝色顶栏，MD3 是紫色的色阶分层。选中的那套立刻生效，不用重启。" />
-
-                                <ListBox ItemsSource="{Binding ThemePackages}"
-                                         SelectedItem="{Binding SelectedThemePackage, Mode=TwoWay}"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         Padding="0"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                    <ListBox.Styles>
-                                        <Style Selector="ListBoxItem">
-                                            <Setter Property="Padding" Value="0" />
-                                            <Setter Property="Margin" Value="0,0,12,12" />
-                                            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        </Style>
-                                        <!--  选中态给一块强调浅底，卡片本身透明，颜色从底下透出来  -->
-                                        <Style Selector="ListBoxItem:selected">
-                                            <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}" />
-                                        </Style>
-                                    </ListBox.Styles>
-                                    <ListBox.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Orientation="Horizontal" />
-                                        </ItemsPanelTemplate>
-                                    </ListBox.ItemsPanel>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate x:DataType="models:ThemePackage">
-                                            <Border MinWidth="184"
-                                                    MaxWidth="220"
-                                                    Padding="14,12"
-                                                    Background="Transparent"
-                                                    BorderBrush="{DynamicResource HairlineBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="{DynamicResource RadiusM}">
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Text="{Binding Name}"
-                                                               FontWeight="SemiBold"
-                                                               FontSize="{DynamicResource FontSizeBody}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Classes="caption"
-                                                               Text="{Binding Subtitle}"
-                                                               IsVisible="{Binding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                                    <TextBlock Classes="caption"
-                                                               Margin="0,2,0,0"
-                                                               Text="{Binding Description}"
-                                                               TextWrapping="Wrap"
-                                                               MaxLines="3" />
-                                                    <TextBlock Classes="caption"
-                                                               Margin="0,4,0,0"
-                                                               Opacity="0.65"
-                                                               Text="{Binding SourceLabel}" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-
-                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
-                                    <Button Content="导入主题包…" Click="OnImportTheme" />
-                                    <Button Content="打开主题文件夹" Click="OnOpenThemeFolder" />
-                                    <Button Classes="danger"
-                                            Content="删除"
-                                            IsEnabled="{Binding CanDeleteTheme}"
-                                            Click="OnDeleteTheme" />
-                                </StackPanel>
-
-                                <TextBlock Classes="caption" Margin="0,10,0,0" TextWrapping="Wrap"
-                                           Text="{Binding ThemeStatus}"
-                                           IsVisible="{Binding ThemeStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-                                <TextBlock Classes="caption" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.7"
-                                           Text="主题包里的样式会被真正执行，等同于运行一段程序 —— 只装你自己写的或信得过的来源。" />
-                            </StackPanel>
-                        </Border>
-
                         <!--  主题  -->
                         <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
                             <StackPanel>
@@ -693,53 +607,6 @@
                                                 Content="应用这个颜色" />
                                     </StackPanel>
                                 </Grid>
-
-                                <TextBlock Classes="groupLabel" Margin="4,10,0,6" Text="主题渐变色" />
-                                <ctrl:SettingRow Header="启用渐变"
-                                                 Description="开启后，标题强调条等位置使用主色到终点色的渐变">
-                                    <ToggleSwitch IsChecked="{Binding UseAccentGradient, Mode=TwoWay}" />
-                                </ctrl:SettingRow>
-
-                                <StackPanel Margin="0,0,0,12" IsVisible="{Binding UseAccentGradient}">
-                                    <TextBlock Classes="caption" Margin="0,0,0,8" Text="渐变终点色" />
-                                    <ItemsControl ItemsSource="{Binding AccentPresets}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="models:AccentPreset">
-                                                <Button Margin="0,0,10,10" Padding="0"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
-                                                        Cursor="Hand"
-                                                        ToolTip.Tip="{Binding Name}"
-                                                        Command="{Binding $parent[ItemsControl].DataContext.SelectGradientEndCommand}"
-                                                        CommandParameter="{Binding}">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Width="40" Height="40"
-                                                                    Background="Transparent"
-                                                                    BorderBrush="{Binding GradientRingBrush}"
-                                                                    BorderThickness="2"
-                                                                    CornerRadius="{DynamicResource RadiusPill}">
-                                                                <Border Width="28" Height="28"
-                                                                        Background="{Binding GradientEndBrush}"
-                                                                        CornerRadius="{DynamicResource RadiusPill}" />
-                                                            </Border>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-
-                                    <Border Height="40" Margin="0,4,0,0"
-                                            Background="{DynamicResource AppAccentGradientBrush}"
-                                            CornerRadius="{DynamicResource RadiusM}" />
-                                </StackPanel>
-
                                 <Button HorizontalAlignment="Left"
                                         Command="{Binding ResetAppearanceCommand}"
                                         Content="恢复默认外观" />

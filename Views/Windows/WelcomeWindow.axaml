@@ -28,15 +28,14 @@
           Background="{DynamicResource ApplicationBackgroundBrush}">
 
         <!--
-            首次打开的第一眼：画布 + 极光。
+            首次打开的第一眼：纯画布。
             与主窗口同一套材质 —— 用户点「完成」时看到的不是"换了个软件"，
             而是同一片底色上的下一页。
         -->
         <Border Grid.RowSpan="2" Background="{DynamicResource SurfaceCanvasBrush}" />
-        <ctrl:AuroraBackground Grid.RowSpan="2" />
 
         <ctrl:TitleBar Grid.Row="0"
-                       Height="36"
+                       Height="44"
                        Title="首次使用向导"
                        Icon="/Assets/icon.ico" />
 

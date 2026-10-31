@@ -84,10 +84,6 @@ public static class SettingsBackupService
         // —— 个人偏好，不该被别人的备份改掉 ——
         nameof(AppSettings.Language),
 
-        // 主题包是装在**这台机器**上的东西：备份里只带一个 id，
-        // 到了没装那套主题的机器上就是一个悬空引用。宁可回默认，也不要加载一套不存在的主题。
-        nameof(AppSettings.ThemePackage),
-
         // —— 已废弃字段，只用于读老配置 ——
         nameof(AppSettings.DownloadThreads)
     };

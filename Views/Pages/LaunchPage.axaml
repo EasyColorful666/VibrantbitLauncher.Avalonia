@@ -12,12 +12,10 @@
 
     <UserControl.Styles>
         <!--
-            快捷设置里的「分段胶囊」。
-            用 RadioButton 而不是两个 Button：语义上它本来就是二选一，
-            键盘方向键 / 屏幕阅读器都能正确识别，视觉上则被模板去掉圆点改成胶囊。
+            「分段胶囊」：外观二选一。
 
-            选中态用主色填充，整个页面里主色只在这一处出现 ——
-            主色面积控制在 3% 以内，启动按钮才是真正的强调色主角。
+            用 RadioButton 而不是两个 Button：语义上它本来就是二选一，
+            键盘方向键 / 屏幕阅读器都能正确识别，视觉上被模板去掉圆点改成胶囊。
         -->
         <Style Selector="RadioButton.segment">
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -27,10 +25,10 @@
                 <ControlTemplate>
                     <Border
                         Name="SegmentRoot"
-                        Padding="14,4"
+                        Padding="12,4"
                         Background="Transparent"
                         BorderBrush="Transparent"
-                        BorderThickness="2"
+                        BorderThickness="1"
                         CornerRadius="{DynamicResource RadiusPill}">
                         <ContentPresenter
                             HorizontalAlignment="Center"
@@ -44,52 +42,18 @@
         </Style>
 
         <Style Selector="RadioButton.segment:pointerover /template/ Border#SegmentRoot">
-            <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
         </Style>
 
-        <!--
-            胶囊底色 / 描边的过渡：150ms 在 50ms 时长网格上，属「反馈」档，
-            比页面的 250ms 转场快一档 —— 手指在按钮上，反馈必须先到。
-        -->
-        <Style Selector="RadioButton.segment /template/ Border#SegmentRoot">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition
-                        Property="Background"
-                        Duration="0:0:0.15"
-                        Easing="CubicEaseOut" />
-                    <BrushTransition
-                        Property="BorderBrush"
-                        Duration="0:0:0.15"
-                        Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
-        </Style>
-
-        <Style Selector=".performanceMode RadioButton.segment /template/ Border#SegmentRoot">
-            <Setter Property="Transitions">
-                <Transitions />
-            </Setter>
-        </Style>
-
-        <Style Selector="RadioButton.segment:pressed /template/ Border#SegmentRoot">
-            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
-        </Style>
-
+        <!--  选中态：白底 + 细边，不用强调色 —— 外观切换是"位置"不是"操作"  -->
         <Style Selector="RadioButton.segment:checked /template/ Border#SegmentRoot">
-            <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
-        </Style>
-
-        <Style Selector="RadioButton.segment:checked:pressed /template/ Border#SegmentRoot">
-            <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
         </Style>
 
         <Style Selector="RadioButton.segment:checked">
-            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
-        </Style>
-
-        <Style Selector="RadioButton.segment:focus-visible /template/ Border#SegmentRoot">
-            <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <Style Selector="RadioButton.segment:disabled">
@@ -97,74 +61,80 @@
         </Style>
 
         <!--
-            版本行：默认无底色，悬停浮起一层细边。
-            ListBoxItem 的选中底色由数据模板里的卡片承担，
-            所以这里把 ListBoxItem 自身的内边距清零，避免"两层框"。
+            版本行：不再是"每行一张卡"，而是同一张卡里的一行。
+            每行都描边会让十个版本变成十个框，屏幕上全是线 ——
+            新语言里列表靠 hover 底色和行距区分，不靠框。
         -->
         <Style Selector="ListBox#versionList ListBoxItem">
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
         </Style>
     </UserControl.Styles>
 
-    <Grid Classes="page" ColumnDefinitions="*,356">
+    <Grid Classes="page" ColumnDefinitions="*,308">
 
         <!--  ==================== 左：选版本 + 启动  ====================  -->
         <Grid
             Grid.Column="0"
-            Margin="0,0,32,0"
+            Margin="0,0,28,0"
             RowDefinitions="Auto,Auto,*,Auto">
 
             <ctrl:PageHeader
                 Grid.Row="0"
-                Eyebrow="LIBRARY"
-                Subtitle="选中一个版本后点右侧的主按钮；版本列表来自游戏目录"
-                Title="启动" />
+                Subtitle="选中一个版本后点右下角的主按钮；版本列表来自游戏目录"
+                Title="启动">
+                <ctrl:PageHeader.Actions>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="subtle" Command="{Binding RefreshCommand}" Content="刷新" />
+                    </StackPanel>
+                </ctrl:PageHeader.Actions>
+            </ctrl:PageHeader>
 
             <TextBlock
                 Grid.Row="1"
-                Margin="4,0,0,14"
-                Classes="subtitle"
+                Margin="0,0,0,14"
+                Classes="body"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                 IsVisible="{Binding ShowGreeting}"
                 Text="{Binding GreetingText}" />
 
             <Grid Grid.Row="2" IsVisible="{Binding ShowLaunchCard}">
-                <!--  版本列表  -->
-                <ListBox
-                    x:Name="listBox"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    ItemsSource="{Binding MinecraftVersions}"
-                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                    ScrollViewer.VerticalScrollBarVisibility="Auto">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Padding="14,12" Classes="card">
-                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
-
-                                    <!--
-                                        图标块：主色 12% 底 + 方块图标。
-                                        这里用"底 + 图"而不是直接放图，是为了让每行左侧
-                                        有一条对齐的视觉轴 —— 列表读起来才有节奏。
-                                    -->
+                <!--  版本列表：一整张卡片，行与行之间只有留白  -->
+                <Border Padding="6" Classes="card" VerticalAlignment="Top">
+                    <ListBox
+                        x:Name="listBox"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ItemsSource="{Binding MinecraftVersions}"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1" ColumnDefinitions="Auto,*,Auto,Auto">
                                     <Border
                                         Grid.Column="0"
-                                        Width="40"
-                                        Height="40"
-                                        Margin="0,0,14,0"
+                                        Width="34"
+                                        Height="34"
+                                        Margin="10,0,12,0"
+                                        VerticalAlignment="Center"
                                         Background="{DynamicResource AppAccentSurfaceBrush}"
-                                        CornerRadius="{DynamicResource RadiusM}">
+                                        CornerRadius="{DynamicResource RadiusS}">
                                         <Image
-                                            Width="24"
-                                            Height="24"
+                                            Width="20"
+                                            Height="20"
                                             RenderOptions.BitmapInterpolationMode="HighQuality"
                                             Source="avares://VibrantbitLauncher.Avalonia/Assets/Grass_Block.png" />
                                     </Border>
 
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
-                                        <TextBlock Classes="subtitle" Text="{Binding Version}" />
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Margin="0,10"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                        <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding Version}" />
                                         <TextBlock Classes="caption" Text="Minecraft · 点击右侧按钮管理这个实例" />
                                     </StackPanel>
 
@@ -179,38 +149,38 @@
 
                                     <Button
                                         Grid.Column="3"
-                                        Margin="4,0,0,0"
+                                        Margin="2,0,4,0"
                                         VerticalAlignment="Center"
                                         Classes="subtle"
                                         Command="{Binding SettingsCommand}"
                                         CommandParameter="{Binding Version}"
                                         Content="设置" />
                                 </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
 
                 <!--  空状态：游戏目录里还没有版本（有版本时由 code-behind 整体隐藏）  -->
                 <StackPanel
                     x:Name="versionEmptyState"
-                    MaxWidth="380"
+                    MaxWidth="360"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Spacing="6">
+                    Spacing="8">
                     <Border
-                        Width="72"
-                        Height="72"
+                        Width="56"
+                        Height="56"
                         HorizontalAlignment="Center"
-                        Margin="0,0,0,8"
-                        Background="{DynamicResource AppAccentSurfaceBrush}"
+                        Margin="0,0,0,6"
+                        Background="{DynamicResource SurfaceSunkenBrush}"
                         CornerRadius="{DynamicResource RadiusL}">
                         <ui:FASymbolIcon
                             x:Name="emptyIcon"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            FontSize="{StaticResource IconSizeDisplay}"
-                            Foreground="{DynamicResource AppAccentBrush}"
+                            FontSize="{StaticResource IconSizeLarge}"
+                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                             Symbol="Folder" />
                     </Border>
                     <TextBlock
@@ -228,7 +198,7 @@
                         Text="到「下载中心」安装一个版本，或用配装码一键添加" />
                     <Button
                         x:Name="emptyLoadoutButton"
-                        Margin="0,14,0,0"
+                        Margin="0,12,0,0"
                         HorizontalAlignment="Center"
                         Classes="accent"
                         Click="OnLoadoutCodeClick"
@@ -236,12 +206,12 @@
                 </StackPanel>
             </Grid>
 
-            <!--  ==================== 底部：全页唯一的主角  ====================
-                 启动按钮是这一屏唯一的"重"元素：圆角方形（12px，和卡片同族）、
-                 抬高一档的高度、背后一圈会呼吸的光晕。其他所有按钮都退成文字按钮。
+            <!--  ==================== 底部：主操作  ====================
+                 启动按钮是全页唯一的实心色块。没有光晕、没有渐变 ——
+                 明亮清爽里的"主角"靠对比度（实心蓝 vs 一片白）而不是靠装饰。
 
-                 光晕用 Border + 径向渐变而不是 BoxShadow：
-                 阴影只有一种颜色和一个模糊半径，做不出"从中心亮到边缘消失"的感觉。
+                 布局：主按钮贴左，次要操作贴右。中间的大段留白本身就是分隔，
+                 不需要再加竖线或分组框。
             -->
             <Grid
                 Grid.Row="3"
@@ -249,54 +219,43 @@
                 ColumnDefinitions="Auto,*,Auto"
                 IsVisible="{Binding ShowLaunchCard}">
 
-                <Grid Grid.Column="0" VerticalAlignment="Center">
-                    <Border
-                        Margin="-30,-24"
-                        Background="{DynamicResource AppAccentHaloBrush}"
-                        Classes="halo"
-                        CornerRadius="{DynamicResource RadiusPill}"
-                        IsHitTestVisible="False" />
-
-                    <Button
-                        Height="52"
-                        Padding="34,0"
-                        Classes="accent"
-                        CornerRadius="{DynamicResource RadiusL}"
-                        Click="OnLaunchClick">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ui:FASymbolIcon
-                                FontSize="{StaticResource IconSizeBody}"
-                                Symbol="Play" />
-                            <TextBlock
-                                FontSize="{DynamicResource FontSizeSubtitle}"
-                                FontWeight="SemiBold"
-                                Text="启动游戏" />
-                        </StackPanel>
-                    </Button>
-                </Grid>
+                <Button
+                    Grid.Column="0"
+                    Height="46"
+                    Padding="30,0"
+                    Classes="accent"
+                    CornerRadius="{DynamicResource RadiusM}"
+                    Click="OnLaunchClick">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <ui:FASymbolIcon FontSize="{StaticResource IconSizeBody}" Symbol="Play" />
+                        <TextBlock
+                            FontSize="{DynamicResource FontSizeSubtitle}"
+                            FontWeight="SemiBold"
+                            Text="启动游戏" />
+                    </StackPanel>
+                </Button>
 
                 <StackPanel
-                    Grid.Column="1"
-                    Margin="20,0,0,0"
+                    Grid.Column="2"
                     VerticalAlignment="Center"
                     Orientation="Horizontal"
-                    Spacing="4">
+                    Spacing="2">
                     <Button Classes="subtle" Click="OnVersionSettingsClick" Content="版本设置" />
                     <Button Classes="subtle" Click="OnLoadoutCodeClick" Content="配装码" />
-                    <Button Classes="subtle" Command="{Binding RefreshCommand}" Content="刷新" />
                 </StackPanel>
             </Grid>
         </Grid>
 
         <!--  ==================== 右：快捷设置  ====================
-            一整块玻璃面板 + 两条 1px 分割线，而不是"三张等宽卡片"——
-            三块等大的框会把视线摊平，也让右侧抢走左侧主角的位置。
+            一整张卡片，内部用 1px 分割线分组。
+            以前是"三张等宽卡片 + 一块玻璃面板"，四五个框并排会把视线摊平；
+            现在收成一张，视线只走一条竖线。
         -->
         <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
             <TextBlock
                 Grid.Row="0"
-                Margin="2,0,0,12"
+                Margin="0,0,0,12"
                 Classes="sectionTitle"
                 Text="快捷设置" />
 
@@ -308,218 +267,208 @@
 
                 <StackPanel>
 
-                    <!--  ── 最近游玩 ──  -->
-                    <Border Classes="card" Margin="0,0,0,12" Padding="16,14" IsVisible="{Binding ShowRecent}">
-                        <StackPanel Spacing="8">
-                            <TextBlock Classes="sectionTitle" Text="最近游玩" />
-                            <ItemsControl ItemsSource="{Binding RecentInstances}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Classes="subtle"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Stretch"
-                                                Command="{Binding Command}"
-                                                CommandParameter="{Binding Id}">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding Id}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1"
-                                                           Classes="caption"
-                                                           Margin="10,0,0,0"
-                                                           VerticalAlignment="Center"
-                                                           Text="{Binding TimeText}" />
-                                            </Grid>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Classes="caption"
-                                       Opacity="0.7"
-                                       Text="按版本目录的修改时间排序"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <!--  ── 实例概览 ──  -->
-                    <Border Classes="card" Margin="0,0,0,12" Padding="16,14" IsVisible="{Binding ShowInstanceOverview}">
-                        <StackPanel Spacing="6">
-                            <TextBlock Classes="sectionTitle" Text="实例概览" />
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <TextBlock Classes="number" FontSize="{DynamicResource FontSizeTitle}" Text="{Binding InstanceCountText}" />
-                                <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding InstanceSizeText}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!--  ── 快捷入口 ──  -->
-                    <Border Classes="card" Margin="0,0,0,12" Padding="16,14" IsVisible="{Binding ShowShortcuts}">
-                        <StackPanel Spacing="8">
-                            <TextBlock Classes="sectionTitle" Text="快捷入口" />
-                            <Button Classes="accent"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding OpenModDownloadCommand}"
-                                    Content="装模组" />
-                            <Button HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding OpenModpackDownloadCommand}"
-                                    Content="装整合包" />
-                        </StackPanel>
-                    </Border>
-
-                <Border Classes="glass" ClipToBounds="True">
-                    <StackPanel>
-
-                        <!--  ── 显示游戏卡片 ──  -->
-                        <Grid Margin="16,15" ColumnDefinitions="Auto,*,Auto">
-                            <ui:FASymbolIcon
-                                Grid.Column="0"
-                                Margin="0,2,12,0"
-                                VerticalAlignment="Top"
-                                FontSize="{StaticResource IconSizeBody}"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Symbol="Play" />
-
-                            <StackPanel Grid.Column="1" Spacing="3">
+                    <!--  ── 显示游戏卡片 ──  -->
+                    <Border Padding="16,14" Classes="card">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="2">
                                 <TextBlock Classes="body" Text="显示游戏卡片" />
                                 <TextBlock Classes="caption" Text="关掉后只留右侧的模块" TextWrapping="Wrap" />
                             </StackPanel>
 
                             <ToggleSwitch
-                                Grid.Column="2"
+                                Grid.Column="1"
                                 VerticalAlignment="Center"
                                 IsChecked="{Binding ShowLaunchCard, Mode=TwoWay}" />
                         </Grid>
+                    </Border>
 
-                        <!--  ── Minecraft 文件夹 ──  -->
-                        <Grid Margin="16,15" ColumnDefinitions="Auto,*,Auto">
-                            <ui:FASymbolIcon
-                                Grid.Column="0"
-                                Margin="0,2,12,0"
-                                VerticalAlignment="Top"
-                                FontSize="{StaticResource IconSizeBody}"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Symbol="Folder" />
+                    <!--  ── 最近游玩 ──  -->
+                    <Border
+                        Margin="0,10,0,0"
+                        Padding="16,14"
+                        Classes="card"
+                        IsVisible="{Binding ShowRecent}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="sectionTitle" Text="最近游玩" />
+                            <ItemsControl ItemsSource="{Binding RecentInstances}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button
+                                            Padding="8,6"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch"
+                                            Classes="subtle"
+                                            Command="{Binding Command}"
+                                            CommandParameter="{Binding Id}">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock
+                                                    Grid.Column="0"
+                                                    VerticalAlignment="Center"
+                                                    Text="{Binding Id}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    Classes="caption"
+                                                    Text="{Binding TimeText}" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
 
-                            <StackPanel Grid.Column="1" Spacing="3">
-                                <TextBlock Classes="body" Text="Minecraft 文件夹" />
-                                <TextBlock
-                                    x:Name="quickMcFolderText"
-                                    Classes="caption"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="NoWrap" />
-                            </StackPanel>
+                    <!--  ── Minecraft 文件夹 / Java / 外观 ──  -->
+                    <Border Margin="0,10,0,0" Classes="card">
+                        <StackPanel>
 
-                            <Button
-                                Grid.Column="2"
-                                VerticalAlignment="Center"
-                                Classes="subtle"
-                                Click="OnQuickMcFolderClick"
-                                Content="更改" />
-                        </Grid>
-
-                        <Border
-                            Height="1"
-                            Margin="40,0,16,0"
-                            Background="{DynamicResource HairlineBrush}" />
-
-                        <!--  ── Java 运行环境 ──  -->
-                        <StackPanel Margin="16,15" Spacing="10">
-                            <Grid ColumnDefinitions="Auto,*">
-                                <ui:FASymbolIcon
-                                    Grid.Column="0"
-                                    Margin="0,2,12,0"
-                                    VerticalAlignment="Top"
-                                    FontSize="{StaticResource IconSizeBody}"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Symbol="Code" />
-
-                                <StackPanel Grid.Column="1" Spacing="3">
-                                    <TextBlock Classes="body" Text="Java 运行环境" />
+                            <!--  Minecraft 文件夹  -->
+                            <Grid Margin="16,14" ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Classes="body" Text="Minecraft 文件夹" />
                                     <TextBlock
-                                        x:Name="quickJavaText"
+                                        x:Name="quickMcFolderText"
                                         Classes="caption"
                                         TextTrimming="CharacterEllipsis"
                                         TextWrapping="NoWrap" />
                                 </StackPanel>
-                            </Grid>
-
-                            <Grid Margin="28,0,0,0" ColumnDefinitions="*,Auto">
-                                <ComboBox
-                                    x:Name="quickJavaCombo"
-                                    Grid.Column="0"
-                                    HorizontalAlignment="Stretch"
-                                    PlaceholderText="未检测到 Java"
-                                    SelectionChanged="OnQuickJavaSelectionChanged">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Spacing="1">
-                                                <TextBlock Text="{Binding JavaVersion}" />
-                                                <TextBlock
-                                                    Classes="caption"
-                                                    Text="{Binding JavaPath}"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    TextWrapping="NoWrap" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
 
                                 <Button
                                     Grid.Column="1"
-                                    Margin="8,0,0,0"
+                                    Margin="12,0,0,0"
                                     VerticalAlignment="Center"
                                     Classes="subtle"
-                                    Click="OnQuickJavaBrowseClick"
-                                    Content="浏览" />
+                                    Click="OnQuickMcFolderClick"
+                                    Content="更改" />
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource HairlineBrush}" />
+
+                            <!--  Java 运行环境  -->
+                            <StackPanel Margin="16,14" Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Classes="body" Text="Java 运行环境" />
+                                        <TextBlock
+                                            x:Name="quickJavaText"
+                                            Classes="caption"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="NoWrap" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <ComboBox
+                                        x:Name="quickJavaCombo"
+                                        Grid.Column="0"
+                                        HorizontalAlignment="Stretch"
+                                        PlaceholderText="未检测到 Java"
+                                        SelectionChanged="OnQuickJavaSelectionChanged">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Spacing="1">
+                                                    <TextBlock Text="{Binding JavaVersion}" />
+                                                    <TextBlock
+                                                        Classes="caption"
+                                                        Text="{Binding JavaPath}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        TextWrapping="NoWrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <Button
+                                        Grid.Column="1"
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Classes="subtle"
+                                        Click="OnQuickJavaBrowseClick"
+                                        Content="浏览" />
+                                </Grid>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{DynamicResource HairlineBrush}" />
+
+                            <!--  外观：分段胶囊  -->
+                            <Grid Margin="16,14" ColumnDefinitions="*,Auto">
+                                <TextBlock
+                                    Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Classes="body"
+                                    Text="外观" />
+
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="2"
+                                    Background="{DynamicResource SurfaceSunkenBrush}"
+                                    CornerRadius="{DynamicResource RadiusPill}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton
+                                            x:Name="quickThemeLight"
+                                            Classes="segment"
+                                            Content="亮色"
+                                            GroupName="QuickTheme" />
+                                        <RadioButton
+                                            x:Name="quickThemeDark"
+                                            Classes="segment"
+                                            Content="暗色"
+                                            GroupName="QuickTheme" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                        </StackPanel>
+                    </Border>
+
+                    <!--  ── 实例概览 ──  -->
+                    <Border
+                        Margin="0,10,0,0"
+                        Padding="16,14"
+                        Classes="card"
+                        IsVisible="{Binding ShowInstanceOverview}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="sectionTitle" Text="实例概览" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock
+                                    Classes="number"
+                                    FontSize="{DynamicResource FontSizeTitle}"
+                                    Text="{Binding InstanceCountText}" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Classes="caption"
+                                    Text="{Binding InstanceSizeText}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  ── 快捷入口 ──  -->
+                    <Border
+                        Margin="0,10,0,0"
+                        Padding="16,14"
+                        Classes="card"
+                        IsVisible="{Binding ShowShortcuts}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="sectionTitle" Text="快捷入口" />
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <Button
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Command="{Binding OpenModDownloadCommand}"
+                                    Content="装模组" />
+                                <Button
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Command="{Binding OpenModpackDownloadCommand}"
+                                    Content="装整合包" />
                             </Grid>
                         </StackPanel>
+                    </Border>
 
-                        <Border
-                            Height="1"
-                            Margin="40,0,16,0"
-                            Background="{DynamicResource HairlineBrush}" />
-
-                        <!--  ── 外观：分段胶囊 ──  -->
-                        <Grid Margin="16,15" ColumnDefinitions="Auto,*,Auto">
-                            <ui:FASymbolIcon
-                                Grid.Column="0"
-                                Margin="0,0,12,0"
-                                VerticalAlignment="Center"
-                                FontSize="{StaticResource IconSizeBody}"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Symbol="Setting" />
-
-                            <TextBlock
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Classes="body"
-                                Text="外观" />
-
-                            <Border
-                                Grid.Column="2"
-                                Padding="2"
-                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                CornerRadius="{DynamicResource RadiusPill}">
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton
-                                        x:Name="quickThemeLight"
-                                        Classes="segment"
-                                        Content="亮色"
-                                        GroupName="QuickTheme" />
-                                    <RadioButton
-                                        x:Name="quickThemeDark"
-                                        Classes="segment"
-                                        Content="暗色"
-                                        GroupName="QuickTheme" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-
-                    </StackPanel>
-                </Border>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

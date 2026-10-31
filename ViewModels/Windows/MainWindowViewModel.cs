@@ -129,39 +129,20 @@ namespace VibrantbitLauncher.ViewModels.Windows
         /// <summary>导航服务：由 MainWindow 注入，负责实际页面切换。</summary>
         public INavigationService? Navigation { get; set; }
 
-        private FANavigationViewPaneDisplayMode _navigationMode = FANavigationViewPaneDisplayMode.LeftCompact;
+        private FANavigationViewPaneDisplayMode _navigationMode = FANavigationViewPaneDisplayMode.Left;
 
         /// <summary>
-        /// 导航栏的摆放方式。由主题包决定 —— PCL2 那类横向顶部导航就是这里换成
-        /// <see cref="FANavigationViewPaneDisplayMode.Top"/>。
+        /// 导航栏的摆放方式。新设计固定为常驻左侧文字导航（<see cref="FANavigationViewPaneDisplayMode.Left"/>）。
         ///
         /// <para>
-        /// 以前是 XAML 里写死的 <c>LeftCompact</c>。改成绑定是因为「导航栏长什么样」
-        /// 本身就是主题的一部分：一套要求顶部横排的主题，如果导航还挂在左边，
-        /// 看起来只是换了个配色，不算换了风格。
+        /// 仍然是绑定而不是 XAML 里写死：窗口在小屏上会收窄，那时需要切到紧凑模式。
+        /// 但不再由主题决定 —— 主题包机制已经整体移除，界面只有一种形态。
         /// </para>
         /// </summary>
         public FANavigationViewPaneDisplayMode NavigationMode
         {
             get => _navigationMode;
             private set => SetProperty(ref _navigationMode, value);
-        }
-
-        private bool _isHeaderNavigation;
-
-        /// <summary>
-        /// 导航项是不是并进了标题栏（<see cref="ThemeNavigation.Header"/>）。
-        ///
-        /// <para>
-        /// 为 true 时导航视图的导航条不占用任何版面，菜单由标题栏中间那排按钮承担。
-        /// 实现方式是把它切成「最小模式 + 不显示展开按钮」：没有钉子的时候，
-        /// 收起的导航条就等于不存在，内容区独占整窗。
-        /// </para>
-        /// </summary>
-        public bool IsHeaderNavigation
-        {
-            get => _isHeaderNavigation;
-            private set => SetProperty(ref _isHeaderNavigation, value);
         }
 
         public MainWindowViewModel()
@@ -177,47 +158,11 @@ namespace VibrantbitLauncher.ViewModels.Windows
             WeakReferenceMessenger.Default.Register<BackgroundChangedMessage>(this, (_, m) => ApplyBackground(m));
             InitializeMenuItems();
 
-            NavigationMode = ToPaneMode(ThemeService.Navigation);
-            IsHeaderNavigation = ThemeService.Navigation == ThemeNavigation.Header;
-            ThemeService.Changed += OnThemeChanged;
-
-            // 纯色背景要跟着明暗走：切主题、跟随系统换明暗都得重算一次，
+            // 纯色背景要跟着明暗走：跟随系统换明暗时得重算一次，
             // 否则暗色下会留着亮色时挑的白底（白底 + 深色卡片 + 浅色字 = 看不见字）
             if (Application.Current is { } app)
                 app.ActualThemeVariantChanged += OnActualThemeVariantChanged;
         }
-
-        /// <summary>主题换了：导航栏模式可能跟着变，界面立刻重排。</summary>
-        private void OnThemeChanged()
-        {
-            if (Dispatcher.UIThread.CheckAccess())
-                SyncNavigationFromTheme();
-            else
-                Dispatcher.UIThread.Post(SyncNavigationFromTheme);
-        }
-
-        private void SyncNavigationFromTheme()
-        {
-            var navigation = ThemeService.Navigation;
-            NavigationMode = ToPaneMode(navigation);
-            IsHeaderNavigation = navigation == ThemeNavigation.Header;
-
-            // 换主题也等于换了画布色，纯色背景得按新画布重新压暗
-            RebuildBackgroundColorBrush();
-        }
-
-        private static FANavigationViewPaneDisplayMode ToPaneMode(ThemeNavigation navigation) => navigation switch
-        {
-            // Header = 导航项已经并进标题栏，导航视图这边不该再占版面。
-            // 用「最小模式」（导航条是收起状态的浮层）而不是「顶部」：
-            // 顶部模式下再把它隐藏，会让控件内部的顶部自适应测量反复重排、整个窗口卡死（1.0.24.0 实测）。
-            // 最小模式配 IsPaneToggleButtonVisible=False，收起的浮层等于不存在，内容区独占整窗。
-            ThemeNavigation.Header => FANavigationViewPaneDisplayMode.LeftMinimal,
-            ThemeNavigation.Top => FANavigationViewPaneDisplayMode.Top,
-            ThemeNavigation.Left => FANavigationViewPaneDisplayMode.Left,
-            ThemeNavigation.Minimal => FANavigationViewPaneDisplayMode.LeftMinimal,
-            _ => FANavigationViewPaneDisplayMode.LeftCompact
-        };
 
         /// <summary>
         /// 响应背景图变更：安全加载图片（失败则退回 Mica），并同步不透明度。

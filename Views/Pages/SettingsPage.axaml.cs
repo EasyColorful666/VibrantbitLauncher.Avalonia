@@ -60,10 +60,6 @@ public partial class SettingsPage : UserControl, INavigationAware
         // InitializeComponent 期间 XAML 的 IsSelected="True" 会触发 SelectionChanged，
         // 那时容器还没建好，这里按当前选中项补一次。
         ApplyCurrentCategory();
-
-        // 主题列表每次打开设置页都重扫：用户常常直接往 VBL/themes 里丢文件夹，
-        // 不重扫就只能重启才看得见自己刚放进去的那套。
-        _viewModel?.ReloadThemes();
     }
 
     /// <summary>
@@ -528,42 +524,6 @@ public partial class SettingsPage : UserControl, INavigationAware
         if (!string.IsNullOrEmpty(path))
             _viewModel.ExportBackup(path);
     }
-
-    /// <summary>导入一份主题包（zip）。</summary>
-    private async void OnImportTheme(object? sender, RoutedEventArgs e)
-    {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel is null || _viewModel is null)
-            return;
-
-        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "导入主题包",
-            AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("主题包") { Patterns = new[] { "*.zip" } },
-                FilePickerFileTypes.All
-            }
-        });
-
-        var path = files.FirstOrDefault()?.TryGetLocalPath();
-        if (!string.IsNullOrEmpty(path))
-            await _viewModel.ImportThemeAsync(path);
-    }
-
-    /// <summary>在资源管理器里打开主题目录。用文件夹形式做主题的人主要走这条路。</summary>
-    private void OnOpenThemeFolder(object? sender, RoutedEventArgs e)
-        => ThemeService.OpenThemeDirectory();
-
-    /// <summary>删掉当前选中的那套用户主题（确认框在 ViewModel 里）。</summary>
-    private async void OnDeleteTheme(object? sender, RoutedEventArgs e)
-    {
-        if (_viewModel is not null)
-            await _viewModel.DeleteThemeAsync();
-    }
-
-    /// <summary>导入配置备份。</summary>
     private async void OnImportSettings(object? sender, RoutedEventArgs e)
     {
         var topLevel = TopLevel.GetTopLevel(this);

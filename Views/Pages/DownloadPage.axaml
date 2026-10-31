@@ -257,7 +257,7 @@
                                 <!--  版本图标：圆角容器 + 马赛克块  -->
                                 <Border Grid.Column="0" Width="44" Height="44" Margin="0,0,14,0"
                                         VerticalAlignment="Center"
-                                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                        Background="{DynamicResource SurfaceCanvasSubtleBrush}"
                                         CornerRadius="{DynamicResource RadiusM}">
                                     <Image Width="36" Height="36"
                                            Source="avares://VibrantbitLauncher.Avalonia/Assets/Grass_Block.png" />

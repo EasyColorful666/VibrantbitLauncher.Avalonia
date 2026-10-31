@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:ctrl="using:VibrantbitLauncher.Controls"
              xmlns:vm="using:VibrantbitLauncher.ViewModels.Pages"
              mc:Ignorable="d"
              x:Class="VibrantbitLauncher.Views.Pages.VersionManagePage"
@@ -12,23 +13,32 @@
 
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*">
 
-        <!--  顶部：返回 / 版本标题 / 刷新  -->
-        <Grid Grid.Row="0" Margin="{StaticResource PageHeaderMargin}" ColumnDefinitions="Auto,*,Auto">
-            <Button Grid.Column="0" VerticalAlignment="Center"
+        <!--  顶部：返回 + 版本标题 + 刷新  -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+            <Button Grid.Column="0"
+                    Margin="0,4,14,0"
+                    VerticalAlignment="Top"
+                    Classes="subtle"
                     Command="{Binding GoBackCommand}"
                     ToolTip.Tip="返回运行页面">
-                <ui:FASymbolIcon Symbol="Back" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ui:FASymbolIcon Symbol="Back" />
+                    <TextBlock Text="返回" />
+                </StackPanel>
             </Button>
-            <TextBlock Grid.Column="1" Margin="12,0"
-                       VerticalAlignment="Center"
-                       Classes="title"
-                       Text="{Binding CurrentVersion}"
-                       TextTrimming="CharacterEllipsis" />
-            <Button Grid.Column="2" VerticalAlignment="Center"
-                    Command="{Binding RefreshCommand}"
-                    ToolTip.Tip="刷新">
-                <ui:FASymbolIcon Symbol="Refresh" />
-            </Button>
+
+            <ctrl:PageHeader Grid.Column="1"
+                             Subtitle="管理这个实例的模组、资源包与游戏配置"
+                             Title="{Binding CurrentVersion}">
+                <ctrl:PageHeader.Actions>
+                    <Button Classes="subtle" Command="{Binding RefreshCommand}" ToolTip.Tip="刷新">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ui:FASymbolIcon Symbol="Refresh" />
+                            <TextBlock Text="刷新" />
+                        </StackPanel>
+                    </Button>
+                </ctrl:PageHeader.Actions>
+            </ctrl:PageHeader>
         </Grid>
 
         <!--  标签切换 + 当前管理目录  -->
