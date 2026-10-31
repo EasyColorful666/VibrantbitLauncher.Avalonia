@@ -30,4 +30,29 @@
     <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FF4F378B" />
     <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FF6750A4" />
 
+    <!--  ==================== 语义色板（Fluent 键）  ====================  -->
+
+    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFE6E0E9" />
+    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#FFCAC4D0" />
+    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#FF938F99" />
+    <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#FF49454F" />
+
+    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FF211F26" />
+    <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#FF2B2930" />
+
+    <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#FF211F26" />
+    <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#FF2B2930" />
+
+    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FF2B2930" />
+    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#FF36343B" />
+    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#FF2B2930" />
+    <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#FF1D1B20" />
+
+    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#FF36343B" />
+
+    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#FF938F99" />
+    <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#FF49454F" />
+    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#FF49454F" />
+
 </ResourceDictionary>

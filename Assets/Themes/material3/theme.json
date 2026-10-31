@@ -2,8 +2,8 @@
   "id": "material3",
   "name": "Material Design 3",
   "author": "Vibrantbit",
-  "version": "1.0",
-  "description": "紫色基调、大圆角、填充按钮与扁平面板，标准 M3 语义配色。",
-  "navigation": "left",
+  "version": "1.1",
+  "description": "紫色基调、大圆角、填充按钮与扁平面板，左侧只显示图标的窄导航栏（M3 的导航栏就是这个样子）。",
+  "navigation": "compact",
   "accent": "#FF6750A4"
 }

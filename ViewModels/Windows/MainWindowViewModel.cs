@@ -5,6 +5,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -54,6 +55,10 @@ namespace VibrantbitLauncher.ViewModels.Windows
 
         private bool hasBackgroundColor;
         private IBrush? backgroundColorBrush;
+
+        /// <summary>用户在「背景 → 纯色」里挑的那个颜色。<see cref="BackgroundColorBrush"/> 是它按明暗加工后的结果。</summary>
+        private Color? backgroundColor;
+
         private double backgroundBlurRadius;
         private double backgroundVignetteOpacity;
         private bool backgroundAnimated;
@@ -175,6 +180,11 @@ namespace VibrantbitLauncher.ViewModels.Windows
             NavigationMode = ToPaneMode(ThemeService.Navigation);
             IsHeaderNavigation = ThemeService.Navigation == ThemeNavigation.Header;
             ThemeService.Changed += OnThemeChanged;
+
+            // 纯色背景要跟着明暗走：切主题、跟随系统换明暗都得重算一次，
+            // 否则暗色下会留着亮色时挑的白底（白底 + 深色卡片 + 浅色字 = 看不见字）
+            if (Application.Current is { } app)
+                app.ActualThemeVariantChanged += OnActualThemeVariantChanged;
         }
 
         /// <summary>主题换了：导航栏模式可能跟着变，界面立刻重排。</summary>
@@ -191,6 +201,9 @@ namespace VibrantbitLauncher.ViewModels.Windows
             var navigation = ThemeService.Navigation;
             NavigationMode = ToPaneMode(navigation);
             IsHeaderNavigation = navigation == ThemeNavigation.Header;
+
+            // 换主题也等于换了画布色，纯色背景得按新画布重新压暗
+            RebuildBackgroundColorBrush();
         }
 
         private static FANavigationViewPaneDisplayMode ToPaneMode(ThemeNavigation navigation) => navigation switch
@@ -217,9 +230,10 @@ namespace VibrantbitLauncher.ViewModels.Windows
         {
             // 纯色模式与图片模式互斥：选了纯色就不再解码任何图片。
             HasBackgroundColor = message.Mode == "Color";
-            BackgroundColorBrush = HasBackgroundColor && SettingsService.TryParseColor(message.ColorHex, out var color)
-                ? new SolidColorBrush(color)
+            backgroundColor = HasBackgroundColor && SettingsService.TryParseColor(message.ColorHex, out var color)
+                ? color
                 : null;
+            RebuildBackgroundColorBrush();
 
             if (SettingsService.Current.PerformanceMode || message.Mode == "None")
             {
@@ -247,6 +261,90 @@ namespace VibrantbitLauncher.ViewModels.Windows
             // 动态背景本质是缓慢的呼吸缩放；关掉动效时退回静态，省电也省帧。
             BackgroundAnimated = message.Animated && MotionSettings.Enabled && !MotionSettings.Reduced;
         }
+
+        /// <summary>
+        /// 按当前明暗算出纯色背景该用的画刷。
+        ///
+        /// <para>
+        /// <b>为什么不能直接用用户挑的那个颜色</b>：那个颜色是用户在看某个明暗时挑的，
+        /// 换到另一种明暗就完全不对了。最刺眼的一种是「亮色下挑了白底，之后切到暗色」——
+        /// 画布是白的、卡片是深的、标题是浅灰的，字直接看不见（1.0.25.0 实测截图）。
+        /// </para>
+        ///
+        /// <para>
+        /// 规则很简单：<b>暗色下只留一成原色，九成用主题画布色</b>。
+        /// 白底于是变成比卡片略深的灰，纯色底保留一点自己的色相而不刺眼；
+        /// 亮色下原样显示 —— 那是用户自己挑的，没理由替他改。
+        /// </para>
+        /// </summary>
+        private void RebuildBackgroundColorBrush()
+        {
+            if (backgroundColor is not { } color)
+            {
+                BackgroundColorBrush = null;
+                return;
+            }
+
+            BackgroundColorBrush = new SolidColorBrush(
+                Application.Current?.ActualThemeVariant == ThemeVariant.Dark ? DimForDark(color) : LiftForLight(color));
+        }
+
+        /// <summary>把自定义底色压到暗色主题那一档：保留一成原色，其余用画布色垫住。</summary>
+        private static Color DimForDark(Color color)
+        {
+            var canvas = CanvasColorFor(ThemeVariant.Dark);
+            const double keep = 0.10;
+
+            return Color.FromArgb(
+                0xFF,
+                (byte)Math.Round(color.R * keep + canvas.R * (1 - keep)),
+                (byte)Math.Round(color.G * keep + canvas.G * (1 - keep)),
+                (byte)Math.Round(color.B * keep + canvas.B * (1 - keep)));
+        }
+
+        /// <summary>
+        /// 亮色主题下，只有「深得离谱」的自定义底色才需要处理。
+        ///
+        /// <para>
+        /// 亮色主题的正文是深灰的。底色要是也很深，页面上不在卡片里的那些字
+        /// （页标题、说明、分区名）同样会看不见 —— 和暗色下挑白底是同一件事的镜像。
+        /// 但这里不能像暗色那样一律压掉：亮色下挑深色底是常见审美，
+        /// 所以只把亮度低于 20% 的那一档往画布方向拉一半，留得住色相也看得清字。
+        /// </para>
+        /// </summary>
+        private static Color LiftForLight(Color color)
+        {
+            var luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255;
+            if (luminance >= 0.20)
+                return color;
+
+            var canvas = CanvasColorFor(ThemeVariant.Light);
+            const double toward = 0.55;
+
+            return Color.FromArgb(
+                0xFF,
+                (byte)Math.Round(color.R * (1 - toward) + canvas.R * toward),
+                (byte)Math.Round(color.G * (1 - toward) + canvas.G * toward),
+                (byte)Math.Round(color.B * (1 - toward) + canvas.B * toward));
+        }
+
+        /// <summary>取某个明暗下的画布色（主题包会覆写它，所以不能写死）。</summary>
+        private static Color CanvasColorFor(ThemeVariant variant)
+        {
+            if (Application.Current is { } app
+                && app.TryFindResource("SurfaceCanvasBrush", variant, out var resource)
+                && resource is ISolidColorBrush brush)
+            {
+                return brush.Color;
+            }
+
+            return variant == ThemeVariant.Dark
+                ? Color.FromRgb(0x1F, 0x1F, 0x1F)
+                : Color.FromRgb(0xF7, 0xF8, 0xFA);
+        }
+
+        /// <summary>明暗变了（设置里切换 / 跟随系统）：纯色背景要跟着重算。</summary>
+        private void OnActualThemeVariantChanged(object? sender, EventArgs e) => RebuildBackgroundColorBrush();
 
         /// <summary>
         /// 加载背景图。支持本地绝对路径与内置壁纸的资源 URI。

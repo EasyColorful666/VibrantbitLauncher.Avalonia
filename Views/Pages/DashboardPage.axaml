@@ -54,7 +54,7 @@
                                 <TextBlock
                                     Margin="16,0,16,14"
                                     VerticalAlignment="Bottom"
-                                    FontFamily="{StaticResource AppFont}"
+                                    FontFamily="{DynamicResource AppFont}"
                                     FontSize="{DynamicResource FontSizeBodyLarge}"
                                     FontWeight="SemiBold"
                                     Foreground="{StaticResource AppOnImageTextBrush}"

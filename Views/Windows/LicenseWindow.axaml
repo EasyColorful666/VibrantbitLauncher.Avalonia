@@ -5,12 +5,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
-    FontFamily="{StaticResource AppFont}"
+    FontFamily="{DynamicResource AppFont}"
     FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
-    Width="620"
-    Height="540">
+    Width="574"
+    Height="500">
 
     <Grid RowDefinitions="Auto,Auto,*,Auto" Background="{DynamicResource ApplicationBackgroundBrush}">
         <ctrl:TitleBar

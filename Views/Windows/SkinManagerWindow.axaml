@@ -6,12 +6,12 @@
     xmlns:fa="using:FluentAvalonia.UI.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
-    FontFamily="{StaticResource AppFont}"
+    FontFamily="{DynamicResource AppFont}"
     FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
-    Width="740"
-    Height="580">
+    Width="686"
+    Height="536">
 
     <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
         <!--  自绘标题栏  -->
@@ -33,7 +33,7 @@
                 Grid.Row="0"
                 Grid.RowSpan="2"
                 Grid.Column="0"
-                Width="248"
+                Width="232"
                 Margin="0,0,20,0"
                 Padding="16"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"

@@ -117,6 +117,14 @@ internal static class UiSettings
             "Moving to another drive creates a folder link, so the game still reads from its original location and you don't lose resource packs.";
         d["存档"] = "Worlds";
 
+        // ===== 设置 · 存档备份 =====
+        d["启动游戏前自动备份"] = "Back up before launch";
+        d["每次启动前把这套实例的存档打包一份存档，放在备份目录里"] =
+            "Pack this instance's worlds into a single file before every launch, kept in the backup folder";
+        d["保留份数"] = "Copies to keep";
+        d["超出后自动删掉最旧的那几份（每个实例单独算）"] =
+            "Older ones are deleted automatically once you go over this (counted per instance)";
+
         // ===== 设置 · 启动参数 =====
         d["游戏窗口的大小，以及启动游戏时额外附加的参数。"] =
             "The game window size, plus any extra arguments passed at launch.";
@@ -298,14 +306,14 @@ internal static class UiSettings
         // 主题卡片上的名字与介绍来自各套的 theme.json，同样要翻 —— 否则英文界面里
         // 三张卡片只有名字是英文、介绍整段中文，比不翻更难看
         d["PCL2 风格"] = "PCL2 style";
-        d["直角、细描边、深蓝色标题栏，导航项并进标题栏居中排列。致敬 PCL2 的朴素工具感。"]
-            = "Square corners, visible hairlines, a deep blue title bar with the navigation centred inside it. A nod to PCL2's plain, tool-like feel.";
-        d["紫色基调、大圆角、填充按钮与扁平面板，标准 M3 语义配色。"]
-            = "Purple base, large corner radii, filled buttons and flat panels, in standard Material 3 semantic colors.";
+        d["浅灰画布、白色方块、看得见的细描边、直角、微软雅黑、蓝色标题栏。整套界面收成一件朴素的工具。"]
+            = "A light grey canvas, white blocks, visible hairlines, square corners, Microsoft YaHei, a blue title bar. The whole interface pared down to a plain tool.";
+        d["紫色基调、大圆角、填充按钮与扁平面板，左侧只显示图标的窄导航栏（M3 的导航栏就是这个样子）。"]
+            = "Purple base, large corner radii, filled buttons and flat panels, with an icon-only rail on the left — that is what a Material 3 navigation rail looks like.";
         d["启动器原本的样子：Fluent 2 圆角、左侧图标栏、跟随你选的强调色。"]
             = "The launcher's original look: Fluent 2 corners, an icon rail on the left, your own accent color.";
-        d["一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格把导航并进了深蓝色标题栏。选中的那套立刻生效，不用重启。"]
-            = "A theme decides colors, corner radii, control styling, and where the navigation bar sits — the PCL2 style merges it into a deep blue title bar. Switching applies immediately, no restart.";
+        d["一套主题决定这界面长什么样：底色与层次、文字色、控件形状、字体。PCL2 那套是浅灰纸面配蓝色顶栏，MD3 是紫色的色阶分层。选中的那套立刻生效，不用重启。"]
+            = "A theme decides how the whole thing looks: surfaces and layers, text colors, control shapes, typeface. PCL2 is a light grey paper look with a blue hood; MD3 is layered violet. Switching applies immediately, no restart.";
         d["导入主题包…"] = "Import theme…";
         d["打开主题文件夹"] = "Open themes folder";
         d["主题包里的样式会被真正执行，等同于运行一段程序 —— 只装你自己写的或信得过的来源。"]

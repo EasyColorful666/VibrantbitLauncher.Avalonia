@@ -130,6 +130,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OpenSponsorCommand = new RelayCommand(() => OpenUrl("https://vbl.easycolorful.cn"));
             ClearResourcePacksCommand = new RelayCommand(() => ResourcePacksFolder = string.Empty);
             ClearSavesCommand = new RelayCommand(() => SavesFolder = string.Empty);
+            OpenSaveBackupFolderCommand = new RelayCommand(SaveBackupService.OpenRootFolder);
 
             RefreshLogsCommand = new RelayCommand(RefreshLogs);
             ClearLogsCommand = new RelayCommand(ClearLogs);
@@ -1482,6 +1483,47 @@ namespace VibrantbitLauncher.ViewModels.Pages
             ? $"默认：{Path.Combine(MinecraftFolder, "saves")}"
             : _savesFolder;
 
+        // ===== 游戏 · 存档备份 =====
+
+        private bool _autoBackupSaves;
+        private int _saveBackupKeepCount = 5;
+
+        /// <summary>启动游戏前自动备份存档。</summary>
+        public bool AutoBackupSaves
+        {
+            get => _autoBackupSaves;
+            set
+            {
+                if (!SetProperty(ref _autoBackupSaves, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.AutoBackupSaves = value;
+                SettingsService.Save();
+                Serilog.Log.Information("启动前自动备份存档：{Enabled}", value ? "开" : "关");
+            }
+        }
+
+        /// <summary>每个实例保留几份存档备份。</summary>
+        public int SaveBackupKeepCount
+        {
+            get => _saveBackupKeepCount;
+            set
+            {
+                var clamped = Math.Clamp(value, 1, 50);
+                if (!SetProperty(ref _saveBackupKeepCount, clamped) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.SaveBackupKeepCount = clamped;
+                SettingsService.Save();
+            }
+        }
+
+        /// <summary>备份存放位置（给界面看的一行说明）。</summary>
+        public string SaveBackupFolderDisplay => SaveBackupService.BackupRoot;
+
+        /// <summary>打开备份总目录。</summary>
+        public RelayCommand OpenSaveBackupFolderCommand { get; private set; } = null!;
+
         /// <summary>崩溃日志自动上传（目前只记本地，开关位留给后续接入）。</summary>
         public bool CrashReportAutoUpload
         {
@@ -1876,6 +1918,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 OnPropertyChanged(nameof(SavesFolder));
                 OnPropertyChanged(nameof(ResourcePacksFolderDisplay));
                 OnPropertyChanged(nameof(SavesFolderDisplay));
+
+                _autoBackupSaves = s.AutoBackupSaves;
+                _saveBackupKeepCount = Math.Clamp(s.SaveBackupKeepCount, 1, 50);
+                OnPropertyChanged(nameof(AutoBackupSaves));
+                OnPropertyChanged(nameof(SaveBackupKeepCount));
+                OnPropertyChanged(nameof(SaveBackupFolderDisplay));
 
                 _crashReportAutoUpload = s.CrashReportAutoUpload;
                 OnPropertyChanged(nameof(CrashReportAutoUpload));

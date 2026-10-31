@@ -29,6 +29,12 @@ namespace VibrantbitLauncher.Services;
 /// </para>
 ///
 /// <para>
+/// <b>主题包首先是「外观」</b>：底色与层次、文字深浅、控件填充与描边、形状、字体。
+/// 布局（导航栏摆在哪）只是 <c>theme.json</c> 里一行可选项 ——
+/// 只挪布局、不换颜色的东西不叫主题包，那叫布局包。
+/// </para>
+///
+/// <para>
 /// <b>为什么不用键值对照表</b>：配色能靠一张「键 → 颜色」的表解决，
 /// 但 PCL2 那种直角粗描边、Material 3 那种填充按钮，改的是控件模板与状态色，
 /// 只有样式表能表达。所以主题包的 <c>styles.axaml</c> 是完整的 <see cref="Styles"/>，
@@ -765,18 +771,24 @@ public static class ThemeService
             <ResourceDictionary xmlns="https://github.com/avaloniaui"
                                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
                 <!--
-                    亮色下覆盖的资源。键名与 Styles/AppTheme.axaml、Styles/Surfaces.axaml 一致，
-                    写在这里的会盖掉默认值。
+                    亮色下的颜色。完整键名清单见同目录的「说明.txt」。
 
-                    常用键：
-                      SurfaceCanvasBrush   窗口画布
-                      SurfaceCardBrush     卡片底色
+                    层次：
+                      SurfaceCanvasBrush   整窗底色
+                      SurfaceCardBrush     卡片底
                       SurfaceGlassBrush    浮层 / 侧栏
                       HairlineBrush        1px 细线
-                      AppAccentSurfaceBrush 强调色浅底
+
+                    文字（不写就沿用系统默认近黑色）：
+                      TextFillColorPrimaryBrush / …SecondaryBrush / …TertiaryBrush
                 -->
                 <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFF7F8FA" />
                 <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#D9FFFFFF" />
+                <SolidColorBrush x:Key="HairlineBrush" Color="#17000000" />
+
+                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FF1A1A1A" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#FF5D5D5D" />
             </ResourceDictionary>
             """);
 
@@ -803,16 +815,59 @@ public static class ThemeService
             """);
 
             File.WriteAllText(Path.Combine(dir, "说明.txt"), """
-            主题包结构（四份 XAML 都是可选的，theme.json 必需）：
+            主题包 = 一套「外观」。它决定界面长什么样：底色、层次、文字色、
+            控件形状与状态色、字体。布局只是附带的一行，不是主题的主体
+            —— 只改布局不改颜色，那不是主题，那是布局包。
+
+            目录结构（四份 XAML 全是可选的，theme.json 必需）：
 
               theme.json     元信息：id / name / author / version / description
-                     navigation 导航栏模式：left | top | header | compact | minimal
-                                header = 导航项并进标题栏（横向居中，配蓝色顶栏最像 PCL2）
-                     accent     可选，主题自带的强调色，如 "#FF128BFA"
-              theme.axaml    所有明暗都生效的资源覆盖（ResourceDictionary）
-              light.axaml    只在亮色下生效的资源覆盖
-              dark.axaml     只在暗色下生效的资源覆盖
-              styles.axaml   控件外观（Styles），会追加到内置样式的最后，优先级最高
+                     accent     主题自带的强调色，如 "#FF128BFA"（选上它就以它为准）
+                     navigation 可选，导航栏摆在哪：compact（默认，左侧图标栏）/
+                                left / top / header（并进标题栏）/ minimal
+              theme.axaml    所有明暗都生效：圆角、字体这类不分明暗的东西
+              light.axaml    只在亮色下生效：颜色、底色、文字色
+              dark.axaml     只在暗色下生效；不写就两个明暗共用 light.axaml
+              styles.axaml   控件外观（Styles），追加在内置样式最后，优先级最高
+
+            颜色写在哪里？
+              优先覆盖下面这些语义键 —— 界面全靠它们上色，改一组就等于换了整套皮肤：
+
+                画布与层次   SurfaceCanvasBrush   整窗底色
+                             SurfaceCardBrush     卡片底
+                             SurfaceCardSoftBrush 卡片内层 / 分组底
+                             SurfaceGlassBrush    浮层 / 侧栏
+                             SurfaceSunkenBrush   输入区 / 列表底 / 代码块
+                             HairlineBrush        1px 细线（可分可框）
+
+                文字         TextFillColorPrimaryBrush    正文
+                             TextFillColorSecondaryBrush  次要说明
+                             TextFillColorTertiaryBrush   辅助 / 占位
+                             TextFillColorDisabledBrush   禁用
+
+                控件填充     ControlFillColorDefaultBrush   按钮 / 输入框底
+                             ControlFillColorSecondaryBrush 悬停
+                             ControlFillColorTertiaryBrush  按下
+                             CardBackgroundFillColorDefaultBrush（Fluent 卡片）
+                             LayerFillColorDefaultBrush（下拉 / 弹窗）
+
+                描边         ControlStrokeColorDefaultBrush
+                             DividerStrokeColorDefaultBrush
+
+                强调         AppAccentSurfaceBrush（12% 浅底）
+                             AppAccentSurfaceStrongBrush（20% 浅底）
+                             主色本身来自 theme.json 的 accent，不用在这里写
+
+                顶栏         AppHeaderBarBrush（可以是纯色也可以是渐变）
+                             AppHeaderBarForegroundBrush
+                             AppHeaderNavSelectedBrush / …SelectedForegroundBrush
+
+                圆角         RadiusS / RadiusM / RadiusL / RadiusPill / CardRadius
+                             （RadiusHeaderNav 只给顶栏选中块用）
+                字体         AppFont / AppDisplayFont
+
+            背景光斑（AuroraOneBrush / AuroraTwoBrush / AuroraThreeBrush、
+            AuroraColdBlobBrush 等）写成 #00000000 就是关掉，底层只剩纯色画布。
 
             id 只能用小写字母、数字、连字符，且不能和内置主题重名（default / pcl2 / material3）。
 

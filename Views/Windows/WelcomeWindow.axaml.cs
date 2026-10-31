@@ -37,10 +37,10 @@ public partial class WelcomeWindow : Window
     {
         InitializeComponent();
 
-        // 按屏幕工作区把向导窗口收进可见范围：960×600 在 125% 缩放的 1366×768 上
+        // 按屏幕工作区把向导窗口收进可见范围：890×556 在 125% 缩放的 1366×768 上
         // 会超出高度，「下一步」按钮正好被压掉。最小尺寸同样按屏幕收敛。
-        WindowSizing.FitToScreen(this, desiredWidth: 960d, desiredHeight: 600d,
-                                 minWidth: 720d, minHeight: 480d);
+        WindowSizing.FitToScreen(this, desiredWidth: 890d, desiredHeight: 556d,
+                                 minWidth: 700d, minHeight: 470d);
 
         // 首帧之前摆到飞入起点，避免「完整闪一帧再重播动画」
         WindowMotion.PrepareFlyIn(RootGrid);

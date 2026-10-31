@@ -35,29 +35,35 @@
         <Setter Property="CornerRadius" Value="16" />
     </Style>
 
-    <!--  按钮：M3 标准是 40 高、全圆、填充主色  -->
+    <!--
+        按钮：M3 规范写的是「40 高 + 全圆」，但全圆在桌面端看着像个胶囊药丸，
+        尤其一行里出现两个的时候，重量全压在圆角上。这里收到 12 —— 和卡片同级，
+        仍然圆润，但不至于把按钮变成药丸。
+    -->
     <Style Selector="Button">
-        <Setter Property="CornerRadius" Value="20" />
-        <Setter Property="MinHeight" Value="36" />
-        <Setter Property="Padding" Value="18,6" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="16,5" />
     </Style>
 
     <Style Selector="Button.accent">
         <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
-        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Foreground" Value="#FFFFFFFF" />
+        <Setter Property="CornerRadius" Value="12" />
     </Style>
 
     <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceStrongBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
-        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="CornerRadius" Value="12" />
     </Style>
 
     <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
-        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Foreground" Value="#FFFFFFFF" />
+        <Setter Property="CornerRadius" Value="12" />
     </Style>
 
     <!--  输入控件：M3 的 filled 风格，靠填充而不是描边  -->

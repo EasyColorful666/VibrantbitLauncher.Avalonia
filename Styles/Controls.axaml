@@ -24,7 +24,7 @@
     <!--  ==================== 1. 文本  ====================  -->
 
     <Style Selector="TextBlock.display">
-        <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppDisplayFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeDisplay}" />
         <Setter Property="LineHeight" Value="{StaticResource LineHeightDisplay}" />
         <!--  大字必须收字距：字号越大，默认字距在眼里越"散"  -->
@@ -34,7 +34,7 @@
     </Style>
 
     <Style Selector="TextBlock.title">
-        <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppDisplayFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeTitle}" />
         <Setter Property="LetterSpacing" Value="-0.3" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -46,7 +46,7 @@
         再大就会和页标题争视觉重心。
     -->
     <Style Selector="TextBlock.sectionTitle">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeSubtitle}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="LetterSpacing" Value="-0.1" />
@@ -55,28 +55,28 @@
     </Style>
 
     <Style Selector="TextBlock.subtitle">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeSubtitle}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.body">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.secondary">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
     <Style Selector="TextBlock.caption">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
         <!--  小字必须放字距，否则一坨黑  -->
         <Setter Property="LetterSpacing" Value="0.1" />
@@ -90,7 +90,7 @@
         文案仍由页面写中文，不靠大小写制造层级。
     -->
     <Style Selector="TextBlock.eyebrow">
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="LetterSpacing" Value="1.2" />
@@ -100,7 +100,7 @@
 
     <!--  数字：等宽，避免进度百分比跳动时左右抖  -->
     <Style Selector="TextBlock.number">
-        <Setter Property="FontFamily" Value="{StaticResource AppDisplayFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppDisplayFont}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeDisplay}" />
         <Setter Property="LetterSpacing" Value="-1" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />

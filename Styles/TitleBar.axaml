@@ -25,7 +25,7 @@
         -->
         <Setter Property="Background" Value="{DynamicResource AppHeaderBarBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+        <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Template">
             <ControlTemplate>

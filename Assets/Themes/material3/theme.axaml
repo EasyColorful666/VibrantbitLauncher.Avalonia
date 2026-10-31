@@ -15,4 +15,7 @@
     <CornerRadius x:Key="RadiusPill">999</CornerRadius>
     <CornerRadius x:Key="CardRadius">12</CornerRadius>
 
+    <!--  M3 的字体是 Roboto；系统没装就按顺序回落到 Segoe / 中文黑体  -->
+    <FontFamily x:Key="AppFont">Roboto, Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI, Noto Sans CJK SC, sans-serif</FontFamily>
+
 </ResourceDictionary>

@@ -409,6 +409,35 @@
                                     <Button Grid.Column="2"
                                             Command="{Binding ClearSavesCommand}" Content="恢复默认" />
                                 </Grid>
+
+                                <TextBlock Classes="groupLabel" Margin="4,14,0,8" Text="存档备份" />
+
+                                <ctrl:SettingRow Header="启动游戏前自动备份"
+                                                 Description="每次启动前把这套实例的存档打包一份存档，放在备份目录里">
+                                    <ToggleSwitch IsChecked="{Binding AutoBackupSaves, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <ctrl:SettingRow Header="保留份数"
+                                                 Description="超出后自动删掉最旧的那几份（每个实例单独算）">
+                                    <NumericUpDown Width="132"
+                                                   Minimum="1"
+                                                   Maximum="50"
+                                                   Increment="1"
+                                                   Value="{Binding SaveBackupKeepCount, Mode=TwoWay}" />
+                                </ctrl:SettingRow>
+
+                                <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Classes="caption"
+                                               Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               Opacity="0.75"
+                                               TextTrimming="CharacterEllipsis"
+                                               Text="{Binding SaveBackupFolderDisplay}" />
+                                    <Button Grid.Column="1"
+                                            Command="{Binding OpenSaveBackupFolderCommand}"
+                                            Content="打开备份目录" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -507,7 +536,7 @@
                             <StackPanel>
                                 <TextBlock Classes="sectionTitle" Text="主题包" />
                                 <TextBlock Classes="caption" Margin="0,4,0,14" TextWrapping="Wrap"
-                                           Text="一套主题决定配色、圆角、控件外观，以及导航栏摆在哪 —— PCL2 风格把导航并进了深蓝色标题栏。选中的那套立刻生效，不用重启。" />
+                                           Text="一套主题决定这界面长什么样：底色与层次、文字色、控件形状、字体。PCL2 那套是浅灰纸面配蓝色顶栏，MD3 是紫色的色阶分层。选中的那套立刻生效，不用重启。" />
 
                                 <ListBox ItemsSource="{Binding ThemePackages}"
                                          SelectedItem="{Binding SelectedThemePackage, Mode=TwoWay}"

@@ -48,7 +48,7 @@
         </Style>
 
         <Style Selector="TextBlock.eyebrow">
-            <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
             <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -56,7 +56,7 @@
         </Style>
 
         <Style Selector="TextBlock.heroName">
-            <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
             <Setter Property="FontSize" Value="{DynamicResource FontSizeHero}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -155,7 +155,7 @@
         </Style>
 
         <Style Selector="TextBlock.rowName">
-            <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
             <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
@@ -366,7 +366,7 @@
         </Style>
 
         <Style Selector="TextBlock.identityTitle">
-            <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
+            <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
             <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />

@@ -123,6 +123,21 @@ namespace VibrantbitLauncher.Services
         /// <summary>存档目录的自定义位置；空表示用游戏目录下的 saves。</summary>
         public string SavesFolder { get; set; } = string.Empty;
 
+        // ===== 游戏 · 存档备份 =====
+
+        /// <summary>
+        /// 启动游戏前自动把该实例的存档打包一份。
+        ///
+        /// <para>
+        /// 默认开：存档是玩家唯一不能重下的东西，而「启动器把存档弄坏了」是最难解释的故障。
+        /// 关掉的人通常是自己已经有别的备份手段（或者磁盘真的紧张）。
+        /// </para>
+        /// </summary>
+        public bool AutoBackupSaves { get; set; } = true;
+
+        /// <summary>每个实例保留几份备份，超出删最旧的。</summary>
+        public int SaveBackupKeepCount { get; set; } = 5;
+
         /// <summary>
         /// 内存分配是否为「自动推荐」。
         ///
@@ -849,7 +864,8 @@ namespace VibrantbitLauncher.Services
                 nameof(AppSettings.VersionIsolation), nameof(AppSettings.DisableIpv6),
                 nameof(AppSettings.GcMode), nameof(AppSettings.WindowWidth),
                 nameof(AppSettings.WindowHeight), nameof(AppSettings.StartFullscreen),
-                nameof(AppSettings.UseCustomGameArgs), nameof(AppSettings.GameArgs)
+                nameof(AppSettings.UseCustomGameArgs), nameof(AppSettings.GameArgs),
+                nameof(AppSettings.AutoBackupSaves), nameof(AppSettings.SaveBackupKeepCount)
             },
             ["appearance"] = new[]
             {

@@ -40,6 +40,12 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
 
     private readonly ObservableCollection<MissingItem> _missing = new();
 
+    /// <summary>「存档备份」页的列表。直接绑到 ListBox，增删就地刷新。</summary>
+    private readonly ObservableCollection<SaveBackupEntry> _backups = new();
+
+    /// <summary>备份 / 恢复进行中：期间把按钮全部禁掉，避免两份任务同时写同一个 zip。</summary>
+    private bool _backupBusy;
+
     private List<GameInstance> _instances = new();
     private ModHealthReport? _report;
     private LoadoutManifest? _pendingImport;
@@ -58,6 +64,7 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
         InitializeComponent();
 
         MissingList.ItemsSource = _missing;
+        BackupList.ItemsSource = _backups;
         RefreshInstances(preferredInstanceId);
     }
 
@@ -89,6 +96,7 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
             ExportButton.IsEnabled = false;
             ExportPackButton.IsEnabled = false;
             PackNameBox.Text = string.Empty;
+            RefreshBackups();
             return;
         }
 
@@ -121,6 +129,7 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
         {
             InstanceHint.Text = string.Empty;
             ExportPackButton.IsEnabled = false;
+            RefreshBackups();
             return;
         }
 
@@ -133,6 +142,10 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
         var isolation = GameInstanceHelper.IsVersionIsolated ? "版本隔离：开" : "版本隔离：关";
         var mods = GameInstanceHelper.DescribeInstanceFolder(instance.Id, "mods");
         InstanceHint.Text = $"{instance.LoaderName} · {isolation} → {mods}";
+
+        // 备份列表是跟着实例走的，切实例必须重读，否则会显示上一个实例的备份
+        BackupStatus.Text = string.Empty;
+        RefreshBackups();
     }
 
     // ==================== 依赖体检 ====================
@@ -646,6 +659,182 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
             .Trim();
 
         return cleaned.Length == 0 ? fallback : cleaned;
+    }
+
+    // ==================== 存档备份 ====================
+
+    private void RefreshBackups()
+    {
+        _backups.Clear();
+
+        var instance = SelectedInstance;
+        if (instance is null)
+        {
+            UpdateBackupUi();
+            return;
+        }
+
+        foreach (var entry in SaveBackupService.List(instance.Id))
+            _backups.Add(entry);
+
+        UpdateBackupUi();
+    }
+
+    /// <summary>按当前列表刷新「没有备份」提示、汇总行与按钮可用性。</summary>
+    private void UpdateBackupUi()
+    {
+        var instance = SelectedInstance;
+        var hasSelection = BackupList.SelectedItem is SaveBackupEntry;
+
+        BackupEmptyText.IsVisible = _backups.Count == 0;
+        BackupNowButton.IsEnabled = instance is not null && !_backupBusy;
+        OpenBackupFolderButton.IsEnabled = instance is not null;
+        RestoreBackupButton.IsEnabled = hasSelection && !_backupBusy;
+        DeleteBackupButton.IsEnabled = hasSelection && !_backupBusy;
+
+        if (instance is null)
+        {
+            BackupSummary.Text = string.Empty;
+            return;
+        }
+
+        var total = _backups.Sum(e => e.SizeBytes);
+        var worlds = SaveBackupService.ListWorlds(instance.Id).Count;
+
+        BackupSummary.Text = _backups.Count == 0
+            ? $"当前存档 {worlds} 个"
+            : $"共 {_backups.Count} 份，占用 {FormatSize(total)}；当前存档 {worlds} 个";
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024L * 1024 * 1024 => $"{bytes / 1024d / 1024d / 1024d:0.0} GB",
+        >= 1024L * 1024 => $"{bytes / 1024d / 1024d:0.0} MB",
+        >= 1024 => $"{bytes / 1024d:0} KB",
+        _ => $"{bytes} B"
+    };
+
+    private void BackupList_SelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateBackupUi();
+
+    private void RefreshBackups_Click(object? sender, RoutedEventArgs e)
+    {
+        RefreshBackups();
+        BackupStatus.Text = string.Empty;
+    }
+
+    private async void BackupNow_Click(object? sender, RoutedEventArgs e)
+    {
+        var instance = SelectedInstance;
+        if (instance is null || _backupBusy)
+            return;
+
+        _backupBusy = true;
+        UpdateBackupUi();
+        BackupStatus.Text = "正在备份…";
+
+        try
+        {
+            var progress = new Progress<string>(s => BackupStatus.Text = s);
+
+            var entry = await SaveBackupService.CreateAsync(instance.Id, "manual", progress);
+
+            if (entry is null)
+            {
+                BackupStatus.Text = "这个实例还没有任何存档，没什么可备份的";
+                return;
+            }
+
+            RefreshBackups();
+            BackupStatus.Text = $"已备份到 {Path.GetFileName(entry.FilePath)}（{entry.DisplaySize}）";
+            AppServices.Notifications?.Success($"存档已备份（{entry.DisplaySize}）");
+
+            // 手动备份也算进保留份数里，否则反复点几下就把盘塞满了
+            var keep = Math.Clamp(SettingsService.Current.SaveBackupKeepCount, 1, 50);
+            var removed = SaveBackupService.Prune(instance.Id, keep);
+            if (removed > 0)
+            {
+                RefreshBackups();
+                BackupStatus.Text += $"，超出保留份数，删掉最旧的 {removed} 份";
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "备份存档失败：{Id}", instance.Id);
+            BackupStatus.Text = $"备份失败：{FriendlyError.Describe(ex)}";
+        }
+        finally
+        {
+            _backupBusy = false;
+            UpdateBackupUi();
+        }
+    }
+
+    private async void RestoreBackup_Click(object? sender, RoutedEventArgs e)
+    {
+        var instance = SelectedInstance;
+        if (instance is null || _backupBusy || BackupList.SelectedItem is not SaveBackupEntry entry)
+            return;
+
+        var confirm = await AppServices.Dialogs!.ConfirmAsync(
+            "恢复存档",
+            $"用「{entry.DisplayTime}」那份备份覆盖当前存档（{entry.DisplayWorlds}）？当前存档会先自动留一份，但覆盖掉的改动不会回来。",
+            "恢复");
+
+        if (!confirm)
+            return;
+
+        _backupBusy = true;
+        UpdateBackupUi();
+        BackupStatus.Text = "正在恢复…";
+
+        try
+        {
+            var progress = new Progress<string>(s => BackupStatus.Text = s);
+            var message = await SaveBackupService.RestoreAsync(entry, progress);
+
+            RefreshBackups();
+            BackupStatus.Text = message;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "恢复存档失败：{Id}", instance.Id);
+            BackupStatus.Text = $"恢复失败：{FriendlyError.Describe(ex)}";
+        }
+        finally
+        {
+            _backupBusy = false;
+            UpdateBackupUi();
+        }
+    }
+
+    private async void DeleteBackup_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_backupBusy || BackupList.SelectedItem is not SaveBackupEntry entry)
+            return;
+
+        var confirm = await AppServices.Dialogs!.ConfirmAsync(
+            "删除备份",
+            $"删掉「{entry.DisplayTime}」那份备份（{entry.DisplaySize}）？删了就找不回来了。",
+            "删除");
+
+        if (!confirm)
+            return;
+
+        if (SaveBackupService.Delete(entry))
+        {
+            RefreshBackups();
+            BackupStatus.Text = "已删除 1 份备份";
+        }
+        else
+        {
+            BackupStatus.Text = "删除失败，可能文件正被占用";
+        }
+    }
+
+    private void OpenBackupFolder_Click(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedInstance is { } instance)
+            SaveBackupService.OpenFolder(instance.Id);
     }
 
     // ==================== 关闭 ====================

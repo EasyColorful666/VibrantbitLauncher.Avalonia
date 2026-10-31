@@ -239,5 +239,49 @@ internal static class UiTools
         d["正在打包 {0}…"] = "Packing {0}…";
         d["打包失败：{0}"] = "Packing failed: {0}";
         d["Minecraft 整合包"] = "Minecraft modpack";
+
+        // ===== 存档备份 =====
+        d["存档备份"] = "Save backups";
+        d["把当前实例的存档整份打包留一份。开「启动前自动备份」之后，每次启动游戏都会先存一档，再自动清掉超出的旧档。"] =
+            "Pack this instance's worlds into one file. With \"back up before launch\" on, every launch takes a snapshot first and drops the oldest ones afterwards.";
+        d["立即备份"] = "Back up now";
+        d["恢复选中"] = "Restore selected";
+        d["删除选中"] = "Delete selected";
+        d["刷新"] = "Refresh";
+        d["打开备份目录"] = "Open backup folder";
+        d["这个实例还没有备份"] = "No backups for this instance yet";
+        d["正在备份…"] = "Backing up…";
+        d["这个实例还没有任何存档，没什么可备份的"] =
+            "This instance has no worlds yet, so there is nothing to back up";
+        d["已备份到 {0}（{1}）"] = "Backed up to {0} ({1})";
+        d["，超出保留份数，删掉最旧的 {0} 份"] = ", over the keep limit — removed the {0} oldest";
+        d["备份失败：{0}"] = "Backup failed: {0}";
+        d["正在恢复…"] = "Restoring…";
+        d["已删除 1 份备份"] = "Deleted 1 backup";
+        d["删除失败，可能文件正被占用"] = "Delete failed — the file may be in use";
+        d["恢复存档"] = "Restore world saves";
+        d["用「{0}」那份备份覆盖当前存档（{1}）？当前存档会先自动留一份，但覆盖掉的改动不会回来。"] =
+            "Overwrite the current worlds with the backup from {0} ({1})? The current ones are copied aside first, but anything overwritten is gone.";
+        d["恢复"] = "Restore";
+        d["删除备份"] = "Delete backup";
+        d["删掉「{0}」那份备份（{1}）？删了就找不回来了。"] =
+            "Delete the backup from {0} ({1})? It can't be recovered.";
+        d["当前存档 {0} 个"] = "Worlds now: {0}";
+        d["共 {0} 份，占用 {1}；当前存档 {2} 个"] = "{0} backups, {1} in total; {2} worlds now";
+        d["正在备份 {0} 个存档…"] = "Backing up {0} worlds…";
+        d["启动前自动"] = "Auto (pre-launch)";
+        d["恢复前留档"] = "Safety copy";
+        d["手动"] = "Manual";
+        d["不含存档"] = "No worlds";
+        d["{0} 等 {1} 个"] = "{0} and {1} more";
+        d["先把当前存档留一份…"] = "Keeping a copy of the current worlds first…";
+        d["正在还原文件…"] = "Restoring files…";
+        d["备份文件已经不在那个位置了"] = "That backup file is no longer there";
+        d["这个备份是空的，没有恢复"] = "This backup is empty — nothing was restored";
+        d["备份文件已损坏，无法恢复"] = "This backup is corrupted and can't be restored";
+        d["这个备份里没有存档目录"] = "This backup contains no world folders";
+        d["已恢复 {0} 个存档"] = "Restored {0} worlds";
+        d["恢复失败：{0}"] = "Restore failed: {0}";
+        d["存档已备份（{0}）"] = "Worlds backed up ({0})";
     }
 }

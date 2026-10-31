@@ -113,12 +113,12 @@ public partial class MainWindow : FAAppWindow
     // ==================== 窗口尺寸（按屏幕分辨率自适应） ====================
 
     /// <summary>设计尺寸：平时就按这个大小开窗。</summary>
-    private const double DesignWidth = 1280d;
-    private const double DesignHeight = 800d;
+    private const double DesignWidth = 1180d;
+    private const double DesignHeight = 740d;
 
     /// <summary>设计最小尺寸：低于这个值布局会开始挤（小屏上会自动下调）。</summary>
-    private const double DesignMinWidth = 1180d;
-    private const double DesignMinHeight = 720d;
+    private const double DesignMinWidth = 1090d;
+    private const double DesignMinHeight = 670d;
 
     /// <summary>标题栏高度（与 XAML 里 ctrl:TitleBar 的 Height 一致）。</summary>
     private const double TitleBarHeight = 40d;

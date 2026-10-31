@@ -10,14 +10,14 @@
         x:Class="VibrantbitLauncher.Views.Windows.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="VibrantbitLauncher"
-        Width="1280"
-        Height="800"
+        Width="1180"
+        Height="740"
         CanResize="False"
 
-        MinWidth="1180"
-        MinHeight="720"
+        MinWidth="1090"
+        MinHeight="670"
         Background="{DynamicResource AppWindowBackgroundBrush}"
-        FontFamily="{StaticResource AppFont}"
+        FontFamily="{DynamicResource AppFont}"
         FontSize="{DynamicResource FontSizeBody}"
         WindowStartupLocation="CenterScreen">
 

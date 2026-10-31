@@ -6,8 +6,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="Minecraft 工具箱"
-    Width="452"
-    Height="348"
+    Width="420"
+    Height="322"
     CanResize="False"
     ShowInTaskbar="False"
     WindowDecorations="None"
@@ -15,7 +15,7 @@
     WindowStartupLocation="CenterScreen"
     Background="Transparent"
     TransparencyLevelHint="Transparent"
-    FontFamily="{StaticResource AppFont}"
+    FontFamily="{DynamicResource AppFont}"
     FontSize="{DynamicResource FontSizeBody}">
 
     <!--

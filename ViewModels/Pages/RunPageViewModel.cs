@@ -686,6 +686,32 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     return;
                 }
 
+                // 启动前自动备份存档。
+                //
+                // 放在完整性检查**之后**：缺库的时候用户根本进不到游戏，备份纯属浪费。
+                // 失败只记日志不拦启动 —— 备份是保险，不是启动的前置条件，
+                // 因为磁盘满 / 文件被占用就把游戏拦住，比丢一份存档更让人恼火。
+                if (SettingsService.Current.AutoBackupSaves)
+                {
+                    try
+                    {
+                        var worlds = SaveBackupService.ListWorlds(McVersion);
+                        if (worlds.Count > 0)
+                        {
+                            ShowInfo($"正在备份 {worlds.Count} 个存档…");
+                            var backup = await SaveBackupService.TryAutoBackupAsync(McVersion);
+
+                            Diag(backup is null
+                                ? "自动备份存档：跳过"
+                                : $"自动备份存档：{backup.FilePath}（{backup.DisplaySize}）");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Diag($"自动备份存档失败：{ex.Message}");
+                    }
+                }
+
                 Diag("Launching manually (bypassing MinecraftLaunch runner)...");
                 ShowInfo($"正在启动 {McVersion}，请稍等...");
 

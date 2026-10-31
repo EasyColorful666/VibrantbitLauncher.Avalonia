@@ -2,11 +2,19 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-        PCL2 风格 · 通用
+        PCL2 风格 · 通用（明暗共用）
 
-        直角是这套主题的全部性格。六档圆角一起归零 —— 只改 RadiusS 不够，
+        两件事：**圆角归零**、**换成系统黑体**。
+        颜色在 light/dark 两份里，这里只放不随明暗变的东西。
+    -->
+
+    <!--
+        直角是这套主题的性格。六档圆角一起归零 —— 只改 RadiusS 不够，
         卡片和浮层用的是 RadiusM / RadiusL / CardRadius，漏一个就会在一堆方块里
         突然冒出一个圆角。
+
+        注意 RadiusHeaderNav 故意**不**归零：顶栏上那枚选中块在 PCL2 里是胶囊，
+        它是整套直角里唯一一处圆角，归零反而走样。
     -->
 
     <CornerRadius x:Key="RadiusNone">0</CornerRadius>
@@ -15,5 +23,14 @@
     <CornerRadius x:Key="RadiusL">0</CornerRadius>
     <CornerRadius x:Key="RadiusPill">0</CornerRadius>
     <CornerRadius x:Key="CardRadius">0</CornerRadius>
+
+    <!--
+        字体：PCL2 用的是系统黑体，不是 Segoe UI Variable。
+        正文和标题同一族 —— 工具软件的大标题不需要第二种字形。
+        列表末尾留了 Linux / macOS 的常见回退，免得在别的平台上落到衬线体。
+    -->
+
+    <FontFamily x:Key="AppFont">Microsoft YaHei UI, Microsoft YaHei, Segoe UI, PingFang SC, Noto Sans CJK SC, sans-serif</FontFamily>
+    <FontFamily x:Key="AppDisplayFont">Microsoft YaHei UI, Microsoft YaHei, Segoe UI, PingFang SC, Noto Sans CJK SC, sans-serif</FontFamily>
 
 </ResourceDictionary>

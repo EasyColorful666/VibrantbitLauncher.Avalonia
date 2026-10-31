@@ -6,12 +6,12 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
     xmlns:ui="using:FluentAvalonia.UI.Controls"
-    FontFamily="{StaticResource AppFont}"
+    FontFamily="{DynamicResource AppFont}"
     FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
-    Width="820"
-    Height="620">
+    Width="760"
+    Height="574">
 
     <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
 

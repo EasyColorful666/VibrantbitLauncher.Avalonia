@@ -5,12 +5,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ctrl="using:VibrantbitLauncher.Controls"
-    FontFamily="{StaticResource AppFont}"
+    FontFamily="{DynamicResource AppFont}"
     FontSize="{DynamicResource FontSizeBody}"
     mc:Ignorable="d"
     Background="{DynamicResource ApplicationBackgroundBrush}"
-    Width="440"
-    Height="320">
+    Width="407"
+    Height="296">
 
     <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
         <!--  自绘标题栏（跟随 Fluent 主题）  -->

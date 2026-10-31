@@ -38,4 +38,33 @@
     <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#FFEADDFF" />
     <SolidColorBrush x:Key="AppAccentSurfaceStrongBrush" Color="#FFD0BCFF" />
 
+    <!--  ==================== 语义色板（Fluent 键）  ====================
+         界面里不少位置直接用 FluentAvalonia 的语义键。不覆盖这一层，
+         主题就只改了「自己那几块底」，其余仍是 Fluent 默认色 —— 看着像没换主题。
+         M3 的值直接取 baseline 色板（onSurface / surfaceContainer / outline）。
+    -->
+
+    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FF1D1B20" />
+    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#FF49454F" />
+    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#FF79747E" />
+    <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#FFCAC4D0" />
+
+    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFF7F2FA" />
+    <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#FFF3EDF7" />
+
+    <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#FFF7F2FA" />
+    <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#FFECE6F0" />
+
+    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FFF3EDF7" />
+    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#FFECE6F0" />
+    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#FFE6E0E9" />
+    <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#FFE6E0E9" />
+
+    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#141D1B20" />
+    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#FFECE6F0" />
+
+    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#FF79747E" />
+    <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#FFCAC4D0" />
+    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#FFCAC4D0" />
+
 </ResourceDictionary>
