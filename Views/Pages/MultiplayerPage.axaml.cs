@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
+using VibrantbitLauncher.Helpers;
 using VibrantbitLauncher.Services;
 using VibrantbitLauncher.ViewModels.Pages;
 
@@ -26,6 +27,9 @@ public partial class MultiplayerPage : UserControl
             UpdateStatusDot();
             UpdateLanModDot();
         };
+
+        // 离开页面时停掉呼吸：循环动效不能留在已卸载的可视树上空转
+        Unloaded += (_, _) => MotionLoops.Stop(statusDot);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -40,7 +44,9 @@ public partial class MultiplayerPage : UserControl
     /// <summary>联机服务状态：绿 = 可用，黄 = 进行中，红 = 未就绪。</summary>
     private void UpdateStatusDot()
     {
-        var brushKey = (_viewModel?.StatusLevel ?? "Idle") switch
+        var level = _viewModel?.StatusLevel ?? "Idle";
+
+        var brushKey = level switch
         {
             "Ready" => "SystemFillColorSuccessBrush",
             "Busy" => "SystemFillColorCautionBrush",
@@ -48,6 +54,10 @@ public partial class MultiplayerPage : UserControl
         };
 
         ApplyDotColor(statusDot, brushKey);
+
+        // 服务在跑的时候让这个点"呼吸"，一眼能看出联机是活的；
+        // 停服 / 未就绪时它必须完全静止 —— 静止和呼吸就是"在跑 / 没跑"的语义差别。
+        MotionLoops.SetPulse(statusDot, level == "Ready");
     }
 
     /// <summary>联机模组状态：绿 = 已装好，黄 = 安装中，红 = 装不了，灰 = 待安装。</summary>

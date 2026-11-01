@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
              xmlns:ctrl="using:VibrantbitLauncher.Controls"
     x:Class="VibrantbitLauncher.Views.Pages.DashboardPage"
     xmlns="https://github.com/avaloniaui"
@@ -23,7 +23,7 @@
             Padding="0,0,8,0"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding News}">
+            <ItemsControl Classes="stagger" ItemsSource="{Binding News}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal" />
@@ -36,7 +36,7 @@
                             Width="296"
                             Height="184"
                             Margin="{StaticResource CardGap}"
-                            Classes="hoverCard"
+                            Classes="hoverCard lift"
                             ClipToBounds="True">
                             <Grid>
                                 <Image Source="{Binding Image}" Stretch="UniformToFill" />

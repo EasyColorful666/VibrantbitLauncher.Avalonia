@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -59,6 +59,9 @@ public partial class ToolboxWindow : Window
     public ToolboxWindow()
     {
         InitializeComponent();
+
+        // 动效档位挂到本窗口根节点上：类名不是继承属性，主窗口的档位管不到这里
+        MotionSettings.ApplyClasses(this);
 
         LoadHostCode();
         ApplyRole();

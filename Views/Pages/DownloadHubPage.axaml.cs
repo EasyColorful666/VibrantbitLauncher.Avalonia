@@ -1,3 +1,4 @@
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -39,6 +40,19 @@ public partial class DownloadHubPage : UserControl, INavigationAware
 
     /// <summary>上一次显示的分类序号；-1 表示还没显示过。</summary>
     private int _lastShownIndex = -1;
+
+    /// <summary>入场动效用的"上一屏"序号，只用来判断切换方向（左 / 右）。</summary>
+    private int _shownIndex = -1;
+
+    /// <summary>
+    /// 让新出现的分类页播一次入场：方向按分类序号的增减决定（往右切 = 从右侧落定）。
+    /// </summary>
+    private void PlayPageEnter(Control page, int index)
+    {
+        var direction = _shownIndex < 0 ? 0 : Math.Sign(index - _shownIndex);
+        _shownIndex = index;
+        PageTransitionHelper.PlayEnterTransition(page, direction);
+    }
 
     public DownloadHubPage()
     {
@@ -135,7 +149,7 @@ public partial class DownloadHubPage : UserControl, INavigationAware
         if (_downloadPage != null)
         {
             _downloadPage.IsVisible = true;
-            PageTransitionHelper.PlayEnterTransition(_downloadPage);
+            PlayPageEnter(_downloadPage, 0);
         }
 
         if (_javaPage != null)
@@ -165,7 +179,7 @@ public partial class DownloadHubPage : UserControl, INavigationAware
             page.IsVisible = false;
 
         _javaPage.IsVisible = true;
-        PageTransitionHelper.PlayEnterTransition(_javaPage);
+        PlayPageEnter(_javaPage, JavaCategoryIndex);
     }
 
     private void ShowResourcePage(int index)
@@ -203,7 +217,7 @@ public partial class DownloadHubPage : UserControl, INavigationAware
             pair.Value.IsVisible = pair.Key == index;
 
         if (_resourcePages.TryGetValue(index, out var shown))
-            PageTransitionHelper.PlayEnterTransition(shown);
+            PlayPageEnter(shown, index);
     }
 
     /// <summary>按分类序号选中左侧对应项；内容切换由 SelectionChanged 统一驱动。</summary>

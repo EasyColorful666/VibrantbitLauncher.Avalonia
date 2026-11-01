@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -177,14 +177,8 @@ public partial class MainWindow : FAAppWindow
 
     private void ApplyMotionClasses()
     {
-        Classes.Remove("performanceMode");
-        Classes.Remove("motionReduced");
-
-        var level = MotionSettings.Level;
-        if (level == "Off")
-            Classes.Add("performanceMode");
-        else if (level == "Reduced")
-            Classes.Add("motionReduced");
+        // 类名挂在窗口根节点上，由 Styles/Animations.axaml 的 .performanceMode / .motionReduced 命中。
+        MotionSettings.ApplyClasses(this);
     }
 
     /// <summary>
@@ -498,10 +492,53 @@ public partial class MainWindow : FAAppWindow
             DropOverlayHint.Text = Path.GetFileName(modpack);
         }
 
-        DropOverlay.IsVisible = true;
+        ShowDropOverlay();
     }
 
-    private void HideDropOverlay() => DropOverlay.IsVisible = false;
+    /// <summary>
+    /// 显示拖放提示层：先可见、再淡入。
+    /// DragOver 会连续触发，所以只有在还没显示时才动 —— 否则每次移动鼠标都重播一遍。
+    /// </summary>
+    private void ShowDropOverlay()
+    {
+        if (DropOverlay.IsVisible && DropOverlay.Opacity >= 1d)
+            return;
+
+        DropOverlay.IsVisible = true;
+
+        // 透明度从 0 → 1，过渡由 XAML 里那条 DoubleTransition 负责；
+        // 动效关闭时 Transitions 为空，赋值即到位，不会停在半透明中间态。
+        DropOverlay.Opacity = 1d;
+    }
+
+    /// <summary>
+    /// 隐藏拖放提示层：先淡出，播完再真正隐藏。
+    /// 直接 IsVisible=false 会把过渡掐断（元素一消失，过渡就没对象了）。
+    /// </summary>
+    private void HideDropOverlay()
+    {
+        if (!DropOverlay.IsVisible)
+            return;
+
+        if (!MotionSettings.Enabled)
+        {
+            DropOverlay.IsVisible = false;
+            DropOverlay.Opacity = 0d;
+            return;
+        }
+
+        DropOverlay.Opacity = 0d;
+
+        // 150ms 是过渡时长，多给 50ms 容错，避免在最后一帧被隐藏而看着"跳一下"
+        DispatcherTimer.RunOnce(
+            () =>
+            {
+                // 淡出期间用户可能又拖回来了：那就别隐藏
+                if (DropOverlay.Opacity <= 0.01d)
+                    DropOverlay.IsVisible = false;
+            },
+            TimeSpan.FromMilliseconds(200));
+    }
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {

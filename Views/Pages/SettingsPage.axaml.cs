@@ -98,6 +98,8 @@ public partial class SettingsPage : UserControl, INavigationAware
         if (_activeCategory != index && _activeCategory < _panels.Length)
             _scrollMemory[_activeCategory] = _panels[_activeCategory].Offset;
 
+        var previousIndex = _activeCategory;
+
         for (var i = 0; i < _panels.Length; i++)
             _panels[i].IsVisible = i == index;
 
@@ -114,7 +116,10 @@ public partial class SettingsPage : UserControl, INavigationAware
             RestoreOffset(_panels[index], offset);
         }
 
-        PageTransitionHelper.PlayEnterTransition(_panels[index]);
+        // 方向：往右切换（index 变大）时新内容从右侧落定，往左则从左侧。
+        // 位移只有 10px，但方向对得上，用户能感到"我往右走了一格"。
+        var direction = Math.Sign(index - previousIndex);
+        PageTransitionHelper.PlayEnterTransition(_panels[index], direction);
 
         // 磁盘占用只在真的打开「高级」时才量：统计要枚举整个游戏目录，不该在进设置页时就跑
         if (index == 4)

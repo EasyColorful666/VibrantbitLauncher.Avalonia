@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:helpers="using:VibrantbitLauncher.Helpers">
+        xmlns:helpers="using:VibrantbitLauncher.Helpers"
+        xmlns:ui="using:FluentAvalonia.UI.Controls">
 
     <!--
         ============================================================================
@@ -9,47 +10,71 @@
 
         一条原则：**动的是状态，不是物体**。
 
-        上一版有卡片悬停抬升、按钮按压缩放、启动按钮光晕呼吸。
-        这些在深色沉浸式界面里是"质感"，在明亮清爽的界面里是"晃动"——
-        白底上任何位移和缩放都格外显眼，会让人觉得界面不稳。
+        白底上任何大幅度位移和缩放都格外显眼 —— 界面会显得"不稳"。
+        所以这里的动效只做三件事：
 
-        现在只保留三类：
-          · 颜色过渡    —— 悬停 / 按下 / 选中，120~160ms
-          · 入场位移     —— 页面切换时 8px 上浮淡入，250ms
-          · 滚动 / 背景 —— 平滑滚动、壁纸缓慢呼吸（默认关闭）
+          · 反馈   悬停 / 按住 / 选中 / 聚焦       100~150ms，只动颜色 + 1.5% 回缩
+          · 转场   页面切换 / 浮层 / 列表逐项落定   150~250ms，位移不超过 24px
+          · 持续   进度条线性 / 壁纸缓慢呼吸        仅两处，且都可关闭
 
-        时长只允许 120 / 160 / 250 三档，落在 20ms 网格。
-        进 CubicEaseOut、出 CubicEaseIn；linear 只给进度条。
+        时长只取 50ms 阶梯（100 / 150 / 200 / 250 / 300），不写 120 / 160 / 180
+        这类"看着顺眼"的数 —— 快慢不一，节奏就散了。
 
-        ⚠️ 性能模式（设置 → 个性化）会给 Application 打上 performanceMode 类，
-        本文件末尾的 `.performanceMode` 系列把上面所有效果整体清零。
-        加新动效时**必须**同步补一条 performanceMode 关闭规则。
+        曲线三条（定义在 AppTheme.axaml）：
+          EaseFeedback  进出对称，用于"我点到了"
+          EaseEnter     先快后慢，用于"内容落定"
+          EaseExit      先慢后快，用于"内容快走"，且时长必须比进场短
 
-        ⚠️ xmlns:helpers 不能删：RenderTransform 相关的补丁动画器靠它注册。
+        ⚠️ 性能模式 / 减少动态效果 的兜底写在文件末尾：
+           任何新增动效都**必须**在那里补一条清零规则，否则低端机上会拖影。
+           XAML 侧的总开关是窗口根节点上的 .performanceMode / .motionReduced 类；
+           代码侧的总开关是 Helpers/MotionSettings。
     -->
 
     <!--  ==================== 1. 按钮  ====================
 
-        只过渡底色与描边。不做 RenderTransform ——
-        按钮位移会让同一行内的相邻按钮看起来在"跳"。
+        悬停只加深底色；按住回缩 1.5%（RenderTransform）——
+        位移会让同一行内的相邻按钮看起来在"跳"，缩放不会。
     -->
 
     <Style Selector="Button">
+        <Setter Property="RenderTransform" Value="none" />
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
 
+    <Style Selector="Button:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.985)" />
+    </Style>
+
+    <!--  低权重按钮（行内文字钮 / 图标钮）不缩放：它们太小，缩放会让字发虚  -->
+    <Style Selector="Button.subtle:pressed">
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <Style Selector="Button:disabled">
+        <Setter Property="Opacity" Value="0.45" />
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <!--  键盘聚焦：描边转到强调色，与鼠标悬停区分开  -->
+    <Style Selector="Button:focus-visible">
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+    </Style>
+
+    <!--  模板内的底色会被 ControlTheme 覆盖，这里显式补一遍过渡  -->
     <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
@@ -57,45 +82,69 @@
     <Style Selector="RepeatButton">
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
 
-    <Style Selector="Button:disabled">
-        <Setter Property="Opacity" Value="0.45" />
-    </Style>
+    <!--  ==================== 2. 列表  ====================
 
-    <!--  ==================== 2. 列表  ====================  -->
+        行是这张界面里出现最多的实体（一屏几十行），所以它的反馈必须"轻"：
+        悬停换底色、按住回缩 1%，不做任何位移。
+    -->
 
     <Style Selector="ListBoxItem">
+        <Setter Property="RenderTransform" Value="none" />
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
+    </Style>
+
+    <Style Selector="ListBoxItem:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.99)" />
     </Style>
 
     <Style Selector="ListBox">
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="RenderTransform" Value="none" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ComboBoxItem:pressed">
+        <Setter Property="RenderTransform" Value="scale(0.99)" />
     </Style>
 
     <!--  ==================== 3. 卡片  ====================
 
         悬停只加深描边，不抬阴影、不位移。
         白底上的投影一旦动起来，整块内容会跟着"呼吸"，读起来很累。
+
+        .lift 是例外：只给"整块可点"的内容卡（新闻墙这类），
+        上浮 2px + 描边加深，明确表达"这张能点开"。
     -->
 
     <Style Selector="Border.card">
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Background" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
@@ -105,10 +154,11 @@
     </Style>
 
     <Style Selector="Border.hoverCard">
+        <Setter Property="RenderTransform" Value="none" />
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Background" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
@@ -118,23 +168,109 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
     </Style>
 
-    <!--  ==================== 4. 输入  ====================  -->
-
-    <Style Selector="TextBox">
+    <Style Selector="Border.lift">
+        <Setter Property="RenderTransform" Value="none" />
         <Setter Property="Transitions">
             <Transitions>
-                <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="{StaticResource EaseEnter}" />
             </Transitions>
         </Setter>
     </Style>
 
-    <!--  ==================== 5. 滚动  ====================  -->
+    <Style Selector="Border.lift:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
+        <Setter Property="RenderTransform" Value="translateY(-2px)" />
+    </Style>
+
+    <!--  ==================== 4. 输入与选择  ====================  -->
+
+    <Style Selector="TextBox">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ComboBox, NumericUpDown, AutoCompleteBox">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="CheckBox, RadioButton">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <!--  勾选前后的文字色：未选 = 次级灰，悬停 / 选中 = 主文字色  -->
+    <Style Selector="CheckBox:pointerover, RadioButton:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="CheckBox:checked, RadioButton:checked">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Slider">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <!--  ==================== 5. 标签页 / 导航  ====================  -->
+
+    <Style Selector="TabItem">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="TabItem:checked">
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="ui|FANavigationViewItem">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Expander">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <!--  ==================== 6. 滚动  ====================  -->
 
     <Style Selector="ScrollViewer.smoothScroll">
         <Setter Property="Transitions">
             <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
@@ -142,134 +278,32 @@
     <Style Selector="ListBox.smoothScroll /template/ ScrollViewer">
         <Setter Property="Transitions">
             <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
             </Transitions>
         </Setter>
     </Style>
 
-    <!--  ==================== 6. 入场  ====================
+    <!--  ==================== 7. 列表逐项入场  ====================
 
-        页面切换时内容上浮 8px 淡入。
-        位移 8px 是"刚好能感知到方向"的最小值；再大就变成幻灯片。
+        由 Helpers/ListMotion 实现（附加属性），挂到所有列表上：
+        进页面时列表项按 20ms 间隔依次淡入，最多错开 12 项。
+        这是整张界面里唯一"由代码驱动"的入场动效，页面不必写任何代码。
     -->
 
-    <Style Selector="Control.rise1">
-        <Setter Property="Transitions">
-            <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
-        <Setter Property="Opacity" Value="1" />
-        <Setter Property="RenderTransform" Value="translateY(0px)" />
+    <Style Selector="ListBox">
+        <Setter Property="helpers:ListMotion.EnableStaggeredFlyIn" Value="True" />
     </Style>
 
-    <Style Selector="Control.rise2">
-        <Setter Property="Transitions">
-            <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
-        <Setter Property="Opacity" Value="1" />
-        <Setter Property="RenderTransform" Value="translateY(0px)" />
+    <!--  图墙 / 栅格：显式挂 .stagger 才播（ItemsControl 常常是嵌套的，全局开启会误伤）  -->
+    <Style Selector="ItemsControl.stagger">
+        <Setter Property="helpers:ListMotion.EnableStaggeredFlyIn" Value="True" />
     </Style>
 
-    <Style Selector="Control.rise3">
-        <Setter Property="Transitions">
-            <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
-        <Setter Property="Opacity" Value="1" />
-        <Setter Property="RenderTransform" Value="translateY(0px)" />
-    </Style>
-
-    <Style Selector="Control.rise4">
-        <Setter Property="Transitions">
-            <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
-        <Setter Property="Opacity" Value="1" />
-        <Setter Property="RenderTransform" Value="translateY(0px)" />
-    </Style>
-
-    <!--  光晕：新语言里已无呼吸动画，保留空壳让历史引用不报错  -->
-    <Style Selector="Border.halo">
-        <Setter Property="Opacity" Value="1" />
-    </Style>
-
-    <!--  ==================== 7. 性能模式  ====================
-
-        低端机（核显 / Win7 老机）在设置里打开这个开关后，全部过渡立即归零。
-        注意这里是**逐个覆盖**而不是给根节点设一个开关：
-        Transitions 是控件级属性，父级的设置不会自动往下传。
-    -->
-
-    <Style Selector=".performanceMode Button, .performanceMode Button /template/ ContentPresenter#PART_ContentPresenter, .performanceMode RepeatButton">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode ListBoxItem, .performanceMode ListBox">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode Border.card, .performanceMode Border.hoverCard">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode TextBox">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode Control.rise1, .performanceMode Control.rise2, .performanceMode Control.rise3, .performanceMode Control.rise4">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode ScrollViewer.smoothScroll, .performanceMode ListBox.smoothScroll /template/ ScrollViewer">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <Style Selector=".performanceMode Image.bgAnimated">
-        <Setter Property="Transitions">
-            <Transitions />
-        </Setter>
-    </Style>
-
-    <!--  ==================== 8. 减少动态效果  ====================
-
-        系统开了"减少动态效果"时，位移全部取消，只留极短的颜色过渡 ——
-        保留颜色反馈是因为它不含运动，对前庭敏感人群无害。
-    -->
-
-    <Style Selector=".motionReduced Control.rise1, .motionReduced Control.rise2, .motionReduced Control.rise3, .motionReduced Control.rise4">
-        <Setter Property="Transitions">
-            <Transitions>
-                <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
-            </Transitions>
-        </Setter>
-        <Setter Property="RenderTransform" Value="none" />
-    </Style>
-
-    <!--  ==================== 9. 动态背景  ====================
+    <!--  ==================== 8. 动态背景  ====================
 
         壁纸缓慢呼吸缩放（24 秒一个来回）。默认关闭，只在用户开了「背景动画」时生效。
         只动 Transform（合成层内完成，不触发重排）。
+        全应用**唯一**的 XAML 无限循环动画。
     -->
 
     <Style Selector="Image.bgAnimated">
@@ -287,6 +321,96 @@
                 </KeyFrame>
             </Animation>
         </Style.Animations>
+    </Style>
+
+    <!--  ==================== 9. 性能模式  ====================
+
+        低端机（核显 / Win7 老机）在设置里打开这个开关后，全部过渡立即归零。
+        注意这里是**逐个覆盖**而不是给根节点设一个开关：
+        Transitions 是控件级属性，父级的设置不会自动往下传。
+
+        窗口根节点挂 .performanceMode 类 → 本组样式命中（见 MainWindow 的 ApplyMotionClasses）。
+    -->
+
+    <Style Selector=".performanceMode Button, .performanceMode Button /template/ ContentPresenter#PART_ContentPresenter, .performanceMode RepeatButton">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <Style Selector=".performanceMode ListBoxItem, .performanceMode ListBox, .performanceMode ComboBoxItem">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <Style Selector=".performanceMode Border.card, .performanceMode Border.hoverCard, .performanceMode Border.lift">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <Style Selector=".performanceMode TextBox, .performanceMode ComboBox, .performanceMode NumericUpDown, .performanceMode AutoCompleteBox">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode CheckBox, .performanceMode RadioButton, .performanceMode Slider">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode TabItem, .performanceMode ui|FANavigationViewItem, .performanceMode Expander">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <Style Selector=".performanceMode ScrollViewer.smoothScroll, .performanceMode ListBox.smoothScroll /template/ ScrollViewer">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
+    <!--
+        壁纸呼吸不需要在这里关：.performanceMode 时 MainWindowViewModel 根本不会
+        给图片挂 bgAnimated 类（见 MainWindowViewModel 里 BackgroundAnimated 的赋值）。
+        真正会残留的是 RenderTransform 的中间值，这里把它压回 1:1。
+    -->
+    <Style Selector=".performanceMode Image.bgAnimated">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <!--  ==================== 10. 减少动态效果  ====================
+
+        系统开了"减少动态效果"（或用户在设置里选「精简」）时，
+        位移与缩放全部取消，只留极短的颜色过渡 ——
+        保留颜色反馈是因为它不含运动，对前庭敏感人群无害。
+    -->
+
+    <Style Selector=".motionReduced Button, .motionReduced ListBoxItem, .motionReduced ComboBoxItem">
+        <Setter Property="RenderTransform" Value="none" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                <BrushTransition Property="Foreground" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector=".motionReduced Border.lift">
+        <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <!--  「精简」档下按钮/行按住不回缩，但颜色反馈照旧  -->
+    <Style Selector=".motionReduced Button:pressed, .motionReduced ListBoxItem:pressed, .motionReduced ComboBoxItem:pressed">
+        <Setter Property="RenderTransform" Value="none" />
     </Style>
 
 </Styles>

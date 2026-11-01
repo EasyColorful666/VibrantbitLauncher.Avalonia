@@ -38,33 +38,31 @@ namespace VibrantbitLauncher.Helpers;
 public static class WindowMotion
 {
     /// <summary>
-    /// 飞入时长。比页面切换（260ms）长，因为是「窗口整体出现」。
+    /// 飞入时长。比页面切换（250ms）长，因为是「窗口整体出现」。
     ///
-    /// 1.0.9.7：300ms → 450ms。原时长在缩放到位的最后一段收得太急，
-    /// 观感像「啪一下贴上去」；拉长后推近的过程看得清。
+    /// 1.0.29.0：450ms → 300ms。450ms 在明亮界面上会被读成"卡了一下再出来"，
+    /// 而且它超出了全站时序表的上限（转场一律 ≤300ms）；
+    /// 位移与缩放幅度同时收小，短时长也不会显得"啪一下贴上去"。
     /// </summary>
-    public static readonly TimeSpan FlyInDuration = TimeSpan.FromMilliseconds(450);
+    public static TimeSpan FlyInDuration => MotionSettings.Ms(MotionSettings.WindowEnterMs);
 
     /// <summary>
-    /// 飞出时长。收尾要干脆，太长会让人觉得「点了关闭没反应」。
-    ///
-    /// 1.0.9.7：180ms → 280ms。180ms 时窗口是「闪一下就没了」，
-    /// 下沉 + 后退的过程几乎看不见；280ms 仍在「立刻响应」的感知范围内。
-    /// 1.0.9.10：对齐 50ms 时长网格，280 → 300。
+    /// 飞出时长。收尾要干脆，太长会让人觉得「点了关闭没反应」，
+    /// 且必须比飞入短 —— 离开永远比到达快。
     /// </summary>
-    public static readonly TimeSpan FlyOutDuration = TimeSpan.FromMilliseconds(300);
+    public static TimeSpan FlyOutDuration => MotionSettings.Ms(MotionSettings.WindowExitMs);
 
-    /// <summary>飞入起点缩放（92% → 100%，能明显看出「推近」但不夸张）。</summary>
-    private const double FlyInScale = 0.92d;
+    /// <summary>飞入起点缩放（98.5% → 100%：看得出"推近"，但在白底上不会晃）。</summary>
+    private const double FlyInScale = 0.985d;
 
     /// <summary>飞入起点纵向位移（px，从下方浮上来）。</summary>
-    private const double FlyInOffsetY = 26d;
+    private const double FlyInOffsetY = 12d;
 
     /// <summary>飞出终点缩放（轻微后退，与飞入对称）。</summary>
-    private const double FlyOutScale = 0.94d;
+    private const double FlyOutScale = 0.99d;
 
     /// <summary>飞出终点纵向位移（px，向下沉走）。</summary>
-    private const double FlyOutOffsetY = 18d;
+    private const double FlyOutOffsetY = 8d;
 
     /// <summary>是否启用动效。性能模式下关掉（统一入口见 <see cref="MotionSettings"/>）。</summary>
     public static bool Enabled => MotionSettings.Enabled;
@@ -88,7 +86,9 @@ public static class WindowMotion
             return;
         }
 
-        AnimationHelper.ApplyEndState(control, 0d, FlyInScale, FlyInOffsetY);
+        // 精简档：只摆成"透明"，不缩小不下移
+        var move = MotionSettings.AllowMovement;
+        AnimationHelper.ApplyEndState(control, 0d, move ? FlyInScale : 1d, move ? FlyInOffsetY : 0d);
     }
 
     /// <summary>
@@ -116,21 +116,22 @@ public static class WindowMotion
 
         // 起点必须是「当前可见的起点」，不能假设调用方已经 PrepareFlyIn 过：
         // 内嵌页每次打开都是新实例，复用同一个卡片容器，上一轮的终态会残留。
-        AnimationHelper.ApplyEndState(control, 0d, FlyInScale, FlyInOffsetY);
+        var move = MotionSettings.AllowMovement;
+        AnimationHelper.ApplyEndState(control, 0d, move ? FlyInScale : 1d, move ? FlyInOffsetY : 0d);
 
         var motion = AnimationHelper.AnimateAsync(
             control,
             fromOpacity: 0d, toOpacity: 1d,
-            fromScale: FlyInScale, toScale: 1d,
-            fromOffsetY: FlyInOffsetY, toOffsetY: 0d,
+            fromScale: move ? FlyInScale : 1d, toScale: 1d,
+            fromOffsetY: move ? FlyInOffsetY : 0d, toOffsetY: 0d,
             FlyInDuration,
-            easing: new CubicEaseOut(),
+            easing: MotionSettings.Enter,
             cancellationToken: cancellationToken);
 
         if (scrim is Visual scrimLayer)
         {
             scrimLayer.Opacity = 0d;
-            return Task.WhenAll(motion, FadeAsync(scrimLayer, 0d, 1d, FlyInDuration, new CubicEaseOut(), cancellationToken));
+            return Task.WhenAll(motion, FadeAsync(scrimLayer, 0d, 1d, FlyInDuration, MotionSettings.Enter, cancellationToken));
         }
 
         return motion;
@@ -149,20 +150,22 @@ public static class WindowMotion
         if (root is not Control control || !Enabled)
             return;
 
+        var move = MotionSettings.AllowMovement;
+
         var motion = AnimationHelper.AnimateAsync(
             control,
             fromOpacity: 1d, toOpacity: 0d,
-            fromScale: 1d, toScale: FlyOutScale,
-            fromOffsetY: 0d, toOffsetY: FlyOutOffsetY,
+            fromScale: 1d, toScale: move ? FlyOutScale : 1d,
+            fromOffsetY: 0d, toOffsetY: move ? FlyOutOffsetY : 0d,
             FlyOutDuration,
-            easing: new CubicEaseIn(),
+            easing: MotionSettings.Exit,
             cancellationToken: cancellationToken);
 
         if (scrim is Visual scrimLayer)
         {
             await Task.WhenAll(
                 motion,
-                FadeAsync(scrimLayer, 1d, 0d, FlyOutDuration, new CubicEaseIn(), cancellationToken));
+                FadeAsync(scrimLayer, 1d, 0d, FlyOutDuration, MotionSettings.Exit, cancellationToken));
         }
         else
         {

@@ -25,6 +25,25 @@
         它用负左边距把内边距抵消掉，所以加上前后各 6 的上下内边距之后，
         行与行之间的视觉间距与以前（只有 14 下边距）一致，不会整体错位。
     -->
+    <!--
+        悬停：整行浮一层极淡的底（100ms）。设置页一屏十几行，
+        没有悬停反馈时用户不知道"这一行是不是整体可交互"。
+        底色只比画布深一档，不做位移、不加深描边 —— 行距恒定是这一页的命。
+    -->
+    <UserControl.Styles>
+        <Style Selector="Border#PART_Shell">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Border#PART_Shell:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <UserControl.Content>
         <Border x:Name="PART_Shell"
                 Margin="-10,-6,-10,8"

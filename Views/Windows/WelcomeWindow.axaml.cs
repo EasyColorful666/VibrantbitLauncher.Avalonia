@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using VibrantbitLauncher.Helpers;
@@ -42,10 +42,13 @@ public partial class WelcomeWindow : Window
         WindowSizing.FitToScreen(this, desiredWidth: 890d, desiredHeight: 556d,
                                  minWidth: 700d, minHeight: 470d);
 
+        // 动效档位挂到本窗口根节点上：类名不是继承属性，主窗口的档位管不到这里
+        MotionSettings.ApplyClasses(this);
+
         // 首帧之前摆到飞入起点，避免「完整闪一帧再重播动画」
         WindowMotion.PrepareFlyIn(RootGrid);
 
-        // 关闭时先飞出（280ms）再真正关窗
+        // 关闭时先飞出（200ms）再真正关窗
         WindowMotion.AttachCloseFlyOut(this, RootGrid);
 
         _host = new ContentControlNavigationHost(PageHost);
@@ -98,6 +101,10 @@ public sealed class ContentControlNavigationHost : INavigationService
             return false;
 
         _host.Content = page;
+
+        // 向导是「一步步往前走」，所以入场方向固定为从右侧落定（1.0.29.0）。
+        // 主窗口的页面切换由 TransitioningContentControl 负责，这里没有它，得自己播一次。
+        PageTransitionHelper.PlayEnterTransition(_host, 1);
 
         if (page is INavigationAware aware)
             _ = aware.OnNavigatedToAsync();

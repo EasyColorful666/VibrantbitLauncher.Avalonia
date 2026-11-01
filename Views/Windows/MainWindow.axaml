@@ -208,12 +208,24 @@
 
         </Grid>
 
-        <!--  拖入整合包时的整窗提示层：平时完全隐藏且不挡鼠标  -->
+        <!--
+            拖入整合包时的整窗提示层：平时完全隐藏且不挡鼠标。
+
+            出现 / 消失走 150ms 透明度过渡（1.0.29.0）：拖放状态是"连续"的，
+            遮罩如果硬切会像闪屏；淡入淡出让"可以松手了"这个信号更清楚。
+            IsVisible 仍由代码切换 —— 淡出播完才真正隐藏，否则动画会被直接掐断。
+        -->
         <Border x:Name="DropOverlay"
                 Background="{DynamicResource AppDropOverlayBrush}"
                 IsHitTestVisible="False"
                 IsVisible="False"
+                Opacity="0"
                 ZIndex="200">
+            <Border.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="{StaticResource EaseEnter}" />
+                </Transitions>
+            </Border.Transitions>
             <Border Margin="28"
                     Padding="40"
                     HorizontalAlignment="Stretch"

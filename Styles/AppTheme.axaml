@@ -158,4 +158,28 @@
     <CornerRadius x:Key="RadiusHeaderNav">999</CornerRadius>
     <CornerRadius x:Key="CardRadius">10</CornerRadius>
 
+    <!--  ==================== 动效  ====================
+
+        动效只表达三件事，多一件都是噪音：
+
+          反馈   我点到了      100ms   按住回缩 1.5% / 底色加深
+          转场   我从哪来      150~250ms  页面、浮层、列表依次落定
+          持续   它还在跑      线性给进度，正弦给呼吸
+
+        时长只取 50ms 阶梯（100 / 150 / 200 / 250 / 300），
+        与 Fluent 2 / Material 3 的节奏表同源；不写 120、160、180 这类"看着顺眼"的数。
+
+        曲线三条，分工固定：
+          进 → decelerate（先快后慢，内容"落定"）
+          出 → accelerate（先慢后快，内容"快走"，且比进场短）
+          反馈 → easy-ease（进出对称，用来确认"我点到了"）
+    -->
+
+    <SplineEasing x:Key="EaseFeedback" X1="0.33" Y1="0" X2="0.67" Y2="1" />
+    <SplineEasing x:Key="EaseEnter" X1="0.05" Y1="0.7" X2="0.1" Y2="1" />
+    <SplineEasing x:Key="EaseExit" X1="0.3" Y1="0" X2="1" Y2="1" />
+
+    <!--  按住回缩幅度：1.5%。再大就像果冻，再小就感觉不到  -->
+    <x:Double x:Key="PressScale">0.985</x:Double>
+
 </ResourceDictionary>

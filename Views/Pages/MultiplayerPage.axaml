@@ -149,7 +149,14 @@
                             <Ellipse x:Name="statusDot" Grid.Column="0"
                                      Width="10" Height="10"
                                      VerticalAlignment="Center"
-                                     Fill="{DynamicResource SystemFillColorCriticalBrush}" />
+                                     Fill="{DynamicResource SystemFillColorCriticalBrush}">
+                                <!--  连上 / 断开时颜色渐变，不是"啪"地换色  -->
+                                <Ellipse.Transitions>
+                                    <Transitions>
+                                        <BrushTransition Property="Fill" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                                    </Transitions>
+                                </Ellipse.Transitions>
+                            </Ellipse>
 
                             <TextBlock Grid.Column="1" Margin="10,0,12,0"
                                        VerticalAlignment="Center"
@@ -345,7 +352,13 @@
                             <Ellipse x:Name="lanModDot" Grid.Column="0"
                                      Width="10" Height="10"
                                      VerticalAlignment="Center"
-                                     Fill="{DynamicResource SystemFillColorCriticalBrush}" />
+                                     Fill="{DynamicResource SystemFillColorCriticalBrush}">
+                                <Ellipse.Transitions>
+                                    <Transitions>
+                                        <BrushTransition Property="Fill" Duration="0:0:0.1" Easing="{StaticResource EaseFeedback}" />
+                                    </Transitions>
+                                </Ellipse.Transitions>
+                            </Ellipse>
                             <TextBlock Grid.Column="1" Margin="10,0,0,0"
                                        VerticalAlignment="Center"
                                        Classes="body"

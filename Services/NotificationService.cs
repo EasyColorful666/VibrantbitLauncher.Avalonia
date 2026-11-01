@@ -28,9 +28,11 @@ namespace VibrantbitLauncher.Services
         /// <summary>同时最多保留几条（超出时最旧的先飞出去）。</summary>
         private const int MaxVisible = 4;
 
-        private const double EnterOffsetX = 28;
-        private const double ExitOffsetX = 28;
-        private const int EnterMs = 190;
+        private const double EnterOffsetX = 24;
+        private const double ExitOffsetX = 24;
+
+        /// <summary>进场 200ms / 出场 150ms：出场更快，符合"提示一闪就走"的直觉。</summary>
+        private const int EnterMs = 200;
         private const int ExitMs = 150;
 
         public NotificationService(Panel host)
@@ -80,8 +82,10 @@ namespace VibrantbitLauncher.Services
                 bar.CloseButtonClick += (_, _) => Dismiss(snack, animated: false);
 
                 // 起点先摆好，再加入可视树：否则会先闪一帧完整内容再跳回去
+                // 精简档只淡入（横向位移属于装饰）
+                var enterOffset = MotionSettings.AllowMovement ? EnterOffsetX : 0d;
                 if (MotionSettings.Enabled)
-                    AnimationHelper.PrepareSlideX(bar, 0, EnterOffsetX);
+                    AnimationHelper.PrepareSlideX(bar, 0, enterOffset);
 
                 _snacks.Add(snack);
                 _host.Children.Add(bar);
@@ -91,8 +95,9 @@ namespace VibrantbitLauncher.Services
                     _ = AnimationHelper.AnimateSlideXAsync(
                         bar,
                         fromOpacity: 0, toOpacity: 1,
-                        fromOffsetX: EnterOffsetX, toOffsetX: 0,
-                        duration: TimeSpan.FromMilliseconds(EnterMs));
+                        fromOffsetX: enterOffset, toOffsetX: 0,
+                        duration: MotionSettings.Ms(EnterMs),
+                        MotionSettings.Enter);
                 }
 
                 RestartTimer(snack);
@@ -154,12 +159,15 @@ namespace VibrantbitLauncher.Services
             {
                 try
                 {
+                    // 先清掉进场留下的横向局部值，否则退出动画会从"上一轮的 0"起算
+                    var exitOffset = MotionSettings.AllowMovement ? ExitOffsetX : 0d;
+
                     await AnimationHelper.AnimateSlideXAsync(
                         snack.Bar,
                         fromOpacity: 1, toOpacity: 0,
-                        fromOffsetX: 0, toOffsetX: ExitOffsetX,
-                        duration: TimeSpan.FromMilliseconds(ExitMs),
-                        easing: new CubicEaseIn());
+                        fromOffsetX: 0, toOffsetX: exitOffset,
+                        duration: MotionSettings.Ms(ExitMs),
+                        easing: MotionSettings.Exit);
                 }
                 catch (Exception ex)
                 {
