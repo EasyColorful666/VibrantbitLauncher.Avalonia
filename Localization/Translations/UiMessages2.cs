@@ -219,10 +219,10 @@ internal static class UiMessages2
         // ===== 局域网联机模组 =====
         d["进游戏 → Esc → 对局域网开放。新出现的「正版验证」按钮选「禁用 + 修复 UUID」"] =
             "In-game → Esc → Open to LAN. On the new “Online mode” button choose “Disable + fix UUID”";
-        d["（离线玩家能进，同时尽量保留老玩家的背包和 UUID）；端口可以自己改。"] =
-            " (offline players can join while existing inventories and UUIDs are kept); the port is yours to change.";
-        d["朋友用你的 EasyTier 虚拟 IP + 这个端口连接；路由器支持 UPnP 的话，"] =
-            "Friends connect with your EasyTier virtual IP plus this port. If your router supports UPnP,";
+        d["（离线玩家能进，同时尽量保留老玩家的背包和 UUID）。"] =
+            " (offline players can join while existing inventories and UUIDs are kept).";
+        d["开好房之后，房间会自动出现在好友的多人游戏列表里，不用再交代端口也不用抄 IP。"] =
+            "Once the room is open it shows up in your friends' server list automatically — no ports or IPs to pass around.";
         d["在同一个界面把 UPnP 打开就能走公网直连。"] =
             "turn UPnP on in the same screen to allow direct internet connections.";
         d["未安装"] = "Not installed";

@@ -143,6 +143,15 @@ public partial class App : Application
             var toolbox = Services.GetRequiredService<ToolboxService>();
             AppServices.Toolbox = toolbox;
 
+            // ⑤.7 房间自动上架：启动即开始轮询房间状态。
+            //
+            // 它自己判断「联机有没有在跑、我是房主还是房客、游戏开没开房」，
+            // 空闲时只是每 1.5 秒看一眼，不占什么资源；放在这里启动是因为
+            // 联机有可能是在工具箱里被拉起来的，页面没打开也得工作。
+            var lanRoom = Services.GetRequiredService<LanRoomBridge>();
+            AppServices.LanRoom = lanRoom;
+            lanRoom.Start();
+
             TrayIconHost? tray = null;
             try
             {
@@ -590,6 +599,7 @@ public partial class App : Application
                 // 「哪个实例在跑」+ 游戏内工具箱（热键只在游戏运行时注册）
                 services.AddSingleton<GameSessionService>();
                 services.AddSingleton<ToolboxService>();
+                services.AddSingleton<LanRoomBridge>();
 
                 // 主窗口与视图模型
                 services.AddSingleton<MainWindowViewModel>();

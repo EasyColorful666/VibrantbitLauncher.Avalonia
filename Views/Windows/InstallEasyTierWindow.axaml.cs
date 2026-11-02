@@ -33,7 +33,12 @@ public partial class InstallEasyTierWindow : UserControl, Services.IInlinePage
 
         // 和 EasyTierService 用同一个基准目录，避免安装到这里、启动时去那里找。
         var vblDirectory = EasyTierService.VblDirectory;
-        var zipPath = Path.Combine(vblDirectory, "easytier-windows-x86_64-v2.6.4.zip");
+
+        // 按当前平台拼文件名：EasyTier 每个平台发一个 zip
+        // （easytier-windows-x86_64 / -linux-aarch64 / -macos-x86_64 …），
+        // 以前这里写死了 windows 包，Linux 上一装解压出来是 .exe，核心自然起不来。
+        var assetName = EasyTierService.ReleaseAssetName;
+        var zipPath = Path.Combine(vblDirectory, assetName);
 
         try
         {
@@ -42,7 +47,7 @@ public partial class InstallEasyTierWindow : UserControl, Services.IInlinePage
             statusText.Text = "正在下载 EasyTier 核心…";
 
             await DownloadWithProgressAsync(
-                "https://v4.gh-proxy.org/https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-windows-x86_64-v2.6.4.zip",
+                $"https://v4.gh-proxy.org/https://github.com/EasyTier/EasyTier/releases/download/v{EasyTierService.CoreVersion}/{assetName}",
                 zipPath);
 
             statusText.Text = "正在解压…";
@@ -51,14 +56,46 @@ public partial class InstallEasyTierWindow : UserControl, Services.IInlinePage
             if (File.Exists(zipPath))
                 File.Delete(zipPath);
 
+            // zip 不带 Unix 权限位：Linux / macOS 上解压出来的核心默认不可执行，
+            // 启动时会直接「Permission denied」。这里显式补 0755。
+            if (!OperatingSystem.IsWindows())
+            {
+                foreach (var exe in new[]
+                         {
+                             EasyTierService.ResolveCoreExecutable(),
+                             EasyTierService.ResolveCliExecutable(),
+                         })
+                {
+                    if (exe is not null)
+                        MakeExecutable(exe);
+                }
+            }
+
             statusText.Text = "安装完成";
             Services.InlineHost.Close();
         }
         catch (Exception ex)
         {
-            Serilog.Log.Error(ex, "下载 / 解压 EasyTier 核心失败");
+            Serilog.Log.Error(ex, "下载 / 解压 EasyTier 核心失败（{Asset}）", assetName);
             statusText.Text = $"安装失败：{ex.Message}";
             button1.IsEnabled = true;
+        }
+    }
+
+    /// <summary>给解压出来的核心补上可执行位（zip 不保留 Unix 权限）。</summary>
+    private static void MakeExecutable(string path)
+    {
+        try
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "设置可执行权限失败：{Path}", path);
         }
     }
 

@@ -173,9 +173,9 @@ internal static class UiMessages4
         d["选择 Minecraft 文件夹"] = "Choose the Minecraft folder";
         d["已切换到新的 Minecraft 文件夹"] = "Switched to the new Minecraft folder";
         d["切换文件夹失败："] = "Couldn't switch folders: ";
-        d["选择 java.exe"] = "Choose java.exe";
-        d["这个文件不是可用的 Java（同目录下应当有 java.dll）"] =
-            "That file isn't a usable Java (there should be a java.dll next to it)";
+        d["选择 Java 可执行文件"] = "Choose the Java executable";
+        d["这个文件不是可用的 Java（没找到对应的 Java 运行时）"] =
+            "That file isn't a usable Java (its runtime is missing)";
         d["选择 Java 失败："] = "Couldn't select Java: ";
         d["已切换 Java：{0}"] = "Switched Java: {0}";
         d["选择字体文件"] = "Choose a font file";
@@ -239,6 +239,9 @@ internal static class UiMessages4
         d["无法定位实例目录：{0}"] = "Couldn't locate the instance folder: {0}";
         d["已添加到 {0}：{1}"] = "Added to {0}: {1}";
         d["已保存到：{0}"] = "Saved to: {0}";
+        d["开始下载「{0}」"] = "Downloading “{0}”…";
+        d["已取消下载「{0}」"] = "Cancelled “{0}”";
+        d["资源下载"] = "Resource download";
         d["文件已保存到：{0}"] = "File saved to: {0}";
         d["下载失败：服务器返回 {0}，请稍后重试"] =
             "Download failed: the server returned {0}. Try again later.";
@@ -402,10 +405,10 @@ internal static class UiMessages4
         d["还没有房间码。"] = "No room code yet.";
         d["请先填入房主给你的联机码。"] = "Enter the room code your host gave you first.";
         d["正在连接虚拟网络…"] = "Connecting to the virtual network…";
-        d["下一步：进游戏「对局域网开放」，让好友在「多人游戏 → 直接连接」里填你的虚拟 IP。"] =
-            "Next: open to LAN in-game, then have friends enter your virtual IP under Multiplayer → Direct Connect.";
-        d["下一步：进游戏「多人游戏 → 直接连接」，填房主的虚拟 IP。"] =
-            "Next: in-game, use Multiplayer → Direct Connect with the host's virtual IP.";
+        d["下一步：进游戏「对局域网开放」，房间会自动出现在好友的服务器列表里。"] =
+            "Next: open to LAN in-game — the room shows up in your friends' server list automatically.";
+        d["下一步：等房主开房，房间会自动出现在你的多人游戏列表里。"] =
+            "Next: wait for the host to open the room — it shows up in your multiplayer list automatically.";
         d["启动联机出错：{0}"] = "Error starting multiplayer: {0}";
         d["已断开虚拟网络。"] = "Disconnected from the virtual network.";
         d["断开联机出错：{0}"] = "Error disconnecting: {0}";

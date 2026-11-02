@@ -262,5 +262,19 @@ internal static class UiMessages1
         d["启动 EasyTier 失败：无法创建核心进程。"] =
             "Couldn't start EasyTier: the core process wasn't created.";
         d["正在加入虚拟网络…"] = "Joining the virtual network…";
+
+        // ===== 房间自动上架 =====
+        d["启动游戏后按 Esc → 对局域网开放，房间会自动出现在好友的服务器列表里"] =
+            "In game, press Esc → Open to LAN — the room shows up in your friends' server list automatically";
+        d["等待房主开房…"] = "Waiting for the host to open the room…";
+        d["等待房主在游戏里「对局域网开放」…"] =
+            "Waiting for the host to press Open to LAN…";
+        d["房间已就绪：好友的多人游戏列表里会直接出现「{0}」"] =
+            "Room is live: your friends will see “{0}” in their server list";
+        d["已把「{0}」加入服务器列表，进游戏打开多人游戏双击就能进"] =
+            "Added “{0}” to the server list — just open Multiplayer and double-click it";
+        d["房间转发没能启动：{0}"] = "Couldn't start the room relay: {0}";
+        d["房间已找到（{0}），但没能写进服务器列表：{1}"] =
+            "Room found ({0}) but it couldn't be added to the server list: {1}";
     }
 }

@@ -506,14 +506,14 @@ public static class FileDownloader
     private const int DefaultChunkCount = 4;
 
     /// <summary>分块数硬上限（与 <see cref="DownloadEngine"/> 的 MaxChunks 保持一致）。</summary>
-    private const int MaxChunkCount = 16;
+    private const int MaxChunkCount = 64;
 
     /// <summary>
     /// 取本次下载使用的分块数。
     ///
     /// <para>
     /// 用户的意图优先：设置页选了 1 就是单连接（镜像限流时的逃生阀），
-    /// 选了 16 就切 16 块。只有值为 0 / 负数（旧配置没这个字段）才回退默认值。
+    /// 选了 64 就切 64 块。只有值为 0 / 负数（旧配置没这个字段）才回退默认值。
     /// </para>
     /// </summary>
     internal static int ResolveChunkCount()

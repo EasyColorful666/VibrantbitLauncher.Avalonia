@@ -124,9 +124,9 @@ public static class VanillaDownloader
                 speedText);
         };
 
-        // 并发数以设置页的「同时下载文件数」为准（上限 16，避免误填把网络或磁盘打满）。
+        // 并发数以设置页的「同时下载文件数」为准（上限 32，与设置页档位一致）。
         // 注意：这是「文件级」并发；单个文件内部还由 MinecraftLaunch 自己分片。
-        var parallelism = SettingsService.ResolveDownloadConcurrency(16);
+        var parallelism = SettingsService.ResolveDownloadConcurrency(32);
 
         try
         {
@@ -168,24 +168,32 @@ public static class VanillaDownloader
     private static async Task<string> DownloadJsonAsync(VersionManifestEntry entry, CancellationToken ct = default)
     {
         var official = entry.Url;
-        var mirror = DownloadSources.VersionJsonMirror(entry.Id);
+        var mirrors = DownloadSources.VersionJsonMirrors(entry.Id);
 
-        var candidates = new List<string>(2);
+        var candidates = new List<string>(mirrors.Count + 1);
         void Add(string url)
         {
             if (!string.IsNullOrEmpty(url) && !candidates.Contains(url, StringComparer.OrdinalIgnoreCase))
                 candidates.Add(url);
         }
 
-        if (SettingsService.Current.UseBmclMirror)
+        // 「固定镜像」不试官方；其余模式都留官方当兜底。
+        // 多重自定义源时每个根都是一份候选，前后顺序就是用户填的顺序。
+        switch (SettingsService.DownloadSourceMode)
         {
-            Add(mirror);
-            Add(official);
-        }
-        else
-        {
-            Add(official);
-            Add(mirror);
+            case "Mirror":
+                foreach (var mirror in mirrors) Add(mirror);
+                break;
+
+            case "Official":
+                Add(official);
+                foreach (var mirror in mirrors) Add(mirror);
+                break;
+
+            default:
+                foreach (var mirror in mirrors) Add(mirror);
+                Add(official);
+                break;
         }
 
         if (candidates.Count == 0)

@@ -1,4 +1,4 @@
-namespace VibrantbitLauncher.Localization.Translations;
+﻿namespace VibrantbitLauncher.Localization.Translations;
 
 /// <summary>
 /// 词表第一块：窗口按钮、账户卡片、下载中心与版本列表。
@@ -104,6 +104,9 @@ internal static class UiShell
         d["安装目录"] = "Install folder";
         d["浏览…"] = "Browse…";
         d["可下载的版本"] = "Available versions";
+        d["可安装的版本"] = "Available to install";
+        d["优先通过系统包管理器安装；装不上时自动下载官方压缩包，装到下面这个目录"] =
+            "Installs through your system package manager first; if that fails it downloads the official archive and unpacks it into the folder below.";
         d["正在获取版本列表…"] = "Fetching version list…";
         d["下载"] = "Download";
         d["已安装"] = "Installed";

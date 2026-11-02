@@ -703,7 +703,7 @@ public static class ModpackInstaller
                 manifest.Files,
                 new ParallelOptions
                 {
-                    MaxDegreeOfParallelism = SettingsService.ResolveDownloadConcurrency(8),
+                    MaxDegreeOfParallelism = SettingsService.ResolveDownloadConcurrency(32),
                     CancellationToken = ct,
                 },
                 async (file, token) =>

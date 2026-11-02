@@ -284,8 +284,8 @@ internal static class UiMessages3
         d["联机服务未启动"] = "Multiplayer service is off";
         d["虚拟网络已就绪（房主），等待好友加入"] =
             "Virtual network ready (host) — waiting for friends";
-        d["已加入虚拟网络（房客），可以在游戏里直接连接"] =
-            "Joined the virtual network (guest) — you can connect in-game now";
+        d["已加入虚拟网络（房客），房主开房后房间会自动出现"] =
+            "Joined the virtual network (guest) — the room appears as soon as the host opens it";
         d["还没有安装任何 Minecraft 实例，请先在「下载」页装一个版本"] =
             "No Minecraft instance yet — install a version from the Download page";
         d["已安装 {0}，开房后按下面的说明操作即可"] =
@@ -324,10 +324,10 @@ internal static class UiMessages3
         d["本次实际使用 {0}，另有 {1} 个备用节点"] =
             "Using {0} this time, with {1} backup node(s)";
         d["本次实际使用 {0}"] = "Using {0} this time";
-        d["虚拟网络已启动。请进游戏执行「对局域网开放」，再把联机码和你的虚拟 IP 发给好友"] =
-            "The virtual network is up. Open to LAN in-game, then send friends the room code and your virtual IP.";
-        d["已加入虚拟网络。进游戏后在「多人游戏 → 直接连接」里填房主的虚拟 IP"] =
-            "Joined the virtual network. In-game, use Multiplayer → Direct Connect with the host's virtual IP.";
+        d["虚拟网络已启动。进游戏按 Esc → 对局域网开放，房间会自动出现在好友的服务器列表里；别忘了把联机码发给好友"] =
+            "The virtual network is up. In game press Esc → Open to LAN; the room shows up in your friends' server list automatically. Don't forget to send them the room code.";
+        d["已加入虚拟网络。房主开房后，房间会自动出现在你的多人游戏列表里"] =
+            "Joined the virtual network. Once the host opens the room it shows up in your multiplayer list automatically.";
         d["联机服务启动出错：{0}"] = "Error starting the multiplayer service: {0}";
         d["联机服务已停止"] = "Multiplayer service stopped";
         d["停止联机服务出错：{0}"] = "Error stopping the multiplayer service: {0}";

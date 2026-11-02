@@ -692,7 +692,7 @@ public partial class ModPage : UserControl
         _isDownloading = true;
         try
         {
-            await DownloadFileAsync(downloadUrl, savePath);
+            await DownloadFileAsync(downloadUrl, savePath, Path.GetFileName(savePath));
         }
         finally
         {
@@ -762,12 +762,15 @@ public partial class ModPage : UserControl
         _isDownloading = true;
         try
         {
-            var ok = await DownloadFileAsync(downloadUrl, targetPath);
-            if (ok)
-            {
-                var shown = GameInstanceHelper.DescribeInstanceFolder(instance.Id, _instanceSubfolder);
-                AppServices.Notifications?.Success($"已添加到 {instance.Id}：{shown}/{Path.GetFileName(targetPath)}");
-            }
+            // 「已添加到哪个实例的哪个目录」是这次下载真正的结果，作为结束提示发出去，
+            // 避免再补一条「文件已保存到…」把人看花。
+            var shown = GameInstanceHelper.DescribeInstanceFolder(instance.Id, _instanceSubfolder);
+
+            await DownloadFileAsync(
+                downloadUrl,
+                targetPath,
+                info.Name,
+                $"已添加到 {instance.Id}：{shown}/{Path.GetFileName(targetPath)}");
         }
         finally
         {
@@ -789,10 +792,17 @@ public partial class ModPage : UserControl
     /// 界面上那个数字要跟「任务中心的总速度」一致，而不是这个文件自己的局部速度。
     /// </para>
     /// </summary>
-    private static async Task<bool> DownloadFileAsync(string downloadUrl, string savePath)
+    private static async Task<bool> DownloadFileAsync(
+        string downloadUrl, string savePath, string displayName, string? successMessage = null)
     {
         var taskService = AppServices.Provider?.GetService(typeof(DownloadTaskService)) as DownloadTaskService;
         var task = taskService?.CreateTask(Path.GetFileName(savePath), DownloadTaskType.ModDownload);
+
+        // 「开始」与「结束」各一句：文件大的时候下载要十几秒，中间只有右上角的任务中心在动，
+        // 点了按钮没有任何反馈会让人以为没点上，进而重复点。两句都用同一个标题，
+        // 结束时的那一句会把目录 / 失败原因一起带上，不用再去任务中心翻。
+        AppServices.Notifications?.Show(
+            $"开始下载「{displayName}」", "资源下载", NotificationSeverity.Informational);
 
         try
         {
@@ -821,19 +831,21 @@ public partial class ModPage : UserControl
             });
 
             taskService?.CompleteTask(task, $"已保存到：{savePath}");
-            AppServices.Notifications?.Success($"文件已保存到：{savePath}");
+            AppServices.Notifications?.Success(
+                successMessage ?? $"文件已保存到：{savePath}", "资源下载");
             return true;
         }
         catch (OperationCanceledException)
         {
             taskService?.CancelTask(task, "已取消");
+            AppServices.Notifications?.Show($"已取消下载「{displayName}」", "资源下载");
             return false;
         }
         catch (Exception ex)
         {
             var message = DescribeDownloadError(ex);
             taskService?.FailTask(task, message);
-            AppServices.Notifications?.Error(message);
+            AppServices.Notifications?.Error(message, "资源下载");
             return false;
         }
     }

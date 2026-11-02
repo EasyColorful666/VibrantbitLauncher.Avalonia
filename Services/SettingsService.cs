@@ -192,9 +192,21 @@ namespace VibrantbitLauncher.Services
         // ===== 网络 · 下载 =====
         /// <summary>
         /// 下载源策略：Auto（自动测速，镜像优先并允许官方兜底）/
-        /// Mirror（固定镜像，镜像不可用也不回退）/ Official（官方优先）。
+        /// Mirror（固定镜像，镜像不可用也不回退）/ Official（官方优先）/
+        /// Custom（自定义源优先，官方兜底）。
         /// </summary>
         public string DownloadSourceMode { get; set; } = "Auto";
+
+        /// <summary>
+        /// 自定义下载源根地址，一行一个（<see cref="AppSettings.DownloadSourceMode"/> = Custom 时生效）。
+        ///
+        /// <para>
+        /// 约定与 BMCLAPI 一致：根地址后面会拼 <c>/maven/</c>、<c>/fabric-meta/</c>、
+        /// <c>/version/&lt;id&gt;/json</c>、<c>/version/&lt;id&gt;/client</c> 等路径。
+        /// 允许多行，按顺序作为同一文件的备用地址（第一个用于 URL 改写，其余用于失败切换）。
+        /// </para>
+        /// </summary>
+        public string CustomDownloadSources { get; set; } = string.Empty;
 
         /// <summary>单次下载的总速度上限（KB/s，0 表示不限）。</summary>
         public int DownloadSpeedLimitKb { get; set; }
@@ -206,18 +218,23 @@ namespace VibrantbitLauncher.Services
         public bool UseBmclMirror { get; set; }
 
         /// <summary>
-        /// 同时下载的文件数（批量下载的外层并发），1~16。
+        /// 同时下载的文件数（批量下载的外层并发），1~32。
         ///
         /// <para>
         /// 和 <see cref="DownloadChunkCount"/> 是**两个维度**：
         /// 总连接数 ≈ 并发 × 分块。原先把两者混成一个「下载线程数」，
         /// 结果是想加速单个大文件时，顺手把并发文件数也一起拉高了 —— 镜像端直接 403。
         /// </para>
+        ///
+        /// <para>
+        /// 上限 32（1.0.32.0 从 16 放宽）：高速家宽上千兆后 16 路并发也未必跑满，
+        /// 但 32 × 64 已经是 2048 条连接，再高只会被镜像端限流 —— 所以到 32 为止。
+        /// </para>
         /// </summary>
         public int DownloadConcurrency { get; set; } = 6;
 
         /// <summary>
-        /// 单个文件切成几块并行下载（内层并发连接），1~16。1 表示不分块、走单连接。
+        /// 单个文件切成几块并行下载（内层并发连接），1~64。1 表示不分块、走单连接。
         /// </summary>
         public int DownloadChunkCount { get; set; } = 4;
 
@@ -234,6 +251,9 @@ namespace VibrantbitLauncher.Services
 
         /// <summary>下载失败重试次数。</summary>
         public int DownloadRetryCount { get; set; } = 4;
+
+        /// <summary>上次测速用的连接数（只记住选择，不参与实际下载）。</summary>
+        public int LastSpeedTestThreads { get; set; } = 8;
 
         // ===== 联机（EasyTier） =====
         /// <summary>EasyTier 中继节点地址，默认用本项目自己的节点。</summary>
@@ -386,8 +406,8 @@ namespace VibrantbitLauncher.Services
             if (legacy <= 0)
                 return;
 
-            Current.DownloadConcurrency = Math.Clamp(legacy, 1, 16);
-            Current.DownloadChunkCount = Math.Clamp(legacy, 1, 16);
+            Current.DownloadConcurrency = Math.Clamp(legacy, 1, 32);
+            Current.DownloadChunkCount = Math.Clamp(legacy, 1, 64);
             Current.DownloadThreads = 0;
 
             Serilog.Log.Information(
@@ -512,7 +532,7 @@ namespace VibrantbitLauncher.Services
         /// </para>
         /// </summary>
         /// <param name="max">该路径允许的上限。</param>
-        public static int ResolveDownloadConcurrency(int max = 16)
+        public static int ResolveDownloadConcurrency(int max = 32)
         {
             var value = Current.DownloadConcurrency;
             if (value <= 0)
@@ -536,9 +556,9 @@ namespace VibrantbitLauncher.Services
         /// 那条链路在每次下载时实时读 <see cref="AppSettings.DownloadConcurrency"/> 与
         /// <see cref="AppSettings.DownloadChunkCount"/>，不需要重新 Initialize。
         /// </summary>
-        /// <summary>下载源策略的规范值：Auto / Mirror / Official。</summary>
+        /// <summary>下载源策略的规范值：Auto / Mirror / Official / Custom。</summary>
         public static string DownloadSourceMode =>
-            Current.DownloadSourceMode is "Auto" or "Mirror" or "Official"
+            Current.DownloadSourceMode is "Auto" or "Mirror" or "Official" or "Custom"
                 ? Current.DownloadSourceMode
                 : "Auto";
 
@@ -888,7 +908,8 @@ namespace VibrantbitLauncher.Services
             },
             ["network"] = new[]
             {
-                nameof(AppSettings.DownloadSourceMode), nameof(AppSettings.DownloadSpeedLimitKb),
+                nameof(AppSettings.DownloadSourceMode), nameof(AppSettings.CustomDownloadSources),
+                nameof(AppSettings.DownloadSpeedLimitKb),
                 nameof(AppSettings.DownloadTimeoutSeconds), nameof(AppSettings.UseBmclMirror),
                 nameof(AppSettings.DownloadConcurrency), nameof(AppSettings.DownloadChunkCount),
                 nameof(AppSettings.DownloadRetryCount), nameof(AppSettings.EasyTierRelayServer),

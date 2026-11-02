@@ -1,4 +1,4 @@
-<ResourceDictionary xmlns="https://github.com/avaloniaui"
+﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="using:System">
 
@@ -91,8 +91,17 @@
         以前标题用 HarmonyOS Sans Black，太重，在 28px 上像海报不像工具。
     -->
 
-    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI, PingFang SC</FontFamily>
-    <FontFamily x:Key="AppDisplayFont">Segoe UI Variable Display, Microsoft YaHei UI, Segoe UI, PingFang SC</FontFamily>
+    <!--
+      字体回退链。前四个是 Windows / macOS 上已有的名字，**顺序别动**（Windows 上第一个就命中，
+      表现与以前完全一致）；后四个是 Linux 常见的中文字体名，缺了它们中文会整屏豆腐块：
+        Noto Sans CJK SC       Debian / Ubuntu 装 fonts-noto-cjk 后的族名
+        Source Han Sans SC     思源黑体（Noto 的另一个打包名）
+        WenQuanYi Micro Hei    文泉驿微米黑，老发行版常带
+        DejaVu Sans            几乎没有不装的，兜底让西文至少正常
+      Avalonia 会按顺序找第一个存在的族名，全都不存在时回落系统默认。
+    -->
+    <FontFamily x:Key="AppFont">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI, PingFang SC, Noto Sans CJK SC, Source Han Sans SC, WenQuanYi Micro Hei, DejaVu Sans</FontFamily>
+    <FontFamily x:Key="AppDisplayFont">Segoe UI Variable Display, Microsoft YaHei UI, Segoe UI, PingFang SC, Noto Sans CJK SC, Source Han Sans SC, WenQuanYi Micro Hei, DejaVu Sans</FontFamily>
 
     <!--  ==================== 字号阶梯（严格 5 档）  ====================
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -176,6 +176,16 @@ public sealed class JavaReleaseItem
 
     /// <summary>是否有可用的官方安装包（Windows 才有）。</summary>
     public bool HasInstaller => !string.IsNullOrWhiteSpace(InstallerUrl);
+
+    /// <summary>
+    /// 列表按钮上的动词。
+    ///
+    /// Windows / macOS 是真的下载压缩包再落盘；Linux 走系统包管理器（见
+    /// <c>JavaRuntimeService.InstallViaSystemPackageManagerAsync</c>），
+    /// 写成「安装」才不误导 —— 这是用户点下去会弹系统授权框的那条路。
+    /// </summary>
+    public string ActionText =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? "下载" : "安装";
 
     /// <summary>发布时间。</summary>
     public DateTimeOffset? ReleasedAt { get; init; }

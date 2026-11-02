@@ -27,12 +27,19 @@ internal static class DownloadEngine
     /// <summary>
     /// 单个文件最多切成几块。
     ///
-    /// 上限从 8 放宽到 16（1.0.9.8）：设置页现在把「分块数」独立暴露出来，
-    /// 想给单个大文件提速的用户可以拉到 16。再高没有意义 ——
-    /// 家用带宽早就跑满了，多出来的连接只会让镜像端更容易 403。
+    /// <para>
+    /// 上限从 16 放宽到 64（1.0.32.0）：千兆 / 2.5G 家宽上单个大文件只靠 16 条连接
+    /// 确实跑不满，而镜像端（BMCLAPI 的 /maven/、各家对象存储）对单连接是有速率上限的。
+    /// 64 条连接是「还能算正常客户端」的天花板 —— 再往上就容易被判定为恶意抓取。
+    /// </para>
+    ///
+    /// <para>
+    /// 注意总连接数是「文件并发 × 分块」，两个都拉满是 32 × 64 = 2048 条，
+    /// 设置页会在超过 256 时给出提示。
+    /// </para>
     /// </summary>
     private const int MinChunks = 1;
-    private const int MaxChunks = 16;
+    private const int MaxChunks = 64;
 
     /// <summary>小于这个体积不分块 —— 分块握手（每个 range 一次请求）的开销会超过收益。</summary>
     private const long ChunkyThreshold = 1024 * 1024;
@@ -146,7 +153,7 @@ internal static class DownloadEngine
     /// 选一个代理：优先 <c>HTTPS_PROXY</c>/<c>HTTP_PROXY</c> 环境变量，
     /// 否则交给系统默认代理（WinINet / WinHTTP 的设置）。
     /// </summary>
-    private static IWebProxy? BuildProxy()
+    internal static IWebProxy? BuildProxy()
     {
         foreach (var key in new[] { "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy" })
         {

@@ -11,7 +11,7 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <EnableDefaultAvaloniaItems>true</EnableDefaultAvaloniaItems>
     <!-- 版本号唯一来源：启动日志横幅、设置页「关于」均从此读取 -->
-    <Version>1.0.29.0</Version>
+    <Version>1.0.32.1</Version>
     <AssemblyName>VibrantbitLauncher.Avalonia</AssemblyName>
     <RootNamespace>VibrantbitLauncher</RootNamespace>
     <!--
@@ -209,6 +209,14 @@
     <TrimmerRootAssembly Include="Avalonia.Controls" />
     <TrimmerRootAssembly Include="Avalonia.Markup.Xaml" />
     <!--
+      tar 读取器（1.0.30.1）：Linux / macOS 上装 Java 走的是「下载官方 tar.gz 再解压」，
+      全靠 System.Formats.Tar 里的 TarReader。它在 partial 模式下属于「自己声明了
+      IsTrimmable」的那一类，会被按使用情况裁 —— 一旦裁掉某个解析分支，
+      症状是「包管理器装不上时回退安装也失败」，而 Windows 上完全看不出问题
+      （Windows 走 zip，根本不碰 tar）。整程序集保留的代价只有一百多 KB。
+    -->
+    <TrimmerRootAssembly Include="System.Formats.Tar" />
+    <!--
       运行时 XAML 加载器：主题包的 theme.axaml / styles.axaml 只有运行期才解析，
       剪裁器看不到任何静态引用，不 root 会在开剪裁的发布档里被整份摘掉，
       症状是「装好主题点了没反应」（加载返回 null，日志里一条 exception）。
@@ -313,8 +321,6 @@
     Avalonia.Desktop 会把**所有**平台后端一起带进发布目录，而运行时
     UsePlatformDetect() 只会挑本平台那一套，其余的纯属白占地方：
 
-      Avalonia.Win32
-      Avalonia.Win32.Automation                    Windows 后端 / UIA
       Avalonia.X11
       Avalonia.FreeDesktop
       Avalonia.FreeDesktop.AtSpi
@@ -324,6 +330,10 @@
       Avalonia.DesignerSupport
       Avalonia.Remote.Protocol                     设计器专用，运行时零引用
       System.Diagnostics.EventLog.Messages         事件日志资源（只有 win 载荷里有）
+
+    ⚠️ **`Avalonia.Win32` / `Avalonia.Win32.Automation` 不参与跨平台剔除**（1.0.29.1）。
+       这两个只在 win 分支里「自然保留」，linux / macOS 包也**必须带着**。
+       原因见下面「平台后端的懒加载」一段 —— 那套机制对「我们自己的代码」要求太脆。
 
     ⚠️⚠️ **`Avalonia.Metal` 在 Windows 上也是必需的，绝对不能在 win 分支里删！**（1.0.6.12 血案）
     它的名字看着像「macOS 的 Metal 图形 API」，但 Avalonia 12 的 **Win32 渲染管线实际会用到它**。
@@ -337,6 +347,28 @@
     「调试正常、单文件发布透明」就是这个原因，别再往资源字典 / 主题 / Mica 上找。
 
     每个平台实测能省 1.6 ~ 2.8 MB（**不含 Metal**）。
+
+    ── 平台后端的懒加载：能删的前提，也是最大的坑（1.0.29.1） ────────────────
+    CLR **不会**在方法被 JIT 时加载它「调用到的方法」所属的程序集，只加载
+    **它自己方法体里直接引用**的类型所在程序集。Avalonia.Desktop 的
+    UsePlatformDetect() 正是靠这一点工作的 —— 源码里把三个平台拆成
+    LoadWin32 / LoadX11 / LoadAvaloniaNative 三个小方法，注释原话：
+    "CLR doesn't try to load dependencies before referencing method is jitted"。
+
+    所以「Windows 上删掉 X11」一直没事（那次删除根本没被执行到），
+    而 Linux 上删掉 Win32 却炸了 —— 差别不在删除本身，在我们自己的代码：
+        原写法  private static Win32PlatformOptions? BuildWin32Options()
+    **方法签名里的类型会被立即解析**（JIT 要先构造签名），于是 Linux 上一调用它
+    就去加载 Avalonia.Win32，报「Could not load file or assembly」，
+    而且发生在 AppBuilder 阶段、窗口还没建，表现就是「启动即失败」。
+
+    两条结论，改代码时都别违反：
+      1. 平台专属类型只能出现在「只在本平台分支被调用」的方法**方法体**里，
+         方法签名只准用跨平台类型（返回 void 最稳）。
+      2. 那种小方法必须标 [MethodImpl(MethodImplOptions.NoInlining)]，
+         否则被内联回调用方，类型引用就又回到调用方的方法体里了。
+    即便如此，win 的两个程序集仍不参与跨平台剔除（各约 1.3MB）——
+    这是留给「以后又有人不小心」的保险。
 
     ⚠️ 注意这段是「删掉别的平台、留下本平台」，删错会直接导致目标平台起不来。
     逃生阀：`-p:SkipPlatformTrim=true` 整体关闭（出问题就用它，别在这上面猜）。
@@ -355,14 +387,20 @@
     </ItemGroup>
 
     <!-- ③ Linux：不需要 Windows / macOS 后端。
-         ⚠️ 同样保留 Avalonia.Metal（宁可多带 0.4MB，也不要赌）。 -->
+         ⚠️ 同样保留 Avalonia.Metal（宁可多带 0.4MB，也不要赌）。
+         ⚠️⚠️ **Avalonia.Win32 与 Avalonia.Win32.Automation 不再删**（1.0.29.1）。
+         懒加载机制要求「引用了它的方法没被 JIT」，这条要求由我们的代码保证太脆：
+         只要有人在公共方法签名里写一次 Win32PlatformOptions，Linux 包就启动即失败
+         （症状：Could not load file or assembly 'Avalonia.Win32'）。
+         这 1.3MB 换「任何代码改动都不会让 Linux 版起不来」，值。 -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('linux-'))">
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Win32' or&#xA;                                        '%(Filename)' == 'Avalonia.Win32.Automation' or&#xA;                                        '%(Filename)' == 'Avalonia.Native' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Native' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
     </ItemGroup>
 
-    <!-- ④ macOS：不需要 Windows / Linux 后端（Native + Metal 是 macOS 自己的，保留） -->
+    <!-- ④ macOS：不需要 Windows / Linux 后端（Native + Metal 是 macOS 自己的，保留）。
+         Win32 同理保留，理由见 ③。 -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('osx-'))">
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.Win32' or&#xA;                                        '%(Filename)' == 'Avalonia.Win32.Automation' or&#xA;                                        '%(Filename)' == 'Avalonia.X11' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or&#xA;                                        '%(Filename)' == 'Tmds.DBus.Protocol' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'Avalonia.X11' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop' or&#xA;                                        '%(Filename)' == 'Avalonia.FreeDesktop.AtSpi' or&#xA;                                        '%(Filename)' == 'Tmds.DBus.Protocol' or&#xA;                                        '%(Filename)' == 'System.Diagnostics.EventLog.Messages'" />
     </ItemGroup>
 
   </Target>
@@ -407,9 +445,25 @@
     <!-- System.Management 已移除：全项目没有任何 ManagementObject / WMI 调用 -->
 
     <!-- SkiaSharp：Avalonia 的渲染后端本来就依赖它，这里是**显式**声明，
-         供 Helpers/RgbaBitmap.cs 做皮肤 PNG 的解码 / 编码。
-         版本与 Avalonia 12.1.0 解析出的版本一致，不改变发布载荷。 -->
+         供 Helpers/RgbaBitmap.cs 做皮肤 PNG 的解码 / 编码。 -->
     <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <!--
+      ⚠️⚠️ Linux 的原生库必须**显式**跟着托管版本走（1.0.29.2 血案）
+
+      SkiaSharp 4.153.1 的 nuspec 只依赖 NativeAssets.Win32 与 NativeAssets.macOS，
+      **没有** Linux —— Linux 那份是 Avalonia.Skia 传递进来的 3.119.4。
+      于是 Linux 包变成了「托管 4.153.1 + 原生 3.119.4」，一启动就：
+
+        The version of the native libSkiaSharp library (119.0) is incompatible
+        with this version of SkiaSharp. Supported versions ... [153.0, 154.0)
+
+      Windows / macOS 一直没事，正是因为那两个平台的 native 被主包拉到了 4.153.1。
+      结论：**升 SkiaSharp 托管版本时，必须同时把 Linux 的 NativeAssets 一起升**，
+      否则只有 Linux 版起不来，而本地 Windows 调试完全看不出问题。
+
+      版本号保持与托管一致即可（4.153.x 系列都行），别落回 3.119.x。
+    -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.153.1" />
     <!-- SixLabors.ImageSharp 已移除（2 MB）：全项目仅皮肤裁剪用到，已由 SkiaSharp 顶替 -->
   </ItemGroup>
 

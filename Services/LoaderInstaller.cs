@@ -841,7 +841,7 @@ namespace VibrantbitLauncher.Services
 
             var result = await BatchDownloader.DownloadAsync(
                 items,
-                parallelism: SettingsService.ResolveDownloadConcurrency(8),
+                parallelism: SettingsService.ResolveDownloadConcurrency(16),
                 onProgress: p => onProgress(Math.Clamp(p.Percent / 100d, 0, 1)),
                 ct: ct).ConfigureAwait(false);
 

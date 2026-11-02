@@ -345,7 +345,9 @@ public static class AssetRepairService
                 return;
             }
 
-            var parallelism = SettingsService.ResolveDownloadConcurrency(8);
+            // 上限跟设置页一致（1.0.32.0 起 32）：补全往往是几百个资源文件，
+            // 并发越高越能盖住单文件的分块握手开销。
+            var parallelism = SettingsService.ResolveDownloadConcurrency(32);
 
             var result = await BatchDownloader.DownloadAsync(
                 items,

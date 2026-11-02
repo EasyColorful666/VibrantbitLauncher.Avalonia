@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -53,6 +53,11 @@ public partial class JavaDownloadPage : UserControl
         // 否则用户装到 D:\Java 后，设置页 / 启动页（走 JavaHelper 的候选扫描）会看不到这些 JDK。
         PathBox.Text = JavaRuntimeService.ResolveRuntimeRoot();
 
+        // Linux 上「安装」先走系统包管理器，装不上才落到本地目录 —— 没有自定义目录这回事，
+        // 界面跟着变（macOS 仍可自选目录，那边走的是压缩包解压）
+        if (OperatingSystem.IsLinux())
+            ApplySystemInstallUi();
+
         // 失焦时落盘 + 重扫，让「换了目录」立刻反映到下方的已安装列表
         PathBox.LostFocus += (_, _) => PersistRuntimeRoot();
 
@@ -60,6 +65,26 @@ public partial class JavaDownloadPage : UserControl
 
         // 页面构造发生在 UI 线程；首次拉列表放后台，避免阻塞页面切换。
         _ = LoadMajorsAsync();
+    }
+
+    /// <summary>
+    /// Linux 的界面调整：安装先走系统包管理器（apt / dnf / pacman…），
+    /// 装不上会自动回退「下载官方压缩包解压到路径框里这个目录」。
+    ///
+    /// <para>
+    /// 所以路径框保留、禁用、并且显示**回退时真正会用的目录**（1.0.30.1 修正）：
+    /// 之前这里锁死 <c>/usr/lib/jvm</c>，可那个目录普通用户写不进去，
+    /// 回退安装必然失败，用户看到的却是「路径没问题」。
+    /// </para>
+    /// </summary>
+    private void ApplySystemInstallUi()
+    {
+        Header.Subtitle = "优先通过系统包管理器安装；装不上时自动下载官方压缩包，装到下面这个目录";
+        ReleaseTitle.Text = "可安装的版本";
+
+        PathBox.Text = JavaRuntimeService.ResolveRuntimeRoot();
+        PathBox.IsEnabled = false;
+        BrowseButton.IsVisible = false;
     }
 
     /// <summary>把路径框里的根目录写进配置。空 / 非法路径时回退默认值，避免存进去一个坏路径。</summary>

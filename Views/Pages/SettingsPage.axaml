@@ -884,6 +884,20 @@
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
                                            Text="「自动测速」下，同一个文件的不同分片会从多个源并行取，某个源被限流只会降权，不会永久禁用。" />
 
+                                <!--  自定义源：只有选了「自定义源」才出现，避免平时占着屏幕  -->
+                                <StackPanel Margin="0,0,0,16" Spacing="8" IsVisible="{Binding IsCustomSource}">
+                                    <TextBlock Classes="groupLabel" Text="自定义源地址" />
+                                    <TextBox AcceptsReturn="True"
+                                             Height="82"
+                                             FontFamily="Consolas"
+                                             TextWrapping="NoWrap"
+                                             PlaceholderText="https://mirror.example.com"
+                                             Text="{Binding CustomDownloadSources, Mode=TwoWay}" />
+                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CustomSourceHint}" />
+                                    <TextBlock Classes="caption" Opacity="0.75" TextWrapping="Wrap"
+                                               Text="一行一个，填到域名即可。地址需要与 BMCLAPI 的路径结构兼容：启动器会在后面自动拼 /maven/、/fabric-meta/、/version/… 等路径。多个源按顺序互为备份。首次安装原版游戏时的本体与资源文件仍按内置镜像逻辑处理，自定义源主要作用于版本清单、加载器依赖、模组与资源补全。" />
+                                </StackPanel>
+
                                 <TextBlock Classes="groupLabel" Text="速度限制" />
                                 <Grid ColumnDefinitions="*,Auto">
                                     <Slider Grid.Column="0" Margin="0,0,12,0"
@@ -902,30 +916,46 @@
                                         <TextBlock Classes="caption" TextWrapping="Wrap"
                                                    Text="并发度默认按 CPU 核数与实测带宽自适应，一般不需要动。只有镜像频繁报错时才需要调低。" />
 
+                                        <!--
+                                            这两个用滑块而不是下拉框：可选项就那么十几档，
+                                            下拉框要先点开、再扫一遍列表才看得到自己在哪档；
+                                            滑块一眼就知道「现在偏左还是偏右、还能往上拉多少」。
+                                            绑的是档位下标不是档位值 —— 说明见 DownloadConcurrencyIndex。
+                                        -->
                                         <ctrl:SettingRow Header="同时下载文件数"
                                                          Description="批量下载时同时下几个文件。总连接数 ≈ 并发 × 分块">
-                                            <ComboBox Width="140"
-                                                      ItemsSource="{Binding DownloadConcurrencyOptionsList}"
-                                                      SelectedItem="{Binding DownloadConcurrency, Mode=TwoWay}">
-                                                <ComboBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding StringFormat={}{0} 个}" />
-                                                    </DataTemplate>
-                                                </ComboBox.ItemTemplate>
-                                            </ComboBox>
+                                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                                <Slider Width="168"
+                                                        Minimum="0"
+                                                        Maximum="{Binding DownloadConcurrencyMaxIndex}"
+                                                        TickFrequency="1"
+                                                        IsSnapToTickEnabled="True"
+                                                        VerticalAlignment="Center"
+                                                        Value="{Binding DownloadConcurrencyIndex, Mode=TwoWay}" />
+                                                <TextBlock Classes="caption"
+                                                           MinWidth="40"
+                                                           TextAlignment="Right"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding DownloadConcurrency, StringFormat={}{0} 个}" />
+                                            </StackPanel>
                                         </ctrl:SettingRow>
 
                                         <ctrl:SettingRow Header="单文件分块数"
                                                          Description="每个文件切成几块并行下载。1 表示不分块，小文件时更快">
-                                            <ComboBox Width="140"
-                                                      ItemsSource="{Binding DownloadChunkOptionsList}"
-                                                      SelectedItem="{Binding DownloadChunkCount, Mode=TwoWay}">
-                                                <ComboBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding StringFormat={}{0} 块}" />
-                                                    </DataTemplate>
-                                                </ComboBox.ItemTemplate>
-                                            </ComboBox>
+                                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                                <Slider Width="168"
+                                                        Minimum="0"
+                                                        Maximum="{Binding DownloadChunkMaxIndex}"
+                                                        TickFrequency="1"
+                                                        IsSnapToTickEnabled="True"
+                                                        VerticalAlignment="Center"
+                                                        Value="{Binding DownloadChunkIndex, Mode=TwoWay}" />
+                                                <TextBlock Classes="caption"
+                                                           MinWidth="40"
+                                                           TextAlignment="Right"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding DownloadChunkCount, StringFormat={}{0} 块}" />
+                                            </StackPanel>
                                         </ctrl:SettingRow>
 
                                         <ctrl:SettingRow Header="失败重试次数" Description="单个文件下载失败后的重试上限">
@@ -952,8 +982,114 @@
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
                                         </ctrl:SettingRow>
+
+                                        <TextBlock Classes="caption" TextWrapping="Wrap"
+                                                   Text="{Binding ConnectionsHint}" />
                                     </StackPanel>
                                 </ui:FASettingsExpander>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="card" Margin="{StaticResource CardGap}" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Classes="sectionTitle" Margin="0,0,0,4" Text="网络体检" />
+                                <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
+                                           Text="按「域名解析 → 建立连接 → 请求响应」三段分别计时，一眼看出慢在哪一段。体检只读前几 KB 数据，不会真的把文件下载下来。" />
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                                    <StackPanel Grid.Column="0"
+                                                Orientation="Horizontal"
+                                                Spacing="8"
+                                                VerticalAlignment="Center">
+                                        <TextBlock Classes="caption" VerticalAlignment="Center" Text="测速连接数" />
+                                        <ComboBox Width="104"
+                                                  ItemsSource="{Binding SpeedThreadList}"
+                                                  SelectedItem="{Binding SpeedThreads, Mode=TwoWay}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding StringFormat={}{0} 条}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                        <Button Command="{Binding RunNetworkCheckCommand}"
+                                                Content="开始体检"
+                                                IsEnabled="{Binding !IsNetworkBusy}" />
+                                        <Button Classes="accent"
+                                                Command="{Binding RunSpeedTestCommand}"
+                                                Content="多线程测速"
+                                                IsEnabled="{Binding !IsNetworkBusy}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding NetworkCheckStatus}" />
+
+                                <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding NetworkProbeRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="services:NetworkProbeResult">
+                                            <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+                                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                    <TextBlock Classes="body" Text="{Binding Name}" />
+                                                    <TextBlock Classes="caption"
+                                                               Margin="0,2,0,0"
+                                                               Opacity="0.8"
+                                                               TextWrapping="Wrap"
+                                                               Text="{Binding Detail}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                                                    <TextBlock Classes="caption"
+                                                               HorizontalAlignment="Right"
+                                                               FontWeight="SemiBold"
+                                                               Text="{Binding Verdict}" />
+                                                    <TextBlock Classes="caption"
+                                                               HorizontalAlignment="Right"
+                                                               Opacity="0.7"
+                                                               Text="{Binding LatencyText}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--  测速结果：一根细线隔开，不再套一层卡片  -->
+                                <StackPanel Margin="0,4,0,0" Spacing="8" IsVisible="{Binding HasSpeedTestResult}">
+                                    <Border Height="1" Margin="0,8,0,4" Background="{DynamicResource HairlineBrush}" />
+                                    <TextBlock Classes="caption" Text="{Binding SpeedTargetText}" />
+                                    <Grid ColumnDefinitions="*,*,*,*">
+                                        <StackPanel Grid.Column="0" Spacing="2">
+                                            <TextBlock Classes="caption" Text="单连接" />
+                                            <TextBlock Classes="number"
+                                                       FontSize="{DynamicResource FontSizeSubtitle}"
+                                                       Text="{Binding SpeedSingleText}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Classes="caption" Text="多连接合计" />
+                                            <TextBlock Classes="number"
+                                                       FontSize="{DynamicResource FontSizeSubtitle}"
+                                                       Text="{Binding SpeedMultiText}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Spacing="2">
+                                            <TextBlock Classes="caption" Text="瞬时峰值" />
+                                            <TextBlock Classes="number"
+                                                       FontSize="{DynamicResource FontSizeSubtitle}"
+                                                       Text="{Binding SpeedPeakText}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" Spacing="2">
+                                            <TextBlock Classes="caption" Text="多线程提升" />
+                                            <TextBlock Classes="number"
+                                                       FontSize="{DynamicResource FontSizeSubtitle}"
+                                                       Text="{Binding SpeedGainText}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SpeedAdviceText}" />
+                                </StackPanel>
+
+                                <TextBlock Classes="caption"
+                                           Margin="0,10,0,0"
+                                           Opacity="0.7"
+                                           TextWrapping="Wrap"
+                                           Text="{Binding SpeedTestStatus}" />
                             </StackPanel>
                         </Border>
 

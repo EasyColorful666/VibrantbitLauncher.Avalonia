@@ -317,8 +317,8 @@ public partial class ToolboxWindow : Window
             {
                 // 下一步该做什么放 Detail 这行：状态行由定时器占用，写了也留不住
                 MultiplayerDetail.Text = host
-                    ? "下一步：进游戏「对局域网开放」，让好友在「多人游戏 → 直接连接」里填你的虚拟 IP。"
-                    : "下一步：进游戏「多人游戏 → 直接连接」，填房主的虚拟 IP。";
+                    ? "下一步：进游戏「对局域网开放」，房间会自动出现在好友的服务器列表里。"
+                    : "下一步：等房主开房，房间会自动出现在你的多人游戏列表里。";
             }
         }
         catch (Exception ex)

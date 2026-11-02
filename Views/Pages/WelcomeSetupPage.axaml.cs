@@ -57,11 +57,17 @@ public partial class WelcomeSetupPage : UserControl
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择 java.exe",
+            Title = "选择 Java 可执行文件",
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("Java 可执行文件") { Patterns = new[] { "java.exe", "javaw.exe" } },
+                // Linux / macOS 就是 bin/java，没有扩展名；按 *.exe 过滤会一个文件都选不到。
+                new FilePickerFileType("Java 可执行文件")
+                {
+                    Patterns = OperatingSystem.IsWindows()
+                        ? new[] { "java.exe", "javaw.exe" }
+                        : new[] { "java" }
+                },
                 FilePickerFileTypes.All
             }
         });

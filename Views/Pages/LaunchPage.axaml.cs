@@ -269,14 +269,18 @@ namespace VibrantbitLauncher.Views.Pages
                 if (picker is null)
                     return;
 
-                var path = await picker.PickFileAsync("选择 java.exe", "exe");
+                // Linux / macOS 的 java 是 bin/java（没有扩展名），按 *.exe 过滤会把整个目录滤空，
+                // 所以只在 Windows 上按扩展名过滤。
+                var path = OperatingSystem.IsWindows()
+                    ? await picker.PickFileAsync("选择 Java 可执行文件", "exe")
+                    : await picker.PickFileAsync("选择 Java 可执行文件");
                 if (string.IsNullOrWhiteSpace(path))
                     return;
 
                 if (!JavaHelper.IsUsableJava(path))
                 {
                     AppServices.Notifications?.Warning(
-                        "这个文件不是可用的 Java（同目录下应当有 java.dll）", "快捷设置");
+                        "这个文件不是可用的 Java（没找到对应的 Java 运行时）", "快捷设置");
                     return;
                 }
 

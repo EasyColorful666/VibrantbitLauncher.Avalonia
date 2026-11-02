@@ -43,6 +43,14 @@ namespace VibrantbitLauncher.Services
         /// 键位被占用时会退到备选，所以文案不能写死。
         /// </summary>
         public static ToolboxService? Toolbox { get; set; }
+
+        /// <summary>
+        /// 房间自动上架（DI 单例）。
+        ///
+        /// 房主开房后把随机端口固定成 25565 转发出去，房客据此把房间写进 servers.dat，
+        /// 玩家的多人游戏列表里就直接有这个房间了 —— 不用再手抄 IP 和端口。
+        /// </summary>
+        public static LanRoomBridge? LanRoom { get; set; }
     }
 
     /// <summary>

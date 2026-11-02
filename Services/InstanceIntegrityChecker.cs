@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VibrantbitLauncher.Services;
@@ -327,8 +328,22 @@ public static class InstanceIntegrityChecker
     /// <summary>
     /// 极简 rules 判定：只有显式声明了 os 规则时才有意义。
     /// 没有 rules → 适用；有 rules → 最后一条匹配的 allow/disallow 决定。
+    ///
+    /// <para>
+    /// ⚠️ 这里的「当前系统」**必须按实际平台判断**。1.0.30.x 之前它写死成 <c>"windows"</c>，
+    /// 于是 Linux / macOS 上出现的是完全相反的结果：<c>natives-windows</c> 因为
+    /// 「os.name 就是 windows，匹配成功」被留下，而 <c>natives-linux</c> 被判成「不是 windows」
+    /// 全部剔除 —— 界面上就变成「Linux 机器缺一堆 Windows 依赖」。
+    /// </para>
     /// </summary>
     internal static bool IsAllowedOnThisOs(JsonElement lib)
+        => IsAllowedOnOs(lib, CurrentOsName, CurrentOsArch);
+
+    /// <summary>
+    /// 按给定平台做 rules 判定（拆出来是为了能在测试里用别的平台口径跑一遍 ——
+    /// 这段逻辑一旦写错，Windows 上完全正常、只有 Linux / macOS 会错，最难发现）。
+    /// </summary>
+    internal static bool IsAllowedOnOs(JsonElement lib, string osName, Architecture osArch)
     {
         if (!lib.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
             return true;
@@ -341,14 +356,24 @@ public static class InstanceIntegrityChecker
             {
                 if (os.TryGetProperty("name", out var nameEl)
                     && nameEl.GetString() is { Length: > 0 } name
-                    && !string.Equals(name, "windows", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(name, osName, StringComparison.OrdinalIgnoreCase))
                 {
                     matches = false;
                 }
+
+                // arch 只在显式给出且有对应处理时才判，避免把没见过的架构值当成「不匹配」。
+                // x86 = 32 位、arm64 = ARM 64 位，其余（x86_64 / arm32 等）不参与判定。
+                if (matches
+                    && os.TryGetProperty("arch", out var archEl)
+                    && archEl.GetString() is { Length: > 0 } arch)
+                {
+                    if (string.Equals(arch, "x86", StringComparison.OrdinalIgnoreCase))
+                        matches = osArch == Architecture.X86;
+                    else if (string.Equals(arch, "arm64", StringComparison.OrdinalIgnoreCase))
+                        matches = osArch == Architecture.Arm64;
+                }
             }
 
-            // 只处理 windows/未声明的情况，arch 差异（32/64 位）交给补全阶段，
-            // 体检阶段宁可多报一个"缺失"，也不要漏报导致游戏起不来。
             if (matches)
             {
                 var action = rule.TryGetProperty("action", out var actEl) ? actEl.GetString() : "allow";
@@ -357,6 +382,28 @@ public static class InstanceIntegrityChecker
         }
 
         return allowed;
+    }
+
+    /// <summary>当前平台在 Minecraft 版本 JSON 里的写法：<c>windows</c> / <c>linux</c> / <c>osx</c>。</summary>
+    private static string CurrentOsName =>
+        OperatingSystem.IsWindows() ? "windows"
+        : OperatingSystem.IsMacOS() ? "osx"
+        : "linux";
+
+    /// <summary>当前进程的 CPU 架构（用于 <c>os.arch</c> 规则的 x86 / arm64 判定）。</summary>
+    private static Architecture CurrentOsArch
+    {
+        get
+        {
+            try
+            {
+                return RuntimeInformation.ProcessArchitecture;
+            }
+            catch
+            {
+                return Architecture.X64;
+            }
+        }
     }
 
     /// <summary>与启动流程同口径的库路径解析：优先 downloads.artifact.path，退化按 maven 坐标拼。</summary>

@@ -29,6 +29,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
     public partial class MultiplayerPageViewModel : ObservableObject
     {
         private readonly EasyTierService _easyTierService;
+        private readonly LanRoomBridge _lanRoom;
         private readonly INotificationService _notification = AppServices.Notifications!;
 
         private bool _isInitialized;
@@ -82,10 +83,15 @@ namespace VibrantbitLauncher.ViewModels.Pages
         private string _lanModInstalledName = string.Empty;
         private string _lanModFileName = string.Empty;
 
-        public MultiplayerPageViewModel(EasyTierService easyTierService)
+        public MultiplayerPageViewModel(EasyTierService easyTierService, LanRoomBridge lanRoom)
         {
             _easyTierService = easyTierService;
             _easyTierService.StateChanged += OnServiceStateChanged;
+
+            // 房间自动上架：房主开房 → 固定端口转发；房客 → 把房间写进服务器列表。
+            // 它在后台线程轮询，状态回调必须切回 UI 线程再动绑定属性。
+            _lanRoom = lanRoom;
+            _lanRoom.Changed += OnLanRoomChanged;
 
             // 开关初值取设置（首次运行为 true）
             _keepAliveOnExit = SettingsService.Current.KeepMultiplayerAlive;
@@ -505,7 +511,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
                 return _isHostMode
                     ? "虚拟网络已就绪（房主），等待好友加入"
-                    : "已加入虚拟网络（房客），可以在游戏里直接连接";
+                    : "已加入虚拟网络（房客），房主开房后房间会自动出现";
             }
         }
 
@@ -514,12 +520,48 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
         public string CurrentKey => _isHostMode ? _hostKey : _guestKey;
 
+        // ============================ 房间自动上架 ============================
+
+        /// <summary>
+        /// 房间状态的一句话说明（房主 / 房客文案不同，由 <see cref="LanRoomBridge"/> 决定）。
+        ///
+        /// <para>
+        /// 这里只说玩家能感知的结果，不解释端口转发 —— 玩家关心的是
+        /// 「好友那边列表里能不能直接看见房间」，而不是 25565 指向了哪个随机端口。
+        /// </para>
+        /// </summary>
+        public string LanRoomHint => _lanRoom.StatusText;
+
+        public bool HasLanRoomHint => !string.IsNullOrEmpty(_lanRoom.StatusText);
+
+        private void OnLanRoomChanged()
+        {
+            var dispatcher = Dispatcher.UIThread;
+
+            void Apply()
+            {
+                OnPropertyChanged(nameof(LanRoomHint));
+                OnPropertyChanged(nameof(HasLanRoomHint));
+            }
+
+            if (dispatcher.CheckAccess())
+                Apply();
+            else
+                dispatcher.Post(Apply);
+        }
+
         // ============================ 初始化 ============================
 
         private void Initialize()
         {
 
             RefreshCoreState();
+
+            // 房间桥接是常驻的（App 启动时就已经跑起来），这里只是确保它活着并补一次状态，
+            // 否则玩家从工具箱拉起的联机、再回到本页时，这一行会一直是空的。
+            _lanRoom.Start();
+            OnPropertyChanged(nameof(LanRoomHint));
+            OnPropertyChanged(nameof(HasLanRoomHint));
 
             // 实例列表每次进页面都重新枚举：用户可能刚在「下载」页装了新版本或删了旧版本，
             // 缓存住只会让下拉框里躺着一堆已经不存在的实例。
@@ -908,8 +950,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         : $"本次实际使用 {relays[0]}";
 
                 _notification.Success(_isHostMode
-                        ? "虚拟网络已启动。请进游戏执行「对局域网开放」，再把联机码和你的虚拟 IP 发给好友"
-                        : "已加入虚拟网络。进游戏后在「多人游戏 → 直接连接」里填房主的虚拟 IP", "成功");
+                        ? "虚拟网络已启动。进游戏按 Esc → 对局域网开放，房间会自动出现在好友的服务器列表里；别忘了把联机码发给好友"
+                        : "已加入虚拟网络。房主开房后，房间会自动出现在你的多人游戏列表里", "成功");
             }
             catch (Exception ex)
             {

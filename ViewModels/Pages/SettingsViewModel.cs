@@ -57,6 +57,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
         // ===== 网络：下载 =====
         private bool _useBmclMirror;
 
+        /// <summary>自定义下载源地址（多行文本，原样保存）。</summary>
+        private string _customDownloadSources = string.Empty;
+
         /// <summary>同时下载几个文件（文件级并发）。</summary>
         private int _downloadConcurrency = 6;
 
@@ -137,6 +140,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OpenLogFolderCommand = new RelayCommand(LogService.OpenLogDirectory);
             RefreshDiskUsageCommand = new AsyncRelayCommand(RefreshDiskUsageAsync);
             CleanExpiredLogsCommand = new RelayCommand(CleanExpiredLogs);
+
+            // 网络体检 / 测速：都是「点一次跑一遍」，运行期间按钮自己禁用
+            RunNetworkCheckCommand = new AsyncRelayCommand(RunNetworkCheckAsync);
+            RunSpeedTestCommand = new AsyncRelayCommand(RunSpeedTestAsync);
 
             // 订阅内存 sink：日志产生时实时出现在「最近日志」里。
             // 事件可能来自任意线程（下载、启动都是后台线程），必须切回 UI 线程再动集合。
@@ -334,7 +341,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 OnPropertyChanged(nameof(DownloadSourceText));
                 OnPropertyChanged(nameof(DownloadSourceSummary));
                 OnPropertyChanged(nameof(DownloadConcurrency));
+                OnPropertyChanged(nameof(DownloadConcurrencyIndex));
                 OnPropertyChanged(nameof(DownloadChunkCount));
+                OnPropertyChanged(nameof(DownloadChunkIndex));
+                OnPropertyChanged(nameof(CustomSourceHint));
+                OnPropertyChanged(nameof(IsCustomSource));
+                OnPropertyChanged(nameof(ConnectionsHint));
             }
 
             // 主题：启动页快捷设置里可以直接切明暗
@@ -351,7 +363,13 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OnPropertyChanged(nameof(MachineMemoryText));
         }
 
-        Task INavigationAware.OnNavigatedFromAsync() => Task.CompletedTask;
+        Task INavigationAware.OnNavigatedFromAsync()
+        {
+            // 体检 / 测速是长任务，离开页面就停：继续占着连接既没意义，
+            // 也会让「已经不在这个页面了却还在跑」变得难以解释。
+            CancelNetworkWork();
+            return Task.CompletedTask;
+        }
 
         private void InitializeViewModel()
         {
@@ -437,16 +455,26 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         ? SettingsService.Current.DownloadConcurrency
                         : 6;
                     OnPropertyChanged(nameof(DownloadConcurrency));
+                    OnPropertyChanged(nameof(DownloadConcurrencyIndex));
 
                     _downloadChunkCount = DownloadChunkOptions.Contains(SettingsService.Current.DownloadChunkCount)
                         ? SettingsService.Current.DownloadChunkCount
                         : 4;
                     OnPropertyChanged(nameof(DownloadChunkCount));
+                    OnPropertyChanged(nameof(DownloadChunkIndex));
 
                     _downloadRetryCount = DownloadRetryOptions.Contains(SettingsService.Current.DownloadRetryCount)
                         ? SettingsService.Current.DownloadRetryCount
                         : 4;
                     OnPropertyChanged(nameof(DownloadRetryCount));
+
+                    _customDownloadSources = SettingsService.Current.CustomDownloadSources ?? string.Empty;
+                    OnPropertyChanged(nameof(CustomDownloadSources));
+                    OnPropertyChanged(nameof(CustomSourceHint));
+                    OnPropertyChanged(nameof(IsCustomSource));
+
+                    _speedThreads = Math.Clamp(SettingsService.Current.LastSpeedTestThreads, 1, 32);
+                    OnPropertyChanged(nameof(SpeedThreads));
                 }
                 finally
                 {
@@ -658,15 +686,18 @@ namespace VibrantbitLauncher.ViewModels.Pages
         /// <summary>
         /// 「同时下载文件数」的档位。
         ///
-        /// 上限 16：再高对家用带宽没有收益，而且总连接数 = 并发 × 分块，
-        /// 16 × 16 已经 256 条连接，镜像端（尤其 BMCLAPI）会直接限流。
+        /// 上限 32（1.0.32.0 从 16 放宽）：千兆 / 2.5G 家宽上 16 路未必跑满，
+        /// 但总连接数 = 并发 × 分块，两边都拉满是 2048 条 —— 超过 256 条界面会提示可能被限流。
         /// </summary>
         public static readonly IReadOnlyList<int> DownloadConcurrencyOptions =
-            new[] { 1, 2, 3, 4, 6, 8, 10, 12, 16 };
+            new[] { 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32 };
 
-        /// <summary>「单文件分块数」的档位。1 = 不分块、单连接。</summary>
+        /// <summary>
+        /// 「单文件分块数」的档位。1 = 不分块、单连接。
+        /// 上限 64（1.0.32.0 从 16 放宽）—— 只对单个大文件（client.jar、整合包）有意义。
+        /// </summary>
         public static readonly IReadOnlyList<int> DownloadChunkOptions =
-            new[] { 1, 2, 3, 4, 6, 8, 12, 16 };
+            new[] { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
 
         /// <summary>下载失败重试次数档位。</summary>
         public static readonly IReadOnlyList<int> DownloadRetryOptions = new[] { 0, 1, 2, 3, 4, 6, 8, 10 };
@@ -675,9 +706,29 @@ namespace VibrantbitLauncher.ViewModels.Pages
         public IReadOnlyList<MemoryOption> MinMemoryOptions => MemoryOptions;
         public IReadOnlyList<SettingOption> GcModes => GcModeOptions;
         public IReadOnlyList<SettingOption> AfterLaunchActions => AfterLaunchOptions;
-        public IReadOnlyList<int> DownloadConcurrencyOptionsList => DownloadConcurrencyOptions;
-        public IReadOnlyList<int> DownloadChunkOptionsList => DownloadChunkOptions;
         public IReadOnlyList<int> DownloadRetryOptionsList => DownloadRetryOptions;
+
+        // 滑块终点 = 档位表末位。档位表增删一档时滑块自动跟着走，
+        // 免得 XAML 里写一个"Maximum=11"这种抄出来的魔术数字，改一处忘一处。
+        public int DownloadConcurrencyMaxIndex => DownloadConcurrencyOptions.Count - 1;
+        public int DownloadChunkMaxIndex => DownloadChunkOptions.Count - 1;
+
+        /// <summary>档位值在表里的下标；不在表里时退回第一档（回填时已经校验过，正常不会发生）。</summary>
+        private static int IndexOfOption(IReadOnlyList<int> options, int value)
+        {
+            for (var i = 0; i < options.Count; i++)
+            {
+                if (options[i] == value)
+                    return i;
+            }
+
+            return 0;
+        }
+
+        private static int OptionAt(IReadOnlyList<int> options, int index)
+            => index < 0 ? options[0]
+             : index >= options.Count ? options[options.Count - 1]
+             : options[index];
 
         /// <summary>本机可用物理内存的粗略值（取自 GC 对进程可见的内存上限），用于给出建议档位。</summary>
         public string MachineMemoryText
@@ -880,13 +931,53 @@ namespace VibrantbitLauncher.ViewModels.Pages
             get => _downloadConcurrency;
             set
             {
-                if (!SetProperty(ref _downloadConcurrency, value) || _suppressSettingApply)
+                if (!SetProperty(ref _downloadConcurrency, value))
+                    return;
+
+                // 滑块位置与档位值是一体的。这条通知必须放在 suppress 判断之前：
+                // 初始化 / 分区重置时走的是字段直赋，只有这里能保证滑块不在 0 档上停着。
+                OnPropertyChanged(nameof(DownloadConcurrencyIndex));
+
+                if (_suppressSettingApply)
                     return;
 
                 SettingsService.Current.DownloadConcurrency = value;
                 SettingsService.Save();
                 OnPropertyChanged(nameof(DownloadSourceSummary));
+                OnPropertyChanged(nameof(ConnectionsHint));
                 Serilog.Log.Information("同时下载文件数已设为 {Count}", value);
+            }
+        }
+
+        /// <summary>
+        /// 滑块位置 = 档位表里的下标。
+        ///
+        /// <para>
+        /// 不把滑块直接绑到 <see cref="DownloadConcurrency"/>：值域是 1~32，但真正可选的只有
+        /// 档位表里那几档（1,2,3,4,6,8…）。直连的话会滑出 17、33 这种没人验证过的数，
+        /// 而回填逻辑只认档位表 —— 结果就是「界面显示 17、存下来是 6」。绑下标不存在这种错位。
+        /// </para>
+        /// <para>
+        /// 类型是 <c>double</c> 而不是 int：<c>Slider.Value</c> 本来就是 double，
+        /// 两端同型就不必经过绑定层的隐式数值转换（这里一旦转换失败是静默的，表现就是「拖了没反应」）。
+        /// 取整与落档都在 setter 里自己做。
+        /// </para>
+        /// </summary>
+        public double DownloadConcurrencyIndex
+        {
+            get => IndexOfOption(DownloadConcurrencyOptions, _downloadConcurrency);
+            set
+            {
+                var target = OptionAt(DownloadConcurrencyOptions, (int)Math.Round(value, MidpointRounding.AwayFromZero));
+                if (target == _downloadConcurrency)
+                {
+                    // 停在两档之间（吸附前会先送出中间值）：
+                    // 把滑块位置纠回档位，否则手感像「拖了没反应」。
+                    OnPropertyChanged();
+                    return;
+                }
+
+                DownloadConcurrency = target;
             }
         }
 
@@ -896,13 +987,36 @@ namespace VibrantbitLauncher.ViewModels.Pages
             get => _downloadChunkCount;
             set
             {
-                if (!SetProperty(ref _downloadChunkCount, value) || _suppressSettingApply)
+                if (!SetProperty(ref _downloadChunkCount, value))
+                    return;
+
+                OnPropertyChanged(nameof(DownloadChunkIndex));
+
+                if (_suppressSettingApply)
                     return;
 
                 SettingsService.Current.DownloadChunkCount = value;
                 SettingsService.Save();
                 OnPropertyChanged(nameof(DownloadSourceSummary));
+                OnPropertyChanged(nameof(ConnectionsHint));
                 Serilog.Log.Information("单文件分块数已设为 {Count}", value);
+            }
+        }
+
+        /// <summary>分块数滑块的档位下标（说明见 <see cref="DownloadConcurrencyIndex"/>）。</summary>
+        public double DownloadChunkIndex
+        {
+            get => IndexOfOption(DownloadChunkOptions, _downloadChunkCount);
+            set
+            {
+                var target = OptionAt(DownloadChunkOptions, (int)Math.Round(value, MidpointRounding.AwayFromZero));
+                if (target == _downloadChunkCount)
+                {
+                    OnPropertyChanged();
+                    return;
+                }
+
+                DownloadChunkCount = target;
             }
         }
 
@@ -922,14 +1036,27 @@ namespace VibrantbitLauncher.ViewModels.Pages
         }
 
         /// <summary>下载源的一句话说明。</summary>
-        public string DownloadSourceText =>
-            _useBmclMirror
-                ? "BMCLAPI 镜像：国内节点，速度通常更快，但更新可能略滞后于官方"
-                : "官方源：直接连 Mojang，版本信息最新，国内访问可能较慢";
+        public string DownloadSourceText => SettingsService.DownloadSourceMode switch
+        {
+            "Mirror" => "BMCLAPI 镜像：国内节点，速度通常更快，但更新可能略滞后于官方",
+            "Official" => "官方源：直接连 Mojang，版本信息最新，国内访问可能较慢",
+            "Custom" => "自定义源：按你填的地址改写下载链接，连不上时回退官方",
+            _ => "自动测速：镜像优先，镜像不行再回退官方",
+        };
 
         /// <summary>概览面板用的下载源摘要。</summary>
         public string DownloadSourceSummary =>
-            $"{(_useBmclMirror ? "BMCLAPI 镜像" : "官方源")} · {_downloadConcurrency} 文件并发 · {_downloadChunkCount} 块/文件";
+            $"{SourceModeName} · {_downloadConcurrency} 文件并发 · {_downloadChunkCount} 块/文件";
+
+        private static string SourceModeName => SettingsService.DownloadSourceMode switch
+        {
+            "Mirror" => "BMCLAPI 镜像",
+            "Official" => "官方源",
+            "Custom" => DownloadSources.CustomMirrorRoots.Count > 0
+                ? $"自定义源（{DownloadSources.CustomMirrorRoots.Count} 个）"
+                : "自定义源（未配置，暂用内置镜像）",
+            _ => "自动测速",
+        };
 
         // ===== 个性化：主题色 / 渐变色 / 背景图 =====
 
@@ -1983,6 +2110,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 _selectedDownloadSource = DownloadSourceOptions.FirstOrDefault(o => o.Key == s.DownloadSourceMode)
                                           ?? DownloadSourceOptions[0];
                 OnPropertyChanged(nameof(SelectedDownloadSource));
+                OnPropertyChanged(nameof(IsCustomSource));
+                OnPropertyChanged(nameof(CustomSourceHint));
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+                OnPropertyChanged(nameof(DownloadSourceText));
+                OnPropertyChanged(nameof(ConnectionsHint));
                 _downloadSpeedLimitKb = s.DownloadSpeedLimitKb;
                 OnPropertyChanged(nameof(DownloadSpeedLimitKb));
                 OnPropertyChanged(nameof(DownloadSpeedLimitText));
@@ -2154,6 +2286,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             new SettingOption("Auto", "自动测速（镜像优先，可回退官方）"),
             new SettingOption("Mirror", "固定镜像（只走镜像）"),
             new SettingOption("Official", "官方优先"),
+            new SettingOption("Custom", "自定义源（自带镜像优先，可回退官方）"),
         };
 
         public IReadOnlyList<SettingOption> DownloadSourceList => DownloadSourceOptions;
@@ -2173,6 +2306,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
                 _useBmclMirror = value.Key != "Official";
                 OnPropertyChanged(nameof(UseBmclMirror));
+                OnPropertyChanged(nameof(IsCustomSource));
+                OnPropertyChanged(nameof(CustomSourceHint));
                 OnPropertyChanged(nameof(DownloadSourceSummary));
             }
         }
@@ -2216,7 +2351,285 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
         }
 
-        /// <summary>把日志目录打包成 zip 导出（比单个 log 文件更适合发给开发者）。</summary>
+        // ===== 网络：自定义源 =====
+
+        /// <summary>
+        /// 自定义下载源地址（一行一个）。
+        ///
+        /// 改完立刻保存并让下一次下载生效 —— 这些地址是下载时现读的，
+        /// 不像 MinecraftLaunch 那条链路需要重新 Initialize。
+        /// </summary>
+        public string CustomDownloadSources
+        {
+            get => _customDownloadSources;
+            set
+            {
+                if (!SetProperty(ref _customDownloadSources, value) || _suppressSettingApply)
+                    return;
+
+                SettingsService.Current.CustomDownloadSources = value;
+                SettingsService.Save();
+                OnPropertyChanged(nameof(CustomSourceHint));
+                OnPropertyChanged(nameof(DownloadSourceSummary));
+
+                Serilog.Log.Information(
+                    "自定义下载源已更新：{Roots}",
+                    string.Join(" / ", DownloadSources.CustomMirrorRoots));
+            }
+        }
+
+        /// <summary>自定义源的识别结果（逐行校验，前端直接显示这句话）。</summary>
+        public string CustomSourceHint
+        {
+            get
+            {
+                var roots = DownloadSources.CustomMirrorRoots;
+                var issues = DownloadSources.CustomSourceIssues;
+
+                if (roots.Count == 0 && issues.Count == 0)
+                    return "还没有填自定义源。地址需要和 BMCLAPI 的路径结构兼容（根地址后面会自动拼 /maven/、/version/… 等路径）。";
+
+                var text = roots.Count > 0
+                    ? $"已识别 {roots.Count} 个源：{string.Join("、", roots)}"
+                    : "没有识别到可用的源，下载会退回内置镜像。";
+
+                if (issues.Count > 0)
+                    text += $"；{issues.Count} 行无法识别：{issues[0].Raw}（{issues[0].Reason}）";
+
+                return text;
+            }
+        }
+
+        /// <summary>当前选的是不是「自定义源」（决定地址输入框显不显示）。</summary>
+        public bool IsCustomSource => SettingsService.DownloadSourceMode == "Custom";
+
+        /// <summary>总连接数的粗算与提醒：并发 × 分块，超过 256 家宽基本只剩限流。</summary>
+        public string ConnectionsHint
+        {
+            get
+            {
+                var total = Math.Max(1, _downloadConcurrency) * Math.Max(1, _downloadChunkCount);
+                return total > 256
+                    ? $"总连接数 ≈ {_downloadConcurrency} × {_downloadChunkCount} = {total} 条，已经超过多数镜像的容忍范围，可能反而变慢或被限流"
+                    : $"总连接数 ≈ {_downloadConcurrency} × {_downloadChunkCount} = {total} 条";
+            }
+        }
+
+        // ===== 网络：体检 =====
+
+        /// <summary>体检结果，按探测顺序追加。</summary>
+        public ObservableCollection<NetworkProbeResult> NetworkProbeRows { get; } = new();
+
+        public bool HasNetworkProbeRows => NetworkProbeRows.Count > 0;
+
+        private bool _isNetworkChecking;
+
+        public bool IsNetworkChecking
+        {
+            get => _isNetworkChecking;
+            private set
+            {
+                if (!SetProperty(ref _isNetworkChecking, value))
+                    return;
+
+                OnPropertyChanged(nameof(IsNetworkBusy));
+            }
+        }
+
+        /// <summary>体检或测速任一在跑（两个按钮共用一个禁用条件）。</summary>
+        public bool IsNetworkBusy => _isNetworkChecking || _isSpeedTesting;
+
+        private string _networkCheckStatus = string.Empty;
+
+        public string NetworkCheckStatus
+        {
+            get => _networkCheckStatus;
+            private set => SetProperty(ref _networkCheckStatus, value);
+        }
+
+        public AsyncRelayCommand RunNetworkCheckCommand { get; }
+
+        // ===== 网络：测速 =====
+
+        private bool _isSpeedTesting;
+
+        public bool IsSpeedTesting
+        {
+            get => _isSpeedTesting;
+            private set
+            {
+                if (!SetProperty(ref _isSpeedTesting, value))
+                    return;
+
+                OnPropertyChanged(nameof(IsNetworkBusy));
+            }
+        }
+
+        private string _speedTestStatus = string.Empty;
+
+        public string SpeedTestStatus
+        {
+            get => _speedTestStatus;
+            private set => SetProperty(ref _speedTestStatus, value);
+        }
+
+        private SpeedTestResult? _speedTestResult;
+
+        public bool HasSpeedTestResult => _speedTestResult != null;
+
+        public string SpeedTargetText => _speedTestResult == null
+            ? string.Empty
+            : $"{_speedTestResult.Host} · {_speedTestResult.Threads} 连接";
+
+        public string SpeedSingleText => _speedTestResult?.SingleText ?? "—";
+
+        public string SpeedMultiText => _speedTestResult?.MultiText ?? "—";
+
+        public string SpeedPeakText => _speedTestResult?.PeakText ?? "—";
+
+        public string SpeedGainText => _speedTestResult?.GainText ?? "—";
+
+        public string SpeedAdviceText => _speedTestResult?.Detail ?? string.Empty;
+
+        /// <summary>测速用几条连接。默认 8 —— 也是多数家用带宽的拐点。</summary>
+        private int _speedThreads = 8;
+
+        public int SpeedThreads
+        {
+            get => _speedThreads;
+            set
+            {
+                if (SetProperty(ref _speedThreads, value))
+                    SettingsService.Current.LastSpeedTestThreads = Math.Clamp(value, 1, 32);
+            }
+        }
+
+        public static readonly IReadOnlyList<int> SpeedThreadOptions = new[] { 1, 2, 4, 8, 16, 32 };
+        public IReadOnlyList<int> SpeedThreadList => SpeedThreadOptions;
+
+        public AsyncRelayCommand RunSpeedTestCommand { get; }
+
+        /// <summary>体检 / 测速共用的取消源：离开设置页或再点一次时用它收尾。</summary>
+        private CancellationTokenSource? _networkCts;
+
+        private async Task RunNetworkCheckAsync()
+        {
+            if (IsNetworkChecking)
+                return;
+
+            CancelNetworkWork();
+            var cts = new CancellationTokenSource();
+            _networkCts = cts;
+
+            IsNetworkChecking = true;
+            NetworkProbeRows.Clear();
+            OnPropertyChanged(nameof(HasNetworkProbeRows));
+            NetworkCheckStatus = "正在体检…";
+
+            try
+            {
+                var progress = new Progress<NetworkProbeResult>(result =>
+                {
+                    NetworkProbeRows.Add(result);
+                    OnPropertyChanged(nameof(HasNetworkProbeRows));
+                    NetworkCheckStatus = $"已完成 {NetworkProbeRows.Count} 项…";
+                });
+
+                // RunAsync 自己就是异步的（内部逐项 await），不需要再套 Task.Run
+                var results = await NetworkDiagnostics.RunAsync(progress, cts.Token);
+
+                var ok = results.Count(r => r.Ok);
+                NetworkCheckStatus = cts.IsCancellationRequested
+                    ? $"已取消，完成 {results.Count} 项"
+                    : $"体检完成：{results.Count} 项里 {ok} 项通，{results.Count - ok} 项不通";
+
+                Serilog.Log.Information("网络体检：{Ok}/{Total} 项可用", ok, results.Count);
+            }
+            catch (OperationCanceledException)
+            {
+                NetworkCheckStatus = "已取消";
+            }
+            catch (Exception ex)
+            {
+                NetworkCheckStatus = "体检查出错：" + ex.Message;
+                Serilog.Log.Warning(ex, "网络体检失败");
+            }
+            finally
+            {
+                IsNetworkChecking = false;
+                if (ReferenceEquals(_networkCts, cts))
+                    _networkCts = null;
+                cts.Dispose();
+            }
+        }
+
+        private async Task RunSpeedTestAsync()
+        {
+            if (IsSpeedTesting)
+                return;
+
+            CancelNetworkWork();
+            var cts = new CancellationTokenSource();
+            _networkCts = cts;
+
+            IsSpeedTesting = true;
+            SpeedTestStatus = "准备测速…";
+
+            try
+            {
+                var progress = new Progress<string>(text => SpeedTestStatus = text);
+                var result = await SpeedTestService.RunAsync(SpeedThreads, progress, cts.Token);
+
+                _speedTestResult = result;
+                OnPropertyChanged(nameof(HasSpeedTestResult));
+                OnPropertyChanged(nameof(SpeedTargetText));
+                OnPropertyChanged(nameof(SpeedSingleText));
+                OnPropertyChanged(nameof(SpeedMultiText));
+                OnPropertyChanged(nameof(SpeedPeakText));
+                OnPropertyChanged(nameof(SpeedGainText));
+                OnPropertyChanged(nameof(SpeedAdviceText));
+
+                SpeedTestStatus = result.Ok
+                    ? $"测速完成 · {result.MultiText}（{result.MultiSeconds:0.0} 秒读了 {result.MultiBytes / 1024d / 1024d:0.0} MB）"
+                    : "测速未完成";
+
+                Serilog.Log.Information(
+                    "测速：{Host} 单连接 {Single} / {Threads} 连接 {Multi}",
+                    result.Host, result.SingleText, result.Threads, result.MultiText);
+            }
+            catch (OperationCanceledException)
+            {
+                SpeedTestStatus = "已取消";
+            }
+            catch (Exception ex)
+            {
+                SpeedTestStatus = "测速出错：" + ex.Message;
+                Serilog.Log.Warning(ex, "测速失败");
+            }
+            finally
+            {
+                IsSpeedTesting = false;
+                if (ReferenceEquals(_networkCts, cts))
+                    _networkCts = null;
+                cts.Dispose();
+            }
+        }
+
+        private void CancelNetworkWork()
+        {
+            try
+            {
+                _networkCts?.Cancel();
+            }
+            catch
+            {
+                // 已经释放 / 已经取消过：忽略
+            }
+        }
+
+        /// <summary>
+        /// 把日志目录打包成 zip 导出（比单个 log 文件更适合发给开发者）。
+        /// </summary>
         public async Task ExportLogArchiveAsync(string destination)
         {
             try

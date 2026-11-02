@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
@@ -104,6 +106,17 @@ public static class JavaRuntimeService
     {
         get
         {
+            // Linux / macOS 不存在 Program Files，而且系统级目录（/opt、/usr）普通用户写不进去。
+            // 这两个平台上装的是「官方压缩包解压到自己的目录」，必须落在用户可写位置，
+            // 否则会变成「要么 root 运行启动器，要么装不上」（1.0.30.1）。
+            if (!OperatingSystem.IsWindows())
+            {
+                var localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+                if (!string.IsNullOrWhiteSpace(localApp))
+                    return Path.Combine(localApp, "VibrantbitLauncher", "runtime");
+            }
+
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
             if (string.IsNullOrWhiteSpace(programFiles))
@@ -129,7 +142,32 @@ public static class JavaRuntimeService
     public static string ResolveRuntimeRoot()
     {
         var configured = SettingsService.Current.JavaRuntimeRoot;
-        return string.IsNullOrWhiteSpace(configured) ? DefaultRuntimeRoot : configured;
+
+        // 1.0.30.1：老版本（1.0.30.0）在 Linux 上把 /usr/lib/jvm 写进了这个设置
+        // —— 那时界面把路径框锁成那个值、点击「安装」时又把它落盘了。
+        // 但那是系统的 JDK 目录，普通用户不可写；当成用户选择会导致回退安装必然失败，
+        // 所以识别到系统 JVM 目录就当作没配过。
+        if (!string.IsNullOrWhiteSpace(configured) && !IsSystemJvmRoot(configured))
+            return configured;
+
+        return DefaultRuntimeRoot;
+    }
+
+    /// <summary>是不是发行版管理 JDK 的系统目录（不该当作用户可写的安装根目录）。</summary>
+    private static bool IsSystemJvmRoot(string path)
+    {
+        var normalized = path.TrimEnd(Path.DirectorySeparatorChar);
+
+        foreach (var root in LinuxJvmRoots)
+        {
+            if (string.Equals(normalized, root, StringComparison.Ordinal))
+                return true;
+
+            if (normalized.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>某个版本在磁盘上的目录名，与 Temurin 官方安装器保持一致：
@@ -193,11 +231,15 @@ public static class JavaRuntimeService
         }
         catch (UnauthorizedAccessException)
         {
-            throw new InvalidOperationException(
-                $"没有权限写入 {targetRoot}。\n"
-                + "该目录属于系统程序目录，需要管理员权限。请二选一：\n"
-                + "· 关闭启动器，右键「以管理员身份运行」后重试；\n"
-                + "· 或点「浏览…」换一个普通目录（例如 D:\\Java）。");
+            throw new InvalidOperationException(OperatingSystem.IsWindows()
+                ? $"没有权限写入 {targetRoot}。\n"
+                  + "该目录属于系统程序目录，需要管理员权限。请二选一：\n"
+                  + "· 关闭启动器，右键「以管理员身份运行」后重试；\n"
+                  + "· 或点「浏览…」换一个普通目录（例如 D:\\Java）。"
+                : $"没有权限写入 {targetRoot}。\n"
+                  + "该目录属于系统目录（普通用户不可写）。请二选一：\n"
+                  + "· 换一个自己主目录下的路径，例如 ~/.local/share/VibrantbitLauncher/runtime；\n"
+                  + "· 或者用有写权限的账户运行启动器。");
         }
         catch (IOException ex)
         {
@@ -392,6 +434,32 @@ public static class JavaRuntimeService
             return existing;
         }
 
+        // Linux：先试系统包管理器（装进 /usr/lib/jvm，系统里其它工具能复用同一份运行时），
+        // 装不上就回退到「下载官方压缩包自己解压」。
+        //
+        // 为什么要回退（1.0.30.1）：包管理器这条路的成败取决于发行版仓库和网络 ——
+        // Kali 上软件源长期不同步、或者仓库里根本没有界面列出的那个主版本，
+        // 用户就只剩「自己开终端敲命令」一条路。压缩包解压不依赖任何仓库，只要网络通就能装。
+        Exception? packageManagerError = null;
+
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                return await InstallViaSystemPackageManagerAsync(item, onProgress, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                packageManagerError = ex;
+                Log.Warning(ex, "系统包管理器安装失败，回退到官方压缩包：{Version}", item.Version);
+                onProgress(1, "系统包管理器不可用，改用官方压缩包部署…");
+            }
+        }
+
         if (OperatingSystem.IsWindows() && item.HasInstaller)
         {
             try
@@ -418,7 +486,18 @@ public static class JavaRuntimeService
             }
         }
 
-        return await InstallFromZipAsync(item, targetDir, onProgress, ct).ConfigureAwait(false);
+        try
+        {
+            return await InstallFromArchiveAsync(item, targetDir, onProgress, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (packageManagerError is not null)
+        {
+            // 两条路都断了才把两段原因一起说出来 —— 只报其中一条会让用户以为是同一个问题
+            throw new InvalidOperationException(
+                "两种安装方式都失败了。\n\n"
+                + $"【系统包管理器】\n{packageManagerError.Message}\n\n"
+                + $"【官方压缩包】\n{ex.Message}", ex);
+        }
     }
 
     /// <summary>
@@ -643,10 +722,404 @@ public static class JavaRuntimeService
     private static string FormatSize(long bytes) =>
         bytes > 0 ? $"{bytes / 1024d / 1024d:0} MB" : "未知体积";
 
+    // ==================== Linux：交给系统包管理器 ====================
+
+    /// <summary>发行版包管理器的一种。</summary>
+    private sealed record LinuxPackageManager(
+        string Exe, string DisplayName, string PackagePrefix, string PackageSuffix,
+        string[] InstallArgs, string[] UpdateArgs)
+    {
+        public string PackageFor(int major) => $"{PackagePrefix}{major}{PackageSuffix}";
+
+        /// <summary>给用户手抄的命令（直接写 sudo 最通用）。</summary>
+        public string ManualCommandFor(int major)
+            => $"sudo {Exe} {string.Join(' ', InstallArgs)} {PackageFor(major)}";
+
+        /// <summary>刷新索引的命令。索引过期时包会「下载失败 / 找不到」，先刷新再重试。</summary>
+        public string ManualUpdateCommand => $"sudo {Exe} {string.Join(' ', UpdateArgs)}";
+    }
+
     /// <summary>
-    /// 下载 zip 并解压到 <paramref name="targetDir"/>（非 Windows，或 MSI 方案失败时的兜底）。
+    /// 支持的包管理器，按顺序探测。包名对齐各家仓库的习惯写法：
+    /// Debian 系 <c>openjdk-25-jdk</c>、Fedora 系 <c>java-25-openjdk-devel</c>、
+    /// Arch <c>jdk25-openjdk</c>、openSUSE 同 Fedora。
     /// </summary>
-    private static async Task<string> InstallFromZipAsync(
+    private static readonly LinuxPackageManager[] LinuxPackageManagers =
+    {
+        new("apt-get", "APT", "openjdk-", "-jdk",
+            new[] { "install", "-y", "--no-install-recommends" }, new[] { "update" }),
+        new("dnf", "DNF", "java-", "-openjdk-devel",
+            new[] { "install", "-y" }, new[] { "makecache" }),
+        new("yum", "YUM", "java-", "-openjdk-devel",
+            new[] { "install", "-y" }, new[] { "makecache" }),
+        new("pacman", "pacman", "jdk", "-openjdk",
+            new[] { "-S", "--noconfirm", "--needed" }, new[] { "-Sy" }),
+        new("zypper", "Zypper", "java-", "-openjdk-devel",
+            new[] { "install", "-y" }, new[] { "refresh" }),
+    };
+
+    /// <summary>发行版放 JDK 的约定目录。</summary>
+    private static readonly string[] LinuxJvmRoots = { "/usr/lib/jvm", "/usr/java", "/opt/java", "/opt/jdk" };
+
+    /// <summary>
+    /// Linux 的安装入口：**调用发行版的包管理器**装系统级 JDK。
+    ///
+    /// <para>
+    /// 为什么走这条路（1.0.29.3，用户指定）：Adoptium 在 Linux / macOS 上发布的是
+    /// <c>.tar.gz</c>，而原来的解压代码是 <c>ZipFile.OpenRead</c>，
+    /// 一开就是 <c>End of Central Directory record could not be found</c>。
+    /// 而且 Java 本来就是机器级组件，装进 <c>/usr/lib/jvm</c> 后别的工具（HMCL / IDEA）也能复用。
+    /// </para>
+    ///
+    /// <para>
+    /// 1.0.30.1 照着真实失败现场补了两件事：
+    /// </para>
+    /// <list type="number">
+    /// <item><b>索引过期自动修复</b>：Kali / Debian 长期不跑 <c>apt update</c> 时，
+    /// 本地索引记的还是旧版本号，install 会去下镜像上已经不存在的包 ——
+    /// 报一整屏「无法下载 … 404」并以退出码 100 结束。识别到这类输出就先刷新索引再重试一次。</item>
+    /// <item><b>失败不再是死路</b>：包管理器彻底装不上时（仓库没有该主版本 / 源不可达 / 无授权方式），
+    /// <see cref="InstallAsync"/> 会回退到「下载官方压缩包、自己解压」。</item>
+    /// </list>
+    ///
+    /// <para>
+    /// 代价说清楚：<b>需要一次管理员授权</b>（root 直接跑 / 优先 pkexec 弹系统授权框 /
+    /// 退到免密 sudo），而且仓库里不一定有界面列出的那个主版本 ——
+    /// 没有时会带着包管理器的原始输出和一条可手抄的命令一起报错，不留「装失败了但不知道为什么」。
+    /// </para>
+    /// </summary>
+    private static async Task<string> InstallViaSystemPackageManagerAsync(
+        JavaReleaseItem item, Action<int, string> onProgress, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var pm = DetectLinuxPackageManager()
+                 ?? throw new InvalidOperationException(
+                     "没有找到可用的包管理器（apt / dnf / yum / pacman / zypper）。"
+                     + "请手动安装 JDK 后点「刷新」。");
+
+        var package = pm.PackageFor(item.Major);
+        onProgress(3, $"检测到 {pm.DisplayName}，准备安装 {package}");
+
+        // pkexec 下 PATH 会被重置，脚本里的可执行文件一律用绝对路径
+        var pmPath = FindExecutable(pm.Exe) ?? pm.Exe;
+        var installScript = $"{pmPath} {string.Join(' ', pm.InstallArgs)} {package}";
+        var updateScript = $"{pmPath} {string.Join(' ', pm.UpdateArgs)}";
+
+        var (runner, prefix) = ResolvePrivilegeRunner(pm, item.Major, package);
+
+        onProgress(8, "等待管理员授权…");
+
+        var result = await RunPackageManagerAsync(
+            pm, runner, prefix, installScript, $"安装 {package}", onProgress).ConfigureAwait(false);
+
+        // 索引过期 → 刷新索引 + 重新安装，重试一次。
+        // 这是 Kali / Debian 上最常见的失败：包名存在，但索引里的版本号与镜像上实际文件对不上。
+        if (result.ExitCode != 0 && LooksLikeStaleIndex(result.Tail))
+        {
+            Log.Information("包管理器安装失败疑似索引过期，刷新索引后重试");
+
+            // 两条命令合成一条脚本：pkexec 每调用一次就弹一次授权框，
+            // 拆成两次会让用户觉得「怎么一直要密码」。update 用 ; 而不是 && 接，
+            // 因为部分源刷新失败时（很常见）install 往往仍然能成。
+            var combined = $"{updateScript} ; {installScript}";
+
+            onProgress(8, "索引已过期，正在刷新索引并重新安装…");
+
+            result = await RunPackageManagerAsync(
+                pm, runner, prefix, combined, "刷新索引并安装", onProgress).ConfigureAwait(false);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            Log.Warning("包管理器安装失败：{Pm} 退出码 {Code}，包 {Package}\n{Detail}",
+                pm.DisplayName, result.ExitCode, package, result.Tail);
+
+            throw new InvalidOperationException(
+                $"{pm.DisplayName} 安装 {package} 失败（退出码 {result.ExitCode}）。"
+                + "常见原因是当前发行版的仓库里没有这个主版本，或者软件源不可达。\n\n"
+                + result.Tail
+                + $"\n\n可手动执行（先刷新索引）：{pm.ManualUpdateCommand}"
+                + $"\n再安装：{pm.ManualCommandFor(item.Major)}");
+        }
+
+        onProgress(90, "定位已安装的 Java");
+
+        var javaPath = FindInstalledJavaForMajor(item.Major)
+                       ?? throw new InvalidOperationException(
+                           $"安装命令已成功，但没有在 {string.Join(" / ", LinuxJvmRoots)} 下找到 Java {item.Major}。"
+                           + $"请确认 {package} 是否真的装上，然后点「刷新」。");
+
+        onProgress(100, $"Java {item.Major} 安装完成");
+        Log.Information("JDK 安装完成（{Pm} {Package}）→ {Path}", pm.DisplayName, package, javaPath);
+        return javaPath;
+    }
+
+    /// <summary>包管理器一次调用的结果：退出码 + 输出尾巴（失败时贴给用户看）。</summary>
+    private readonly record struct PackageManagerResult(int ExitCode, string Tail);
+
+    /// <summary>
+    /// 决定用什么方式拿到管理员权限，返回「可执行文件 + 前置参数」。
+    ///
+    /// <para>
+    /// 顺序：已经是 root → 直接跑；有 pkexec → 图形授权框（pkexec 会重置 PATH，所以给绝对路径）；
+    /// 有 sudo → 只走 <c>-n</c> 免密（需要输密码时立刻失败，不会把界面卡在一个没人能输入的提示上）。
+    /// </para>
+    /// </summary>
+    private static (string Runner, string[] Prefix) ResolvePrivilegeRunner(
+        LinuxPackageManager pm, int major, string package)
+    {
+        // 统一用 /bin/sh -c 执行命令串：只有这样才能把「刷新索引 + 安装」合成一次调用，
+        // 也就只弹一次授权框；顺带也不用关心各包管理器的参数里有没有需要转义的东西。
+        var sh = FindExecutable("sh") ?? "/bin/sh";
+
+        if (Environment.IsPrivilegedProcess)
+            return (sh, new[] { "-c" });
+
+        if (FindExecutable("pkexec") is { } pkexec)
+            return (pkexec, new[] { sh, "-c" });
+
+        if (FindExecutable("sudo") is { } sudo)
+            return (sudo, new[] { "-n", sh, "-c" });
+
+        throw new InvalidOperationException(
+            $"安装 {package} 需要管理员权限，但系统里没有可用的授权方式（pkexec / sudo）。\n"
+            + $"请打开终端执行：{pm.ManualCommandFor(major)}");
+    }
+
+    /// <summary>跑一次包管理器（命令串由 <c>/bin/sh -c</c> 解释），把输出尾巴收 8 行回来。</summary>
+    private static async Task<PackageManagerResult> RunPackageManagerAsync(
+        LinuxPackageManager pm, string runner, string[] prefix, string script,
+        string label, Action<int, string> onProgress)
+    {
+        var psi = new ProcessStartInfo(runner)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        foreach (var arg in prefix)
+            psi.ArgumentList.Add(arg);
+
+        psi.ArgumentList.Add(script);
+
+        // apt 遇到需要交互确认的场景会等 stdin —— GUI 里没有 stdin，会永久卡住
+        psi.Environment["DEBIAN_FRONTEND"] = "noninteractive";
+
+        using var process = new Process { StartInfo = psi };
+
+        var tail = new Queue<string>();
+        var percent = 8;
+
+        void OnLine(string? line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return;
+
+            lock (tail)
+            {
+                tail.Enqueue(line.Trim());
+                while (tail.Count > 8)
+                    tail.Dequeue();
+            }
+
+            // 包管理器不给百分比：一边读输出一边把进度往 85 推，文案跟着最后一行变
+            percent = Math.Min(85, percent + 1);
+            onProgress(percent, $"{label}　{Shorten(line.Trim(), 52)}");
+        }
+
+        process.OutputDataReceived += (_, e) => OnLine(e.Data);
+        process.ErrorDataReceived += (_, e) => OnLine(e.Data);
+
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"无法启动 {pm.DisplayName}（{runner}）：{ex.Message}", ex);
+        }
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        // 安装阶段**不响应取消**：中途杀掉包管理器会留下 dpkg 锁 / 半装状态，
+        // 下次再装就得先修 dpkg。下载阶段才有取消的意义，这里已经不该被取消。
+        await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+
+        lock (tail)
+        {
+            return new PackageManagerResult(
+                process.ExitCode,
+                tail.Count > 0 ? string.Join("\n", tail) : "（包管理器没有输出）");
+        }
+    }
+
+    /// <summary>
+    /// 输出是否像「本地索引过期」—— 索引里记的版本号与镜像上实际文件对不上。
+    ///
+    /// <para>
+    /// 中英文两种 locale 的措辞都要认：<c>无法下载</c> / <c>Failed to fetch</c> /
+    /// <c>404</c> / <c>Hash Sum mismatch</c> / <c>无法定位软件包</c> / <c>Unable to locate package</c>。
+    /// 这些都说明「索引与仓库不同步」，刷新索引是正解，重试同一命令没用。
+    /// </para>
+    /// </summary>
+    private static bool LooksLikeStaleIndex(string tail)
+    {
+        if (string.IsNullOrWhiteSpace(tail))
+            return false;
+
+        string[] markers =
+        {
+            "无法下载", "Failed to fetch", "404  Not Found", "Hash Sum mismatch",
+            "无法定位软件包", "Unable to locate package",
+            "没有可用的软件包", "has no installation candidate",
+            "Some index files failed to download", "索引文件下载失败",
+        };
+
+        return markers.Any(m => tail.Contains(m, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static LinuxPackageManager? DetectLinuxPackageManager()
+    {
+        foreach (var pm in LinuxPackageManagers)
+        {
+            if (FindExecutable(pm.Exe) is not null)
+                return pm;
+        }
+
+        return null;
+    }
+
+    /// <summary>在 PATH 与几个常见 bin 目录里找一个可执行文件。找不到返回 null。</summary>
+    private static string? FindExecutable(string name)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var full = Path.Combine(dir, name);
+            if (File.Exists(full))
+                return full;
+        }
+
+        foreach (var dir in new[] { "/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin" })
+        {
+            var full = Path.Combine(dir, name);
+            if (File.Exists(full))
+                return full;
+        }
+
+        return null;
+    }
+
+    /// <summary>列出 <c>/usr/lib/jvm</c> 这类目录下的一级子目录（每个就是一个 JDK home）。</summary>
+    private static List<string> EnumerateLinuxJvmHomes()
+    {
+        var homes = new List<string>();
+
+        foreach (var root in LinuxJvmRoots)
+        {
+            try
+            {
+                if (Directory.Exists(root))
+                    homes.AddRange(Directory.GetDirectories(root));
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "扫描 Java 目录失败：{Root}", root);
+            }
+        }
+
+        return homes;
+    }
+
+    /// <summary>
+    /// 在 <c>/usr/lib/jvm</c> 里找出主版本等于 <paramref name="major"/> 的 JDK。
+    ///
+    /// 三级匹配，从严到松：目录名里带版本号 → 问 <c>java -version</c> → 只有唯一一份就用它。
+    /// 最后那级是为了兜住「发行版把目录名起成 java-1.25.0-openjdk」这种写法。
+    /// </summary>
+    private static string? FindInstalledJavaForMajor(int major)
+    {
+        var homes = EnumerateLinuxJvmHomes();
+
+        foreach (var home in homes)
+        {
+            if (!File.Exists(Path.Combine(home, "bin", "java")))
+                continue;
+
+            var name = Path.GetFileName(home);
+            if (name.Contains($"-{major}", StringComparison.Ordinal)
+                || name.Contains($"{major}-", StringComparison.Ordinal)
+                || name.Contains($"jdk{major}", StringComparison.Ordinal))
+                return Path.Combine(home, "bin", "java");
+        }
+
+        foreach (var home in homes)
+        {
+            var java = Path.Combine(home, "bin", "java");
+            if (File.Exists(java) && TryReadJavaMajor(java) == major)
+                return java;
+        }
+
+        var candidates = homes
+            .Where(h => File.Exists(Path.Combine(h, "bin", "java")))
+            .ToList();
+
+        return candidates.Count == 1 ? Path.Combine(candidates[0], "bin", "java") : null;
+    }
+
+    /// <summary>跑一次 <c>java -version</c> 解析主版本号。失败返回 null（不影响主流程）。</summary>
+    private static int? TryReadJavaMajor(string javaPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(javaPath)
+            {
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-version");
+
+            using var process = Process.Start(psi);
+            if (process is null)
+                return null;
+
+            // java -version 的输出全在 stderr，量很小，直接读完不会死锁
+            var stderr = process.StandardError.ReadToEnd();
+            var stdout = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(3000);
+
+            var match = Regex.Match(stderr + stdout, "version\\s+\"(\\d+)");
+            return match.Success && int.TryParse(match.Groups[1].Value, out var major) ? major : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "读取 Java 版本失败：{Path}", javaPath);
+            return null;
+        }
+    }
+
+    private static string Shorten(string text, int max)
+        => text.Length <= max ? text : text[..max] + "…";
+
+    /// <summary>
+    /// 下载官方压缩包并解压到 <paramref name="targetDir"/>。
+    ///
+    /// <para>
+    /// Windows 发的是 <c>.zip</c>，Linux / macOS 发的是 <c>.tar.gz</c> ——
+    /// 解压必须按扩展名分派（见 <see cref="ExtractArchive"/>）。
+    /// 1.0.29.3 之前这里只认 zip，Linux / macOS 上一开就是
+    /// <c>End of Central Directory record could not be found</c>。
+    /// </para>
+    /// </summary>
+    private static async Task<string> InstallFromArchiveAsync(
         JavaReleaseItem item, string targetDir, Action<int, string> onProgress, CancellationToken ct)
     {
         var javaExeName = OperatingSystem.IsWindows() ? "java.exe" : "java";
@@ -655,13 +1128,15 @@ public static class JavaRuntimeService
             throw new InvalidOperationException("这个版本没有可用的压缩包，安装失败");
 
         // 先探测可写再开始下载：默认目录在 %ProgramFiles% 下，没管理员权限时
-        // 这里会立刻给出「以管理员身份运行 / 换个目录」的提示，
-        // 而不是让用户白等 200 MB 下完才在解压阶段失败。
+        // 这里会立刻给出「换个目录」的提示，而不是让用户白等 200 MB 下完才在解压阶段失败。
         onProgress(1, "检查安装目录权限");
         EnsureWritable(targetDir);
 
-        // 压缩包落在系统临时目录：200 MB 不该堆在 .minecraft 或启动器目录里
-        var zipPath = Path.Combine(Path.GetTempPath(), $"vbl-jdk-{item.Major}-{Guid.NewGuid():N}.zip");
+        // 压缩包落在系统临时目录：200 MB 不该堆在 .minecraft 或启动器目录里。
+        // 扩展名必须保留 —— 解压方式全靠它判断。
+        var archivePath = Path.Combine(
+            Path.GetTempPath(),
+            $"vbl-jdk-{item.Major}-{Guid.NewGuid():N}{ArchiveExtension(item)}");
 
         try
         {
@@ -675,7 +1150,7 @@ public static class JavaRuntimeService
 
             var ok = await ResilientFileDownloader.DownloadAsync(
                 urls,
-                zipPath,
+                archivePath,
                 (have, total) =>
                 {
                     var percent = total > 0 ? (int)Math.Clamp(have * 100 / total, 0, 100) : 0;
@@ -690,7 +1165,7 @@ public static class JavaRuntimeService
                 throw new InvalidOperationException("JDK 压缩包下载不完整，请重试或换个网络环境");
 
             // 体积校验：清单给了确切大小就严格比对（截断的包解压到一半会报 CRC 错，不如提前说清楚）
-            var actualSize = new FileInfo(zipPath).Length;
+            var actualSize = new FileInfo(archivePath).Length;
             if (item.Size > 0 && actualSize != item.Size)
                 throw new InvalidOperationException(
                     $"JDK 压缩包大小不符（期望 {item.Size} 字节，实际 {actualSize} 字节）");
@@ -698,13 +1173,13 @@ public static class JavaRuntimeService
             if (!string.IsNullOrEmpty(item.Sha256))
             {
                 onProgress(84, "校验 SHA256");
-                var actual = await ComputeSha256Async(zipPath, ct).ConfigureAwait(false);
+                var actual = await ComputeSha256Async(archivePath, ct).ConfigureAwait(false);
                 if (!string.Equals(actual, item.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("JDK 压缩包校验失败（SHA256 不匹配），请重试");
             }
 
             onProgress(88, "解压 JDK");
-            ExtractWithRootStrip(zipPath, targetDir, percent =>
+            ExtractArchive(archivePath, targetDir, percent =>
                 onProgress(88 + (int)(percent * 0.11), $"解压 JDK　{percent}%"));
 
             var javaPath = FindJavaExe(targetDir)
@@ -712,13 +1187,49 @@ public static class JavaRuntimeService
                     $"解压完成但找不到 {javaExeName}，目录结构可能不符合预期：{targetDir}");
 
             onProgress(100, $"JDK {item.Version} 安装完成");
-            Log.Information("JDK 安装完成（zip 解压）：{Version} → {Path}", item.Version, javaPath);
+            Log.Information("JDK 安装完成（压缩包解压）：{Version} → {Path}", item.Version, javaPath);
             return javaPath;
         }
         finally
         {
-            TryDelete(zipPath);
+            TryDelete(archivePath);
         }
+    }
+
+    /// <summary>
+    /// 从清单里的文件名（或下载地址）推断压缩包扩展名。
+    ///
+    /// <para>
+    /// <c>.tar.gz</c> 必须比 <c>.gz</c> 先判断，否则会得出一个只有半截后缀的临时文件名。
+    /// 推断不出来时按平台兜底：Windows 一律 zip，其它平台当 tar.gz。
+    /// </para>
+    /// </summary>
+    private static string ArchiveExtension(JavaReleaseItem item)
+    {
+        var name = string.IsNullOrWhiteSpace(item.FileName) ? item.DownloadUrl : item.FileName;
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            name = name.Split('?', '#')[0];
+
+            if (name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase)) return ".tar.gz";
+            if (name.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase)) return ".tgz";
+            if (name.EndsWith(".tar", StringComparison.OrdinalIgnoreCase)) return ".tar";
+            if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return ".zip";
+        }
+
+        return OperatingSystem.IsWindows() ? ".zip" : ".tar.gz";
+    }
+
+    /// <summary>按扩展名把压缩包解压到目标目录（两种格式都会剥掉顶层目录）。</summary>
+    private static void ExtractArchive(string archivePath, string targetDir, Action<int> onPercent)
+    {
+        var name = archivePath;
+
+        if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            ExtractWithRootStrip(archivePath, targetDir, onPercent);
+        else
+            ExtractTarWithRootStrip(archivePath, targetDir, onPercent);
     }
 
     /// <summary>
@@ -764,6 +1275,213 @@ public static class JavaRuntimeService
             // 每 20 个条目报一次就够，几千个条目逐条上报只会拖慢解压
             if (done % 20 == 0 || done == total)
                 onPercent((int)(done * 100d / total));
+        }
+    }
+
+    /// <summary>
+    /// 解压 <c>.tar.gz</c> / <c>.tar</c> 并剥掉顶层目录。
+    ///
+    /// <para>
+    /// 用 .NET 自带的 <see cref="TarReader"/>，**不调用系统 tar**：
+    /// 精简发行版未必装了 tar，而 gzip + tar 的读取标准库都有。
+    /// 顺序是「先在同级临时目录铺开，再把唯一的顶层目录搬上来」——
+    /// tar 是流式的，不铺开就没法先知道公共前缀（zip 能先枚举条目，tar 不行）。
+    /// </para>
+    ///
+    /// <para>
+    /// <b>必须补可执行位</b>：tar 里记了 Unix 权限，但 <see cref="TarEntry.Mode"/> 拿到之后
+    /// 还得自己套到文件系统上，否则 <c>bin/java</c> 是 644，装完启动游戏报 Permission denied。
+    /// </para>
+    /// </summary>
+    private static void ExtractTarWithRootStrip(string archivePath, string targetDir, Action<int> onPercent)
+    {
+        var targetFull = Path.GetFullPath(targetDir);
+        var parent = Path.GetDirectoryName(targetFull)
+                     ?? throw new InvalidOperationException($"安装目录不合法：{targetDir}");
+
+        // 临时目录与目标目录同盘，最后搬迁才是纯 rename（跨盘会变成整目录拷贝）
+        var staging = Path.Combine(parent, $".vbl-unpack-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(staging);
+
+        try
+        {
+            using var file = File.OpenRead(archivePath);
+            var total = file.Length;
+
+            using var payload = LooksLikeGZip(file)
+                ? new GZipStream(file, CompressionMode.Decompress)
+                : (Stream)file;
+
+            using var reader = new TarReader(payload, leaveOpen: false);
+
+            var count = 0;
+
+            while (reader.GetNextEntry() is { } entry)
+            {
+                var relative = entry.Name.Replace('\\', '/').TrimStart('/');
+                if (string.IsNullOrWhiteSpace(relative))
+                    continue;
+
+                var destination = Path.GetFullPath(Path.Combine(staging, relative));
+
+                // 防目录穿越：条目名里带 ../ 时不能让它落到 staging 之外
+                if (!destination.StartsWith(staging + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                    continue;
+
+                switch (entry.EntryType)
+                {
+                    case TarEntryType.Directory:
+                        Directory.CreateDirectory(destination);
+                        break;
+
+                    case TarEntryType.SymbolicLink:
+                    case TarEntryType.HardLink:
+                        // JDK 包里偶见符号链接。处理不了就跳过 —— 造个同名空文件反而更糟
+                        TryCreateLink(entry, destination);
+                        break;
+
+                    default:
+                        WriteTarFile(entry, destination);
+                        break;
+                }
+
+                count++;
+
+                // 每 20 个条目报一次（与 zip 路径一致）：逐条上报会让解压慢一个数量级
+                if (count % 20 == 0 && total > 0)
+                    onPercent((int)Math.Clamp(file.Position * 100 / total, 0, 99));
+            }
+
+            if (count == 0)
+                throw new InvalidOperationException("JDK 压缩包是空的");
+
+            Directory.CreateDirectory(targetFull);
+
+            // 唯一的顶层目录就是 JDK 根目录（jdk-21.0.9+10），把里面的东西搬上来
+            var roots = Directory.EnumerateFileSystemEntries(staging).ToList();
+            var source = roots.Count == 1 && Directory.Exists(roots[0]) ? roots[0] : staging;
+
+            foreach (var item in Directory.EnumerateFileSystemEntries(source))
+            {
+                var destination = Path.Combine(targetFull, Path.GetFileName(item));
+
+                if (Directory.Exists(item))
+                {
+                    if (Directory.Exists(destination))
+                        TryDeleteDirectory(destination);
+
+                    Directory.Move(item, destination);
+                }
+                else
+                {
+                    File.Move(item, destination, overwrite: true);
+                }
+            }
+
+            onPercent(100);
+        }
+        finally
+        {
+            TryDeleteDirectory(staging);
+        }
+    }
+
+    /// <summary>把 tar 条目写成文件，并把它的覆盖权限套到磁盘上。</summary>
+    private static void WriteTarFile(TarEntry entry, string destination)
+    {
+        var dir = Path.GetDirectoryName(destination);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        if (entry.DataStream is { } data)
+        {
+            using var output = new FileStream(
+                destination, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024);
+            data.CopyTo(output);
+        }
+        else
+        {
+            // 空文件在 tar 里就是「没有数据流」
+            File.Create(destination).Dispose();
+        }
+
+        ApplyTarMode(destination, entry.Mode);
+    }
+
+    /// <summary>
+    /// 按 tar 里记的模式给文件设 Unix 权限位。
+    ///
+    /// <para>
+    /// 只保留「属主 / 同组 / 其他」的 rwx 位：tar 头里偶尔会出现 setuid / setgid，
+    /// 那东西不该被一个启动器解压出来。
+    /// </para>
+    /// </summary>
+    private static void ApplyTarMode(string path, UnixFileMode mode)
+    {
+        if (OperatingSystem.IsWindows() || mode == UnixFileMode.None)
+            return;
+
+        const UnixFileMode mask =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+
+        try
+        {
+            File.SetUnixFileMode(path, mode & mask);
+        }
+        catch
+        {
+            // 权限设不上（非 POSIX 文件系统 / 只读挂载）不影响 JDK 能不能被找到
+        }
+    }
+
+    /// <summary>建 tar 里的符号链接。平台或权限不允许时静默跳过。</summary>
+    private static void TryCreateLink(TarEntry entry, string destination)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            if (File.Exists(destination) || Directory.Exists(destination))
+                return;
+
+            if (!string.IsNullOrEmpty(entry.LinkName))
+                File.CreateSymbolicLink(destination, entry.LinkName);
+        }
+        catch
+        {
+            // 没有创建符号链接的权限：JDK 主体不依赖这些链接
+        }
+    }
+
+    /// <summary>看流开头两字节判断是不是 gzip（1F 8B），判断后把位置还原。</summary>
+    private static bool LooksLikeGZip(Stream stream)
+    {
+        if (!stream.CanSeek)
+            return true;
+
+        var position = stream.Position;
+        Span<byte> header = stackalloc byte[2];
+        var read = stream.Read(header);
+        stream.Position = position;
+
+        return read == 2 && header[0] == 0x1F && header[1] == 0x8B;
+    }
+
+    /// <summary>删掉一个目录（含内容）；失败就算了，交给系统清理临时目录。</summary>
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // 同 TryDelete：清理不掉不影响安装结果
         }
     }
 
@@ -863,6 +1581,14 @@ public static class JavaRuntimeService
 
         // 1) 页面选定的根目录（默认 = Eclipse Adoptium）
         ScanRoot(runtimeRoot);
+
+        // 1.5) Linux：包管理器把 JDK 装在 /usr/lib/jvm 下。
+        //      不扫这里的话，用 apt 装完界面还是「还没有安装过 Java」。
+        if (OperatingSystem.IsLinux())
+        {
+            foreach (var root in LinuxJvmRoots)
+                ScanRoot(root);
+        }
 
         // 2) 各发行版的约定目录（即使用户换了别的根目录，这些也该被认出来）
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);

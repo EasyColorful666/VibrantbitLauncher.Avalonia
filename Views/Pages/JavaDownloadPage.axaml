@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -18,7 +18,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto">
 
         <!--  标题  -->
-        <ctrl:PageHeader Grid.Row="0" Title="Java 运行环境" Subtitle="从 Eclipse Adoptium 获取 Temurin JDK，装好后可直接用于启动游戏" />
+        <ctrl:PageHeader x:Name="Header" Grid.Row="0" Title="Java 运行环境" Subtitle="从 Eclipse Adoptium 获取 Temurin JDK，装好后可直接用于启动游戏" />
 
         <!--  参数栏  -->
         <Border Grid.Row="1" Classes="card" Padding="16,12" Margin="0,0,0,12">
@@ -69,7 +69,7 @@
 
             <!--  左侧：可选版本  -->
             <Grid Grid.Column="0" RowDefinitions="Auto,*">
-                <TextBlock Grid.Row="0" Classes="sectionTitle" Text="可下载的版本" Margin="0,0,0,8" />
+                <TextBlock x:Name="ReleaseTitle" Grid.Row="0" Classes="sectionTitle" Text="可下载的版本" Margin="0,0,0,8" />
 
                 <TextBlock x:Name="EmptyText"
                            Grid.Row="1"
@@ -111,7 +111,7 @@
 
                                     <Button Grid.Column="1"
                                             Classes="accent"
-                                            Content="下载"
+                                            Content="{Binding ActionText}"
                                             VerticalAlignment="Center"
                                             Tag="{Binding}"
                                             Click="Download_Click" />

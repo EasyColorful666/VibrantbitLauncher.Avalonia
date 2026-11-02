@@ -179,6 +179,16 @@
                             </StackPanel>
                         </Grid>
 
+                        <!--
+                            房间自动上架：房主开房后自动把随机端口固定转发出去，房客那边自动把房间
+                            写进多人游戏的服务器列表。这里只讲结果，不讲机制。
+                        -->
+                        <TextBlock Margin="0,10,0,0"
+                                   Classes="caption"
+                                   IsVisible="{Binding HasLanRoomHint}"
+                                   Text="{Binding LanRoomHint}"
+                                   TextWrapping="Wrap" />
+
                         <!--  退出后是否保留联机内核  -->
                         <ToggleSwitch Margin="0,16,0,0"
                                       IsChecked="{Binding KeepAliveOnExit, Mode=TwoWay}"

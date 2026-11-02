@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Serilog;
 using VibrantbitLauncher.Helpers;
@@ -107,16 +108,32 @@ internal static class Program
             .UsePlatformDetect()
             .LogToTrace();
 
-        // Win32 渲染配置：只对 Windows 生效，其他平台传 null 走默认。
-        var win32 = BuildWin32Options();
-        if (win32 is not null)
-            builder = builder.With(win32);
+        // ⚠️⚠️ 这里只能做「平台判断」，**绝不能让 Win32 类型出现在方法签名里**（1.0.29.1 血案）
+        //
+        // 原来写的是：`var win32 = BuildWin32Options();`，而那个方法返回
+        // `Win32PlatformOptions?` —— 这个类型住在 Avalonia.Win32.dll 里，而那个 dll
+        // 在 linux / macOS 包里是被 TrimPlatformPayload **物理删掉**的。
+        //
+        // 为什么 Windows 上删 X11 一直没事、Linux 删 Win32 就炸：
+        //   CLR 只在某个方法**被 JIT** 时才去加载它引用到的程序集，
+        //   所以「平台判断 + 分支调用」是官方推荐的写法（Avalonia.Desktop 的
+        //   UsePlatformDetect 正是拆成 LoadWin32/LoadX11 几个小方法，源码注释里写明了这点）。
+        //   但**方法签名里的类型**不走这个机制：JIT 编译该方法时要先构造签名，
+        //   于是 Linux 上一调 BuildWin32Options()，程序集加载就发生了：
+        //     Could not load file or assembly 'Avalonia.Win32, Version=12.1.4.0'.
+        //   而这里的调用发生在 AppBuilder 阶段，主窗口还没建，所以表现是「启动即失败」。
+        //
+        // 铁律：以后要加任何平台专属配置（X11PlatformOptions / AvaloniaNativePlatformOptions……），
+        // 都必须像 ApplySoftwareRendering 这样：**返回 void、参数只有跨平台类型**，
+        // 类型引用全部关在方法体里，并且确保该方法只在本平台分支被调用。
+        if (OperatingSystem.IsWindows() && ForceSoftwareRendering)
+            ApplySoftwareRendering(builder);
 
         return builder;
     }
 
     /// <summary>
-    /// 组装 Win32 平台选项。
+    /// 把渲染后端钉成软件渲染（仅 Windows 生效）。
     ///
     /// 低配机器（Windows 7 / 32 位进程 / 核显）上最大的性能陷阱是 **GPU 渲染后端**：
     /// Avalonia 默认先试 D3D11，老显卡驱动上会失败并逐级回退到 D3D9 → OpenGL → 软件渲染，
@@ -130,19 +147,18 @@ internal static class Program
     /// ⚠️ 此时 Serilog 的 File sink 还没挂上（<c>LogService.Initialize</c> 在
     /// <c>OnFrameworkInitializationCompleted</c> 里才跑），所以这里只做决定、不写日志，
     /// 由启动链统一记录（见 App.axaml.cs 的「渲染后端」日志行）。
+    ///
+    /// ⚠️ <see cref="MethodImplOptions.NoInlining"/> 不能删：这个方法体只有一个表达式，
+    /// 不加的话 JIT 很可能把它内联进 <see cref="BuildAvaloniaApp"/>，
+    /// Win32 类型引用就又回到调用方的方法体里，Linux 上照样炸。
     /// </summary>
-    private static Win32PlatformOptions? BuildWin32Options()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ApplySoftwareRendering(AppBuilder builder)
     {
-        if (!OperatingSystem.IsWindows())
-            return null;
-
-        if (!ForceSoftwareRendering)
-            return null;
-
-        return new Win32PlatformOptions
+        builder.With(new Win32PlatformOptions
         {
             RenderingMode = new[] { Win32RenderingMode.Software },
-        };
+        });
     }
 
     /// <summary>

@@ -31,6 +31,28 @@ namespace VibrantbitLauncher.Helpers
         /// <summary>单个候选的探测超时。超时即跳过，避免被半损坏的 Java 卡住整条枚举流程。</summary>
         private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
+        /// <summary>
+        /// 当前平台的 java 可执行文件名。
+        ///
+        /// <para>
+        /// Linux / macOS 上**没有** java.exe / javaw.exe，就是 bin/java 这一个 ELF / Mach-O 文件。
+        /// 早期这里处处硬写 <c>java.exe</c>，结果在 Linux 上每个候选路径都落在不存在的文件上，
+        /// 静态体检全部不通过 —— 表现就是「装了 JDK 但检测不到」（1.0.30.2）。
+        /// </para>
+        /// </summary>
+        public static string ExecutableName => OperatingSystem.IsWindows() ? "java.exe" : "java";
+
+        /// <summary>
+        /// Linux / macOS 上发行版约定的 JDK 根目录 —— 它们**下一层**就是 JDK 主目录
+        /// （如 <c>/usr/lib/jvm/java-25-openjdk-amd64/bin/java</c>）。
+        /// 与 <see cref="JavaRuntimeService"/> 里那份的区别是这里多了 <c>/usr/lib64</c> 与
+        /// <c>/opt/openjdk</c>：扫描候选和「安装根目录」是两个不同的用途，不必强行共用。
+        /// </summary>
+        private static readonly string[] UnixJvmRoots =
+        {
+            "/usr/lib/jvm", "/usr/lib64/jvm", "/usr/java", "/opt/java", "/opt/jdk", "/opt/openjdk",
+        };
+
         public static async Task<List<JavaEntry>> FindJavasAsync()
         {
             // 同一「主版本 + 位数」只留版本号最高的那个。
@@ -88,16 +110,8 @@ namespace VibrantbitLauncher.Helpers
                 try
                 {
                     // 探测进程有超时保护：即使某个 Java 仍会弹窗，也只损失这一项，不会卡住枚举
-                    var probe = JavaUtil.GetJavaInfoAsync(candidate);
-                    if (await Task.WhenAny(probe, Task.Delay(ProbeTimeout)) != probe)
-                    {
-                        // 以前这里是静默 continue：用户只知道「检测不到」，日志里一片空白
-                        Serilog.Log.Warning("Java 探测超时，已跳过：{Path}", candidate);
-                        continue;
-                    }
-
-                    var info = await probe;
-                    if (info == null || string.IsNullOrWhiteSpace(info.JavaPath))
+                    var info = await ProbeEntryAsync(candidate).ConfigureAwait(false);
+                    if (info is null || string.IsNullOrWhiteSpace(info.JavaPath))
                         continue;
 
                     var home = HomeOf(info.JavaPath);
@@ -224,20 +238,140 @@ namespace VibrantbitLauncher.Helpers
             if (!IsUsableJava(exePath))
                 return null;
 
+            return await ProbeEntryAsync(exePath!).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 跑一次 <c>java -version</c> 拿版本信息，带超时；失败返回 null。
+        ///
+        /// <para>
+        /// 先走 MinecraftLaunch 的 <see cref="JavaUtil"/>（Windows 上一贯如此）；
+        /// 拿不到结果且不在 Windows 上时，再用自己那套 <c>-XshowSettings:properties -version</c>
+        /// 兜底 —— 那个库的枚举部分是按 Windows 写的，探测部分能不能在 Linux 上跑通
+        /// 不该成为「检测不到 Java」的单点故障。
+        /// </para>
+        /// </summary>
+        private static async Task<JavaEntry?> ProbeEntryAsync(string exePath)
+        {
             try
             {
-                var probe = JavaUtil.GetJavaInfoAsync(exePath!);
+                var probe = JavaUtil.GetJavaInfoAsync(exePath);
                 if (await Task.WhenAny(probe, Task.Delay(ProbeTimeout)) != probe)
                 {
-                    Serilog.Log.Warning("Java 探测超时：{Path}", exePath);
-                    return null;
+                    // 以前这里是静默 continue：用户只知道「检测不到」，日志里一片空白
+                    Serilog.Log.Warning("Java 探测超时，已跳过：{Path}", exePath);
                 }
-
-                return await probe;
+                else
+                {
+                    var info = await probe;
+                    if (info is not null && !string.IsNullOrWhiteSpace(info.JavaPath))
+                        return info;
+                }
             }
             catch (Exception ex)
             {
-                Serilog.Log.Debug(ex, "Java 探测失败：{Path}", exePath);
+                // 单个候选不可用（损坏、版本过低、非 Java 可执行文件）时跳过，
+                // 但留一条 Debug 日志 —— 反复「检测不到」时要能顺着日志查到底卡在哪一步
+                Serilog.Log.Debug(ex, "Java 探测失败，已跳过：{Path}", exePath);
+            }
+
+            if (OperatingSystem.IsWindows())
+                return null;
+
+            return await ProbeUnixJavaAsync(exePath).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 非 Windows 平台的探测：直接跑 <c>-XshowSettings:properties -version</c>，
+        /// 从输出里读 <c>java.version</c> 与 <c>sun.arch.data.model</c>。
+        ///
+        /// <para>
+        /// 版本号信息 java 是打到 **stderr** 的，属性表打到 stdout，两个流都要读 ——
+        /// 只读其中一个会得到「有版本没位数」或者干脆一片空白。
+        /// </para>
+        /// </summary>
+        private static async Task<JavaEntry?> ProbeUnixJavaAsync(string exePath)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo(exePath)
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+
+                psi.ArgumentList.Add("-XshowSettings:properties");
+                psi.ArgumentList.Add("-version");
+
+                using var process = System.Diagnostics.Process.Start(psi);
+                if (process is null)
+                    return null;
+
+                var stdout = process.StandardOutput.ReadToEndAsync();
+                var stderr = process.StandardError.ReadToEndAsync();
+
+                using var cts = new CancellationTokenSource(ProbeTimeout);
+                try
+                {
+                    await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { /* 已经退出 */ }
+                    Serilog.Log.Warning("Java 探测超时，已跳过：{Path}", exePath);
+                    return null;
+                }
+
+                var outText = await stdout.ConfigureAwait(false);
+                var errText = await stderr.ConfigureAwait(false);
+                var text = outText + "\n" + errText;
+
+                var version = Regex.Match(
+                    text, @"^\s*java\.version\s*=\s*(\S+)",
+                    RegexOptions.Multiline).Groups[1].Value;
+
+                if (string.IsNullOrWhiteSpace(version))
+                {
+                    // 老版本 / 被裁剪的运行时可能没有属性表，退回到 banner 行：
+                    // openjdk version "25.0.1" 2025-10-21
+                    version = Regex.Match(text, @"(?:java|openjdk) version ""([^""]+)""").Groups[1].Value;
+                }
+
+                if (string.IsNullOrWhiteSpace(version))
+                    return null;
+
+                var model = Regex.Match(
+                    text, @"^\s*sun\.arch\.data\.model\s*=\s*(\d+)",
+                    RegexOptions.Multiline).Groups[1].Value;
+
+                bool is64;
+
+                if (model.Length > 0)
+                {
+                    is64 = model == "64";
+                }
+                else
+                {
+                    var arch = Regex.Match(
+                        text, @"^\s*os\.arch\s*=\s*(\S+)",
+                        RegexOptions.Multiline).Groups[1].Value;
+
+                    is64 = arch.Contains("64", StringComparison.Ordinal)
+                        || arch.StartsWith("aarch", StringComparison.OrdinalIgnoreCase);
+                }
+
+                return new JavaEntry
+                {
+                    JavaPath = exePath,
+                    JavaVersion = version.Trim(),
+                    Is64bit = is64,
+                };
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "Java 探测失败（Unix）：{Path}", exePath);
                 return null;
             }
         }
@@ -247,11 +381,20 @@ namespace VibrantbitLauncher.Helpers
 
 
         /// <summary>
-        /// 判断一个 java.exe / javaw.exe 是否来自**完整**的 Java 安装，即能不能直接拿来启动。
+        /// 判断一个 java 可执行文件是否来自**完整**的 Java 安装，即能不能直接拿来启动。
         ///
-        /// 判据：同目录存在 java.dll（真实 JDK / JRE / Minecraft 自带运行时的 bin 目录都有），
+        /// <para>
+        /// Windows 判据：同目录存在 java.dll（真实 JDK / JRE / Minecraft 自带运行时的 bin 目录都有），
         /// 或者相邻的 <c>server\jvm.dll</c> / <c>client\jvm.dll</c> 存在。
         /// Oracle 的 javapath / java8path 转发器目录里只有几个 exe，会被判为不可用。
+        /// </para>
+        ///
+        /// <para>
+        /// Linux / macOS 判据：<c>bin/java</c> 的兄弟目录 <c>../lib/server/libjvm.so</c>（macOS 是
+        /// <c>libjvm.dylib</c>）存在 —— 这两块系统根本没有 java.dll，照抄 Windows 判据会让
+        /// 每个候选都「体检不通过」，用户看到的就是「装了 JDK 却检测不到 Java」（1.0.30.2）。
+        /// 而且 <c>/usr/bin/java</c> 是软链，必须先解开再判断。
+        /// </para>
         ///
         /// 这个方法是纯文件系统检查，**不会启动任何进程** —— 这一点是刻意的：
         /// 转发器一旦被执行就会弹模态错误框，把调用方（UI 线程或探测循环）挂住。
@@ -264,12 +407,20 @@ namespace VibrantbitLauncher.Helpers
             try
             {
                 var file = new FileInfo(exePath);
-                if (!file.Exists || file.Length < 4096)   // 0 字节 / 被截断的占位文件
+                if (!file.Exists)
+                    return false;
+
+                // Windows 上的转发器 shim 只有几 KB；Linux 的 bin/java 是十几 KB 的正常 ELF，
+                // 但发行版裁剪后可能更小，所以体积下限只在 Windows 上生效。
+                if (OperatingSystem.IsWindows() && file.Length < 4096)   // 0 字节 / 被截断的占位文件
                     return false;
 
                 var dir = file.DirectoryName;
                 if (string.IsNullOrEmpty(dir))
                     return false;
+
+                if (!OperatingSystem.IsWindows())
+                    return LooksLikeUnixJava(exePath);
 
                 // 已知的转发器目录：不看内容，直接排除
                 if (IsShimDirectory(dir))
@@ -284,6 +435,55 @@ namespace VibrantbitLauncher.Helpers
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Linux / macOS 的可执行文件后面是否真有一份 JVM。
+        ///
+        /// <para>
+        /// 先解开软链：<c>/usr/bin/java → /etc/alternatives/java → /usr/lib/jvm/&lt;x&gt;/bin/java</c>。
+        /// 然后看 JDK 主目录下的 <c>lib/server/libjvm.so</c>（JDK 8 的 jre 布局另算）；
+        /// 最后用 <c>release</c> 文件兜底 —— 每个正规 JDK 都有，且它存在基本等于「这是一份完整 JDK」。
+        /// </para>
+        /// </summary>
+        private static bool LooksLikeUnixJava(string exePath)
+        {
+            var real = ResolveRealPath(exePath);
+            var bin = Path.GetDirectoryName(real);
+            if (string.IsNullOrEmpty(bin))
+                return false;
+
+            var home = Path.GetDirectoryName(bin);
+            if (string.IsNullOrEmpty(home))
+                return false;
+
+            var libName = OperatingSystem.IsMacOS() ? "libjvm.dylib" : "libjvm.so";
+
+            var candidates = new[]
+            {
+                Path.Combine(home, "lib", "server", libName),
+                Path.Combine(home, "lib", "client", libName),
+                Path.Combine(home, "lib", libName),
+                Path.Combine(home, "jre", "lib", "server", libName),
+                Path.Combine(home, "jre", "lib", "client", libName),
+            };
+
+            if (candidates.Any(File.Exists))
+                return true;
+
+            // JDK 8 的老布局：jre/lib/<arch>/server/libjvm.so
+            var jreLib = Path.Combine(home, "jre", "lib");
+            if (Directory.Exists(jreLib))
+            {
+                foreach (var arch in SafeDirectories(jreLib))
+                {
+                    if (File.Exists(Path.Combine(arch, "server", libName))
+                        || File.Exists(Path.Combine(arch, "client", libName)))
+                        return true;
+                }
+            }
+
+            return File.Exists(Path.Combine(home, "release"));
         }
 
         /// <summary>
@@ -332,6 +532,7 @@ namespace VibrantbitLauncher.Helpers
             foreach (var exe in FromRegistry()) yield return exe;
             foreach (var exe in FromConfiguredRuntimeRoot()) yield return exe;
             foreach (var exe in FromCommonFolders()) yield return exe;
+            foreach (var exe in FromUnixLocations()) yield return exe;
             foreach (var exe in FromMinecraftRuntime()) yield return exe;
         }
 
@@ -354,6 +555,12 @@ namespace VibrantbitLauncher.Helpers
         /// </summary>
         private static IEnumerable<string> FromRegistry()
         {
+            // 注册表只有 Windows 有。Linux / macOS 上 Registry.LocalMachine 会抛
+            // PlatformNotSupportedException —— 下面虽有 try/catch 兜着，但那是「每扫一次
+            // 就吞一次异常」的无谓噪音，直接按平台跳过。
+            if (!OperatingSystem.IsWindows())
+                return Array.Empty<string>();
+
             var results = new List<string>();
 
             void Scan(string subKey, string valueName)
@@ -372,8 +579,7 @@ namespace VibrantbitLauncher.Helpers
                             continue;
 
                         home = home.Trim().Trim('"');
-                        results.Add(Path.Combine(home, "bin", "javaw.exe"));
-                        results.Add(Path.Combine(home, "bin", "java.exe"));
+                        results.AddRange(JavaIn(home));
                     }
                 }
                 catch (Exception ex)
@@ -451,25 +657,34 @@ namespace VibrantbitLauncher.Helpers
             if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
                 yield break;
 
-            foreach (var exe in JavawAndJavaIn(root))
+            foreach (var exe in JavaIn(root))
                 yield return exe;
 
             foreach (var sub in SafeDirectories(root))
             {
-                foreach (var exe in JavawAndJavaIn(sub))
+                foreach (var exe in JavaIn(sub))
                     yield return exe;
 
                 foreach (var sub2 in SafeDirectories(sub))
-                    foreach (var exe in JavawAndJavaIn(sub2))
+                    foreach (var exe in JavaIn(sub2))
                         yield return exe;
             }
         }
 
-        /// <summary>某个 Java 主目录下的 bin\javaw.exe 与 bin\java.exe。</summary>
-        private static IEnumerable<string> JavawAndJavaIn(string home)
+        /// <summary>某个 Java 主目录下的可执行文件，即 <c>&lt;home&gt;/bin/java[.exe]</c>。</summary>
+        private static IEnumerable<string> JavaIn(string home) => JavaInBin(Path.Combine(home, "bin"));
+
+        /// <summary>
+        /// 某个 bin 目录下的可执行文件。
+        /// Windows 先给 javaw.exe（启动游戏不弹控制台），再给 java.exe；
+        /// 其它平台只有 java 一个名字。
+        /// </summary>
+        private static IEnumerable<string> JavaInBin(string bin)
         {
-            yield return Path.Combine(home, "bin", "javaw.exe");
-            yield return Path.Combine(home, "bin", "java.exe");
+            if (OperatingSystem.IsWindows())
+                yield return Path.Combine(bin, "javaw.exe");
+
+            yield return Path.Combine(bin, ExecutableName);
         }
 
         private static IEnumerable<string> FromJavaHome()
@@ -478,8 +693,8 @@ namespace VibrantbitLauncher.Helpers
             if (string.IsNullOrWhiteSpace(home))
                 yield break;
 
-            yield return Path.Combine(home, "bin", "javaw.exe");
-            yield return Path.Combine(home, "bin", "java.exe");
+            foreach (var exe in JavaIn(home))
+                yield return exe;
         }
 
         private static IEnumerable<string> FromPathVariable()
@@ -494,8 +709,9 @@ namespace VibrantbitLauncher.Helpers
                 if (trimmed.Length == 0)
                     continue;
 
-                yield return Path.Combine(trimmed, "javaw.exe");
-                yield return Path.Combine(trimmed, "java.exe");
+                // PATH 里放的是 bin 目录本身，不是 JDK 主目录
+                foreach (var exe in JavaInBin(trimmed))
+                    yield return exe;
             }
         }
 
@@ -510,6 +726,11 @@ namespace VibrantbitLauncher.Helpers
         /// </summary>
         private static IEnumerable<string> FromCommonFolders()
         {
+            // 这一整段都是 Windows 的目录约定（Program Files / LOCALAPPDATA\Programs）。
+            // Linux / macOS 的约定位置见 FromUnixLocations()。
+            if (!OperatingSystem.IsWindows())
+                yield break;
+
             var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
 
             var roots = new List<string>();
@@ -565,11 +786,11 @@ namespace VibrantbitLauncher.Helpers
                 if (!Directory.Exists(root))
                     continue;
 
-                foreach (var exe in JavawAndJavaIn(root))
+                foreach (var exe in JavaIn(root))
                     yield return exe;
 
                 foreach (var sub in SafeDirectories(root))
-                    foreach (var exe in JavawAndJavaIn(sub))
+                    foreach (var exe in JavaIn(sub))
                         yield return exe;
             }
         }
@@ -591,9 +812,101 @@ namespace VibrantbitLauncher.Helpers
             if (!Directory.Exists(runtimeDir))
                 yield break;
 
+            // 官方启动器的运行时目录里，Windows 只有 javaw.exe（不弹控制台），
+            // 其它平台就是 bin/java。
+            var fileName = OperatingSystem.IsWindows() ? "javaw.exe" : "java";
+
             foreach (var runtime in SafeDirectories(runtimeDir))
-                foreach (var exe in SafeFiles(runtime, "javaw.exe", 4))
+                foreach (var exe in SafeFiles(runtime, fileName, 4))
                     yield return exe;
+        }
+
+        /// <summary>
+        /// Linux / macOS 上 JDK 的常见落点（1.0.30.2）。
+        ///
+        /// <para>
+        /// 这两块系统没有「Program Files + 厂商子目录」那套约定，包管理器把 JDK 装在
+        /// <c>/usr/lib/jvm</c>，sdkman 装在 <c>~/.sdkman/candidates/java</c>，
+        /// Homebrew 装在 <c>/opt/homebrew/opt/openjdk*</c>，macOS 的 Oracle/Temurin 安装器
+        /// 落在 <c>/Library/Java/JavaVirtualMachines/&lt;x&gt;.jdk/Contents/Home</c>。
+        /// 不扫这些目录，用户用系统包管理器装完 JDK，界面永远是「没有检测到 Java」。
+        /// </para>
+        /// </summary>
+        private static IEnumerable<string> FromUnixLocations()
+        {
+            if (OperatingSystem.IsWindows())
+                yield break;
+
+            // 1) 发行版约定的 JDK 根目录（下一层就是 JDK 主目录）
+            foreach (var root in UnixJvmRoots)
+                foreach (var exe in JavaHomesUnder(root, depth: 0))
+                    yield return exe;
+
+            // 2) 用户目录下的版本管理器：sdkman / 手动解压的 jdks / 我们自己的 runtime
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                foreach (var exe in JavaHomesUnder(
+                             Path.Combine(home, ".sdkman", "candidates", "java"), depth: 0))
+                    yield return exe;
+
+                foreach (var exe in JavaHomesUnder(Path.Combine(home, ".jdks"), depth: 0))
+                    yield return exe;
+
+                foreach (var exe in JavaHomesUnder(
+                             Path.Combine(home, ".local", "share", "VibrantbitLauncher", "runtime"), depth: 0))
+                    yield return exe;
+            }
+
+            // 3) macOS：/Library/Java/JavaVirtualMachines/<x>.jdk/Contents/Home/bin/java
+            foreach (var exe in JavaHomesUnder("/Library/Java/JavaVirtualMachines", depth: 2))
+                yield return exe;
+
+            // 4) Homebrew（Apple Silicon 在 /opt/homebrew，Intel 在 /usr/local）
+            foreach (var prefix in new[] { "/opt/homebrew/opt", "/usr/local/opt" })
+            {
+                foreach (var dir in SafeDirectories(prefix))
+                {
+                    if (!Path.GetFileName(dir).StartsWith("openjdk", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // formula：<prefix>/openjdk@21/bin/java
+                    foreach (var exe in JavaIn(dir))
+                        yield return exe;
+
+                    // cask：<prefix>/openjdk/libexec/openjdk.jdk/Contents/Home/bin/java
+                    foreach (var exe in JavaIn(Path.Combine(dir, "libexec", "openjdk.jdk", "Contents", "Home")))
+                        yield return exe;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 在 <paramref name="root"/> 下按「JDK 主目录」的层级找可执行文件。
+        /// <paramref name="depth"/> 是还允许往下钻的层数：<c>0</c> 表示根目录的直接子目录就是 JDK 主目录。
+        /// </summary>
+        private static IEnumerable<string> JavaHomesUnder(string root, int depth)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                yield break;
+
+            // 根目录本身可能就是 JDK 主目录（用户把 JAVA_HOME 指到这里）
+            foreach (var exe in JavaIn(root))
+                yield return exe;
+
+            foreach (var sub in SafeDirectories(root))
+            {
+                if (depth > 0)
+                {
+                    foreach (var nested in JavaHomesUnder(sub, depth - 1))
+                        yield return nested;
+
+                    continue;
+                }
+
+                foreach (var exe in JavaIn(sub))
+                    yield return exe;
+            }
         }
 
         private static IEnumerable<string> SafeDirectories(string dir)

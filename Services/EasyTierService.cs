@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -85,11 +86,70 @@ namespace VibrantbitLauncher.Services
         /// <summary>过渡版本里曾当成默认写进设置的节点，同样按「没改过」处理。</summary>
         public const string TransitionalDefaultRelayServer = "tcp://public.easytier.top:11010";
 
-        /// <summary>核心可执行文件名。</summary>
-        private const string CoreFileName = "easytier-core.exe";
+        /// <summary>
+        /// 联机内核的版本。资产名、下载地址、目录名都由它拼出来，
+        /// 升级内核时只改这一处（GitHub Release 的 tag 也是 <c>v{CoreVersion}</c>）。
+        /// </summary>
+        public const string CoreVersion = "2.6.4";
+
+        /// <summary>
+        /// 当前平台在 EasyTier 发布包里的 OS token：<c>windows</c> / <c>linux</c> / <c>macos</c>。
+        /// 它同时是资产名的一段（<c>easytier-linux-x86_64-…zip</c>）与压缩包内的顶层目录名。
+        /// </summary>
+        public static string PlatformOsToken =>
+            OperatingSystem.IsWindows() ? "windows"
+            : OperatingSystem.IsMacOS() ? "macos"
+            : "linux";
+
+        /// <summary>
+        /// 架构 token。三个平台的命名**不一样**，不能共用一个表：
+        /// Windows 64 位叫 <c>x86_64</c>、ARM64 叫 <c>arm64</c>、32 位叫 <c>i686</c>；
+        /// Linux / macOS 的 ARM64 叫 <c>aarch64</c>。
+        /// 对不上的架构一律回落到 <c>x86_64</c> —— 宁可下个跑不动的，也不要拼出一个不存在的资产名（404）。
+        /// </summary>
+        public static string PlatformArchToken
+        {
+            get
+            {
+                var arch = RuntimeInformation.OSArchitecture;
+
+                if (OperatingSystem.IsWindows())
+                {
+                    return arch switch
+                    {
+                        Architecture.X64 => "x86_64",
+                        Architecture.Arm64 => "arm64",
+                        Architecture.X86 => "i686",
+                        _ => "x86_64",
+                    };
+                }
+
+                if (OperatingSystem.IsMacOS())
+                    return arch == Architecture.Arm64 ? "aarch64" : "x86_64";
+
+                return arch switch
+                {
+                    Architecture.X64 => "x86_64",
+                    Architecture.Arm64 => "aarch64",
+                    Architecture.Arm => "armv7",
+                    _ => "x86_64",
+                };
+            }
+        }
+
+        /// <summary>压缩包内顶层目录名，例如 <c>easytier-linux-x86_64</c>。</summary>
+        public static string PackageFolderName => $"easytier-{PlatformOsToken}-{PlatformArchToken}";
+
+        /// <summary>当前平台对应的 GitHub Release 资产名。</summary>
+        public static string ReleaseAssetName => $"{PackageFolderName}-v{CoreVersion}.zip";
+
+        /// <summary>核心可执行文件名（Windows 带 .exe）。</summary>
+        public static string CoreFileName =>
+            OperatingSystem.IsWindows() ? "easytier-core.exe" : "easytier-core";
 
         /// <summary>命令行客户端名，用来读取成员列表。</summary>
-        private const string CliFileName = "easytier-cli.exe";
+        public static string CliFileName =>
+            OperatingSystem.IsWindows() ? "easytier-cli.exe" : "easytier-cli";
 
         /// <summary>虚拟网络里出现的 IPv4（EasyTier 默认分配 10.x.x.x 段）。</summary>
         private static readonly Regex VirtualIpv4Regex =
@@ -235,8 +295,15 @@ namespace VibrantbitLauncher.Services
             {
                 try
                 {
-                    using var identity = WindowsIdentity.GetCurrent();
-                    return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+                    if (OperatingSystem.IsWindows())
+                    {
+                        using var identity = WindowsIdentity.GetCurrent();
+                        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+                    }
+
+                    // Linux / macOS：uid 0 = root。EasyTier 在 Linux 上要建 tun 网卡，
+                    // 非 root 直接起不来，所以这里的判断必须真实，否则提示会指错方向。
+                    return string.Equals(Environment.UserName, "root", StringComparison.Ordinal);
                 }
                 catch
                 {
@@ -246,14 +313,14 @@ namespace VibrantbitLauncher.Services
         }
 
         /// <summary>
-        /// 先在约定目录 <c>VBL\easytier-windows-x86_64\</c> 找，找不到则在整个 VBL 目录里递归找，
+        /// 先在约定目录 <c>VBL\easytier-&lt;平台&gt;-&lt;架构&gt;\</c> 找，找不到则在整个 VBL 目录里递归找，
         /// 这样将来 EasyTier 改了压缩包内的目录名也不会失联。
         /// </summary>
         private static string? ResolveTool(string fileName)
         {
             foreach (var root in new[] { VblDirectory, Path.Combine(Environment.CurrentDirectory, "VBL") })
             {
-                var direct = Path.Combine(root, "easytier-windows-x86_64", fileName);
+                var direct = Path.Combine(root, PackageFolderName, fileName);
                 if (File.Exists(direct))
                     return direct;
 
