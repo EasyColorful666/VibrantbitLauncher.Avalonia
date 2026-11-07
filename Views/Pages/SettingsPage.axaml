@@ -895,7 +895,7 @@
                                              Text="{Binding CustomDownloadSources, Mode=TwoWay}" />
                                     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CustomSourceHint}" />
                                     <TextBlock Classes="caption" Opacity="0.75" TextWrapping="Wrap"
-                                               Text="一行一个，填到域名即可。地址需要与 BMCLAPI 的路径结构兼容：启动器会在后面自动拼 /maven/、/fabric-meta/、/version/… 等路径。多个源按顺序互为备份。首次安装原版游戏时的本体与资源文件仍按内置镜像逻辑处理，自定义源主要作用于版本清单、加载器依赖、模组与资源补全。" />
+                                               Text="一行一个，填到域名即可。地址需要与 BMCLAPI 的路径结构兼容：启动器会在后面自动拼 /maven/、/fabric-meta/、/version/… 等路径。多个源按顺序互为备份。首次安装原版游戏时的本体与资源文件仍按内置镜像逻辑处理，自定义源主要作用于版本清单、加载器依赖、模组与资源补全。请尽量用 https：http 明文地址在链路上可能被替换，带 sha1 的文件会被校验出来，没有哈希的文件挡不住。" />
                                 </StackPanel>
 
                                 <TextBlock Classes="groupLabel" Text="速度限制" />

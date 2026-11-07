@@ -168,9 +168,17 @@ namespace VibrantbitLauncher.Services
                 return;
             }
 
-            if (!_relay.IsRunning || _relay.TargetPort != port.Value)
+            // 只绑 EasyTier 的虚拟网卡，不绑 0.0.0.0：
+            // 绑全地址等于让同一个 Wi-Fi / 公司网里的任何人都能绕过联机码直接进房主的游戏。
+            // 比较用规范化后的地址，避免「10.126.126.2」与「10.126.126.2 」这种差异导致反复重建。
+            var virtualIp = _easyTier.LocalVirtualIp?.Trim() ?? string.Empty;
+            var wantedBind = RoomRelay.ParseBindAddress(virtualIp)?.ToString() ?? string.Empty;
+
+            if (!_relay.IsRunning
+                || _relay.TargetPort != port.Value
+                || !string.Equals(_relay.PreferredAddress, wantedBind, StringComparison.OrdinalIgnoreCase))
             {
-                var error = _relay.Start(port.Value);
+                var error = _relay.Start(port.Value, virtualIp);
 
                 if (error is not null)
                 {
@@ -484,14 +492,64 @@ namespace VibrantbitLauncher.Services
 
             public int TargetPort { get; private set; }
 
-            /// <summary>开始监听；成功返回 null，失败返回原因（端口被占用 / 没权限）。</summary>
-            public string? Start(int targetPort)
+            /// <summary>
+            /// 最近一次请求绑定的网卡地址；空串表示绑在 <c>0.0.0.0</c>。
+            ///
+            /// <para>
+            /// 用它跟「当前虚拟 IP」比对：EasyTier 重新加入网络后地址可能变，
+            /// 变了就得重建监听，否则房客连的是旧地址。记的是**请求值**而不是实际绑定值 ——
+            /// 虚拟网卡一时没就绪而退回全地址时，不该每 1.5 秒重建一次连接。
+            /// </para>
+            /// </summary>
+            public string PreferredAddress { get; private set; } = string.Empty;
+
+            /// <summary>
+            /// 开始监听；成功返回 null，失败返回原因（端口被占用 / 没权限）。
+            /// </summary>
+            /// <param name="targetPort">本机游戏「对局域网开放」后真实的端口。</param>
+            /// <param name="preferAddress">
+            /// 优先绑定的本机地址（EasyTier 的虚拟 IP）。
+            ///
+            /// <para>
+            /// <b>为什么不能一律绑 0.0.0.0</b>：那等于把这台机器在所有网卡上都挂上 25565 ——
+            /// 同一个 Wi-Fi、同一个公司网里的任何人都能绕过联机码直接进房主的游戏。
+            /// 绑虚拟网卡之后，只有虚拟网络里的成员连得到，和「房间」的语义一致。
+            /// </para>
+            ///
+            /// <para>
+            /// 拿不到虚拟 IP，或者这个地址在本机绑不上（网卡刚拆、地址还没配上）时，
+            /// 退回 <c>0.0.0.0</c> 保证联机可用 —— 功能不能因为加固而失效。
+            /// </para>
+            /// </param>
+            public string? Start(int targetPort, string? preferAddress)
             {
                 Stop();
 
+                var preferred = ParseBindAddress(preferAddress);
+                PreferredAddress = preferred?.ToString() ?? string.Empty;
+
+                if (preferred is not null)
+                {
+                    try
+                    {
+                        return Listen(preferred, targetPort);
+                    }
+                    catch (SocketException)
+                    {
+                        // 虚拟网卡还没就绪：退回全地址，保证这次开房能用；
+                        // PreferredAddress 仍记着虚拟 IP，等它变了才会重建。
+                        Serilog.Log.Debug("绑定虚拟网卡 {Address} 失败，暂时回退到 0.0.0.0", preferred);
+                    }
+                }
+
+                return Listen(IPAddress.Any, targetPort);
+            }
+
+            private string? Listen(IPAddress address, int targetPort)
+            {
                 try
                 {
-                    var listener = new TcpListener(IPAddress.Any, RoomPort);
+                    var listener = new TcpListener(address, RoomPort);
                     listener.Start();
 
                     _listener = listener;
@@ -510,6 +568,27 @@ namespace VibrantbitLauncher.Services
                 {
                     return ex.Message;
                 }
+            }
+
+            /// <summary>
+            /// 只接受「能用来绑定的本机单播地址」：回环、Any、IPv6 一律当成「没给地址」。
+            /// 回环绑上去房客就连不到了，那不是我们想要的「更安全」，是「不能用」。
+            /// </summary>
+            internal static IPAddress? ParseBindAddress(string? raw)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    return null;
+
+                if (!IPAddress.TryParse(raw.Trim(), out var address))
+                    return null;
+
+                if (address.AddressFamily != AddressFamily.InterNetwork)
+                    return null;
+
+                if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any))
+                    return null;
+
+                return address;
             }
 
             private async Task AcceptLoopAsync(

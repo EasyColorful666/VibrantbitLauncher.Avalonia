@@ -40,6 +40,51 @@
         <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
     </Window.Resources>
 
+    <Window.Styles>
+        <!--
+            侧栏抽屉按钮：只在标题栏左端出现，所以样式挂窗口级，不往全局按钮里加分支。
+
+            尺寸 32 + 左边距 8 → 图标中心落在 x=24，正好是紧凑侧栏（48）的中线；
+            展开成 184 时也贴着导航项图标那一列，来回切按钮本身不位移。
+        -->
+        <Style Selector="Button.navDrawer">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button.navDrawer /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="Button.navDrawer:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
+        </Style>
+
+        <Style Selector="Button.navDrawer:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        </Style>
+
+        <!-- 图标是描边路径，不跟 Foreground 走，得单独换色 -->
+        <Style Selector="Button.navDrawer:pointerover Path.navDrawerGlyph">
+            <Setter Property="Stroke" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+
+        <!-- 图标钮太小，按下不缩放（同全局 .subtle 的处理） -->
+        <Style Selector="Button.navDrawer:pressed">
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+    </Window.Styles>
+
     <Grid>
         <!--
             ==================== 第 0 层：画布 ====================
@@ -121,21 +166,56 @@
         -->
         <Grid x:Name="AppRoot" RowDefinitions="Auto,*" RenderTransformOrigin="50%,50%">
             <!--
-                标题栏：与画布同色、无分隔线，和内容连成一整块白。
-                它只承担两件事 —— 拖窗 / 系统按钮。标题本身压到次级灰。
+                标题栏这一行分两段：左端是侧栏抽屉按钮，右边才是自定义标题栏本体。
+
+                为什么按钮不放进导航视图的 PaneHeader：FluentAvalonia 的模板在
+                `:listsizecompact`（紧凑导航）下把 `PaneHeaderContentBorder` 直接隐藏，
+                放进去就变成「一收起侧栏，展开按钮也跟着消失」，人再也点不回来。
+                放在标题栏行里，按钮的位置和尺寸完全不受导航模式影响。
             -->
-            <ctrl:TitleBar x:Name="AppTitleBar"
-                           Grid.Row="0"
-                           Height="44"
-                           Title="VibrantbitLauncher"
-                           Icon="/Assets/icon.ico" />
+            <Grid Grid.Row="0"
+                  Background="{DynamicResource AppHeaderBarBrush}"
+                  ColumnDefinitions="Auto,*">
+
+                <Button x:Name="NavDrawerButton"
+                        Grid.Column="0"
+                        Classes="navDrawer"
+                        VerticalAlignment="Center"
+                        Command="{Binding ToggleNavigationCommand}"
+                        ToolTip.Tip="收起侧栏">
+                    <!-- 侧栏图标：外框 + 左侧分隔竖线 -->
+                    <Path Classes="navDrawerGlyph"
+                          Data="M 1.5,2.5 H 14.5 V 13.5 H 1.5 Z M 6.5,2.5 V 13.5"
+                          Width="16"
+                          Height="16"
+                          Stretch="None"
+                          Stroke="{DynamicResource TextFillColorSecondaryBrush}"
+                          StrokeThickness="1.2"
+                          VerticalAlignment="Center" />
+                </Button>
+
+                <!--
+                    标题栏：与画布同色、无分隔线，和内容连成一整块白。
+                    它只承担两件事 —— 拖窗 / 系统按钮。标题本身压到次级灰。
+                -->
+                <ctrl:TitleBar x:Name="AppTitleBar"
+                               Grid.Column="1"
+                               Height="44"
+                               Title="VibrantbitLauncher"
+                               Icon="/Assets/icon.ico" />
+            </Grid>
 
             <!--
-                导航容器：常驻左侧**文字**导航（PaneDisplayMode=Left）。
+                导航容器：默认常驻左侧**文字**导航（PaneDisplayMode=Left）。
+                标题栏左上角的抽屉按钮可以把它切成 LeftCompact（只留 48px 图标条），
+                两者都走 SplitView 的 inline 模式，宽度变化由控件自己处理。
 
-                ⚠️ 上一版为了做「导航并进标题栏」用过 Top + IsPaneVisible=False，
-                结果顶部自适应测量反复重排、整个窗口卡死（1.0.24.0 实测）。
-                现在固定 Left，不再动态切模式，那个坑也就不存在了。
+                这里**不绑** NavigationMode：收放要在切模式前先跑一段宽度动画，
+                而模式一换宽度就是瞬间跳过去的（控件自己不做过渡）。
+                驱动逻辑在 MainWindow.axaml.cs 的 ToggleNavigationAsync。
+
+                ⚠️ 别改成 Top + IsPaneVisible=False —— 上一版这么做时顶部自适应测量
+                反复重排、整个窗口卡死（1.0.24.0 实测）。
             -->
             <ui:FANavigationView x:Name="RootNavigation"
                                  Grid.Row="1"
@@ -144,7 +224,7 @@
                                  IsBackButtonVisible="False"
                                  OpenPaneLength="184"
                                  CompactPaneLength="48"
-                                 PaneDisplayMode="{Binding NavigationMode}"
+                                 PaneDisplayMode="Left"
                                  IsPaneToggleButtonVisible="False">
 
                 <ui:FANavigationView.MenuItems>

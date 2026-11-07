@@ -1,10 +1,8 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Avalonia;
-using Avalonia.Animation;
-using Avalonia.Animation.Easings;
-using Avalonia.Styling;
+using Avalonia.Threading;
 using VibrantbitLauncher.Services;
 
 namespace VibrantbitLauncher.Helpers;
@@ -19,15 +17,23 @@ namespace VibrantbitLauncher.Helpers;
 /// </para>
 ///
 /// <para>
-/// 用代码而不是 XAML 的 <c>Style.Animations</c>，是因为它的启停完全由业务状态决定
-/// （联机服务在跑才呼吸），样式表拿不到这个信号；
-/// 而且 <c>Style.Animations</c> 一旦挂上就会一直循环，没有"停"的入口。
+/// <b>为什么不用 <c>Animation.RunAsync</c></b>：Avalonia 的 <c>RunAsync</c> 只接受有限次的
+/// 动画，把 <c>IterationCount.Infinite</c> 交给它会当场抛
+/// <c>InvalidOperationException: Looping animations must not use the Run method</c>。
+/// 而这里的 <c>_ = animation.RunAsync(...)</c> 是丢弃 Task 的，异常变成「未观察的任务异常」，
+/// 每 20 秒由终结器报一次 —— 日志里那一串同名 ERR 就是它，呼吸效果本身也一次都没生效。
+/// </para>
+///
+/// <para>
+/// 所以改用 <see cref="DispatcherTimer"/> 自己算余弦呼吸：启停完全可控，
+/// 只写一个 <c>Opacity</c>（合成层属性，不触发重排），也不需要跟动画调度器打交道。
+/// XAML 里的无限循环（壁纸）走 <c>Style.Animations</c>，那是另一条合法路径，不受这条限制。
 /// </para>
 /// </summary>
 public static class MotionLoops
 {
-    /// <summary>一个元素当前挂着的循环动效令牌（停的时候要取消它）。</summary>
-    private static readonly ConditionalWeakTable<Visual, CancellationTokenSource> Running = new();
+    /// <summary>一个元素当前挂着的呼吸（停的时候要释放它）。</summary>
+    private static readonly ConditionalWeakTable<Visual, Breathing> Running = new();
 
     /// <summary>呼吸周期：2 秒一个来回。比这快会心慌，比这慢就看不出来。</summary>
     private static readonly TimeSpan PulseDuration = TimeSpan.FromSeconds(2);
@@ -45,6 +51,13 @@ public static class MotionLoops
         if (visual is null)
             return;
 
+        // DispatcherTimer 必须在 UI 线程创建；联机状态可能在后台线程变化
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => SetPulse(visual, enabled));
+            return;
+        }
+
         Stop(visual);
 
         if (!enabled)
@@ -58,27 +71,7 @@ public static class MotionLoops
         if (SettingsService.Current.BackgroundAnimated)
             return;
 
-        var cts = new CancellationTokenSource();
-        Running.Add(visual, cts);
-
-        var animation = new Animation
-        {
-            Duration = PulseDuration,
-            IterationCount = IterationCount.Infinite,
-            PlaybackDirection = PlaybackDirection.Alternate,
-            Easing = new SineEaseInOut()
-        };
-
-        var dim = new KeyFrame { Cue = new Cue(0d) };
-        dim.Setters.Add(new Setter(Visual.OpacityProperty, 1d));
-
-        var fade = new KeyFrame { Cue = new Cue(1d) };
-        fade.Setters.Add(new Setter(Visual.OpacityProperty, PulseMinOpacity));
-
-        animation.Children.Add(dim);
-        animation.Children.Add(fade);
-
-        _ = animation.RunAsync(visual, cts.Token);
+        Running.Add(visual, new Breathing(visual));
     }
 
     /// <summary>停掉某个元素的呼吸（并把不透明度复位到 1，否则会停在半透明上）。</summary>
@@ -87,22 +80,51 @@ public static class MotionLoops
         if (visual is null)
             return;
 
-        if (Running.TryGetValue(visual, out var cts))
+        if (Running.TryGetValue(visual, out var breathing))
         {
             Running.Remove(visual);
-            try
-            {
-                cts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // 已经释放过：什么都不用做
-            }
-
-            cts.Dispose();
+            breathing.Dispose();
         }
 
-        // 动画被取消时不一定把属性还回去，显式复位
+        // 释放时已经复位过，这里再写一次是防止「没在呼吸也被调 Stop」时残留半透明
         visual.Opacity = 1d;
+    }
+
+    /// <summary>
+    /// 单个元素的呼吸状态。每 40ms 写一次 Opacity（约 25fps，肉眼足够顺滑），
+    /// 用余弦而不是线性往返，避免最高点和最低点出现折角。
+    /// </summary>
+    private sealed class Breathing : IDisposable
+    {
+        private readonly Visual _target;
+        private readonly DispatcherTimer _timer;
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private bool _disposed;
+
+        public Breathing(Visual target)
+        {
+            _target = target;
+            _timer = new DispatcherTimer(
+                TimeSpan.FromMilliseconds(40), DispatcherPriority.Render, (_, _) => Tick());
+            _timer.Start();
+        }
+
+        private void Tick()
+        {
+            if (_disposed)
+                return;
+
+            var phase = _clock.Elapsed.TotalMilliseconds % PulseDuration.TotalMilliseconds;
+            var progress = phase / PulseDuration.TotalMilliseconds;   // 0 → 1
+            var wave = 0.5d - 0.5d * Math.Cos(progress * Math.PI * 2); // 0 → 1 → 0
+            _target.Opacity = 1d - (1d - PulseMinOpacity) * wave;
+        }
+
+        public void Dispose()
+        {
+            _disposed = true;
+            _timer.Stop();
+            _target.Opacity = 1d;
+        }
     }
 }

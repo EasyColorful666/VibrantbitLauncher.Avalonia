@@ -22,8 +22,8 @@ internal static class UiNetwork
             "Custom source: download links are rewritten to your addresses, falling back to the official ones";
         d["自动测速：镜像优先，镜像不行再回退官方"] =
             "Auto: mirror first, official when the mirror fails";
-        d["一行一个，填到域名即可。地址需要与 BMCLAPI 的路径结构兼容：启动器会在后面自动拼 /maven/、/fabric-meta/、/version/… 等路径。多个源按顺序互为备份。首次安装原版游戏时的本体与资源文件仍按内置镜像逻辑处理，自定义源主要作用于版本清单、加载器依赖、模组与资源补全。"] =
-            "One per line, just the domain. The address has to follow BMCLAPI's path layout — the launcher appends /maven/, /fabric-meta/, /version/… itself. When you list several, they back each other up in order. A first-time vanilla install still uses the built-in mirror logic for the game itself and its assets; custom sources cover the version manifest, loader libraries, mods and asset repair.";
+        d["一行一个，填到域名即可。地址需要与 BMCLAPI 的路径结构兼容：启动器会在后面自动拼 /maven/、/fabric-meta/、/version/… 等路径。多个源按顺序互为备份。首次安装原版游戏时的本体与资源文件仍按内置镜像逻辑处理，自定义源主要作用于版本清单、加载器依赖、模组与资源补全。请尽量用 https：http 明文地址在链路上可能被替换，带 sha1 的文件会被校验出来，没有哈希的文件挡不住。"] =
+            "One per line, just the domain. The address has to follow BMCLAPI's path layout — the launcher appends /maven/, /fabric-meta/, /version/… itself. When you list several, they back each other up in order. A first-time vanilla install still uses the built-in mirror logic for the game itself and its assets; custom sources cover the version manifest, loader libraries, mods and asset repair. Prefer https: a plain http source can be swapped in transit — files with a sha1 still get verified, files without one do not.";
         d["还没有填自定义源。地址需要和 BMCLAPI 的路径结构兼容（根地址后面会自动拼 /maven/、/version/… 等路径）。"] =
             "No custom source yet. Addresses have to follow BMCLAPI's path layout (the launcher appends /maven/, /version/… to the root you enter).";
         d["已识别 {0} 个源：{1}"] = "Recognised {0} source(s): {1}";

@@ -408,6 +408,16 @@
         <Setter Property="RenderTransform" Value="none" />
     </Style>
 
+    <!--
+        导航项的左右内边距过渡（侧栏收放时用）同样属于位移，精简档直接去掉 ——
+        底块宽度会随侧栏宽度动画一起变，不影响「收起了没有」这个判断。
+    -->
+    <Style Selector=".motionReduced ui|FANavigationViewItem">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+    </Style>
+
     <!--  「精简」档下按钮/行按住不回缩，但颜色反馈照旧  -->
     <Style Selector=".motionReduced Button:pressed, .motionReduced ListBoxItem:pressed, .motionReduced ComboBoxItem:pressed">
         <Setter Property="RenderTransform" Value="none" />

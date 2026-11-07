@@ -842,17 +842,42 @@ namespace VibrantbitLauncher.ViewModels.Pages
             string assetsIndex = "latest";
             string parentId = null;
 
+            // 1.13 以前的版本（含 1.12.2、Beta、Alpha、rd 系列）没有 arguments 数组，
+            // 全部启动参数都塞在一条 minecraftArguments 字符串里。不展开它，游戏拿到的是
+            // 零个参数 —— RubyDung 直接数组越界，1.6~1.12 则是 joptsimple 抛「缺少 --username」。
+            string legacyArguments = null;
+
             // 同一个库装两个版本会让模块层直接崩：
             //   Modules joptsimple and jopt.simple export package joptsimple.util to module ...
             // （Forge 26.2 自带 jopt-simple 6.0-alpha-3，原版 26.2 声明 5.0.4，两份都在 classpath 里）
             // 所以按 group:artifact:classifier 去重，子版本覆盖父版本。
             var libraryIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+            // 需要解压到 natives 目录的原生库（LWJGL 2 / jinput / twitch 的 dll、so、dylib）。
+            // 这些 jar 在版本 JSON 里只有 classifiers、没有 artifact，靠 GetLibraryPath 拿到的
+            // 就是那个分类器包；必须解压，否则 -Djava.library.path 指向的空目录里什么都没有，
+            // 游戏一进窗口就 UnsatisfiedLinkError: no lwjgl in java.library.path。
+            var nativeJars = new List<(string Path, string[] Exclude)>();
+            var nativeJarSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             void AddLibrary(JsonElement lib)
             {
-                var lp = GetLibraryPath(lib, mcFolder);
+                // 只让「本平台生效」的库进 classpath。
+                //
+                // rd-132211 这类老 JSON 里同时挂着 org.lwjgl.lwjgl:lwjgl:2.9.0（全平台）和
+                // 2.9.1-nightly（rules: 仅 osx）。两者的 group:artifact 相同，去重表会把正式版
+                // 换成那个根本不会下载的 osx 包，于是 classpath 上少了 lwjgl 本体 ——
+                // 游戏一启动就是 NoClassDefFoundError: org/lwjgl/LWJGLException。
+                if (!InstanceIntegrityChecker.IsAllowedOnThisOs(lib))
+                    return;
+
+                var lp = InstanceIntegrityChecker.GetLibraryPath(lib, mcFolder);
                 if (lp == null)
                     return;
+
+                var nativesJar = InstanceIntegrityChecker.GetNativesJarPath(lib, mcFolder);
+                if (nativesJar != null && nativeJarSeen.Add(nativesJar))
+                    nativeJars.Add((nativesJar, InstanceIntegrityChecker.GetNativesExclude(lib)));
 
                 var key = ArtifactKey(lib);
                 if (key.Length > 0 && libraryIndex.TryGetValue(key, out var at))
@@ -896,6 +921,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     }
                     if (parentJson.TryGetProperty("assets", out var pas))
                         assetsIndex = pas.GetString();
+                    if (parentJson.TryGetProperty("minecraftArguments", out var pma)
+                        && pma.ValueKind == JsonValueKind.String)
+                    {
+                        legacyArguments = pma.GetString();
+                    }
                 }
             }
 
@@ -917,6 +947,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
             }
             if (versionJson.TryGetProperty("assets", out var cas))
                 assetsIndex = cas.GetString();
+            if (versionJson.TryGetProperty("minecraftArguments", out var cma)
+                && cma.ValueKind == JsonValueKind.String)
+            {
+                legacyArguments = cma.GetString();
+            }
 
             // client.jar
             var clientJar = Path.Combine(mcFolder, "versions", versionId, versionId + ".jar");
@@ -926,11 +961,14 @@ namespace VibrantbitLauncher.ViewModels.Pages
             {
                 // 0 字节 / HTML 错误页也照「存在」算，但那会让游戏一启动就报 ClassNotFound ——
                 // 官方源被限速或代理拦下时恰好会出现这种「文件在、内容不对」的情况。
-                var size = new FileInfo(clientJar).Length;
-                if (size < 512 * 1024 || !IsZipFile(clientJar))
+                //
+                // 判定必须和启动前体检同一个口径（InstanceIntegrityChecker.LooksLikeValidJar）：
+                // 2009 年的 rd-132211 客户端只有 26 KB，按「小于 512 KB 就是坏的」判，
+                // 远古版本会直接卡在「客户端文件损坏」这一步，连 JVM 都起不来。
+                if (!InstanceIntegrityChecker.LooksLikeValidJar(clientJar, out var jarProblem))
                 {
                     throw new InvalidDataException(
-                        $"客户端文件损坏或未下载完整：{clientJar}（{size} 字节）。"
+                        $"客户端文件损坏或未下载完整：{clientJar}（{jarProblem}）。"
                         + "请在「下载中心」重新安装该版本，或把下载源切换为 BMCLAPI 镜像后重试。");
                 }
 
@@ -959,7 +997,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
             // 必须在拼 classpath 之前做，否则这些 jar 会原样进 -cp。
             libraries = SanitizeForgeClasspath(libraries, jvmArgs, diag);
 
-            var classpath = string.Join(";", libraries);
+            // 分隔符必须按平台：Windows 是 ';'，Linux / macOS 是 ':'。
+            // 写死分号会让 Linux 上的 -cp 变成一整条无效路径，一个类都加载不到。
+            var classpath = string.Join(Path.PathSeparator, libraries);
             diag($"Libraries: {libraries.Count}, MainClass: {mainClass}, Assets: {assetsIndex}");
 
             // 资源索引缺失时游戏会在加载资源阶段直接失败（1.7.3+ 必须有 assets/indexes/<id>.json）。
@@ -1006,6 +1046,12 @@ namespace VibrantbitLauncher.ViewModels.Pages
             var nativesDir = Path.Combine(mcFolder, "versions", versionId, "natives");
             Directory.CreateDirectory(nativesDir);
 
+            // LWJGL 2 时代的游戏（1.12.2 及更早）靠 -Djava.library.path 找 dll/so/dylib，
+            // 而这些原生库只存在于那几个「分类器 jar」里。以前只建了空目录、从不解压，
+            // 于是老版本一进游戏就是 UnsatisfiedLinkError: no lwjgl in java.library.path。
+            if (nativeJars.Count > 0)
+                ExtractNatives(nativesDir, nativeJars, diag);
+
             // 启动配置（设置页「启动」分类）：
             // 全部先夹紧再使用 —— 用户可能手改 settings.json 写出 0 / 负数，
             // -Xmx0m 之类会让 JVM 直接起不来，而报错信息完全看不出是配置问题。
@@ -1019,6 +1065,11 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 : mcFolder;
             Directory.CreateDirectory(gameDir);
             diag($"Version isolation: {cfg.VersionIsolation}, gameDir: {gameDir}");
+
+            // pre-1.6 的资源索引带 map_to_resources，游戏读的是 <gameDir>/resources 下的
+            // 解包副本，而不是 assets/objects/<hash>。不铺这一层，Beta / 1.5.2 进游戏会
+            // 满屏 missing texture、没有声音 —— 能启动，但等于没装资源。
+            EnsureLegacyAssets(mcFolder, assetsIndex, gameDir, diag);
 
             psi.ArgumentList.Add($"-Xmx{maxMb}m");
             psi.ArgumentList.Add($"-Xms{minMb}m");
@@ -1117,16 +1168,43 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 psi.ArgumentList.Add(custom);
             }
 
+            // 老版本的版本 JSON 没有 arguments.jvm，因此不会有 -Djava.library.path。
+            // 原生库已经解压到 nativesDir 了，这里补一条，让 LWJGL 找得到它们。
+            // 现代版本自己声明了这一项（占位符已替换成同一目录），不要重复添加。
+            if (!psi.ArgumentList.Any(a =>
+                    a.StartsWith("-Djava.library.path=", StringComparison.OrdinalIgnoreCase)))
+            {
+                psi.ArgumentList.Add($"-Djava.library.path={nativesDir}");
+                diag($"Added -Djava.library.path={nativesDir}");
+            }
+
             psi.ArgumentList.Add("-cp");
             psi.ArgumentList.Add(classpath);
             psi.ArgumentList.Add(mainClass);
 
+            // pre-1.6 的 --assetsDir 指向「解包出来的资源副本」（<gameDir>/resources 或
+            // assets/virtual/legacy），不是 assets 根目录。传错位置的后果是进游戏后
+            // 满屏 missing texture，虽然不至于起不来，但也没法玩。
+            var legacyResourcesDir = Path.Combine(gameDir, "resources");
+            var virtualLegacyDir = Path.Combine(mcFolder, "assets", "virtual", "legacy");
+            var gameAssetsDir = Directory.Exists(legacyResourcesDir) ? legacyResourcesDir
+                : Directory.Exists(virtualLegacyDir) ? virtualLegacyDir
+                : Path.Combine(mcFolder, "assets");
+
+            // 老式 minecraftArguments（1.12.2 及更早）展开后**排在 arguments.game 前面**，
+            // 与官方启动器的拼接顺序一致。像 rd-132211 的主类靠位置参数取用户名/会话，
+            // 顺序错了就取到 --width 之类的东西。
+            var mergedGameArgs = new List<string>(gameArgs.Count + 8);
+            if (!string.IsNullOrWhiteSpace(legacyArguments))
+                mergedGameArgs.AddRange(SplitLegacyArguments(legacyArguments));
+            mergedGameArgs.AddRange(gameArgs);
+
             // 版本 JSON 里自带的窗体参数要先剔除：值是它的下一个元素，必须连值一起跳过，
             // 否则会留下一个游离的位置参数。剔除后统一由设置页的窗体大小决定。
-            var cleanedGameArgs = new List<string>(gameArgs.Count);
-            for (var i = 0; i < gameArgs.Count; i++)
+            var cleanedGameArgs = new List<string>(mergedGameArgs.Count);
+            for (var i = 0; i < mergedGameArgs.Count; i++)
             {
-                var a = gameArgs[i];
+                var a = mergedGameArgs[i];
                 if (a is "--width" or "--height")
                 {
                     i++;
@@ -1140,6 +1218,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
 
             var winW = Math.Clamp(cfg.WindowWidth, 320, 7680);
             var winH = Math.Clamp(cfg.WindowHeight, 240, 4320);
+            var unresolvedGameArgs = new List<string>();
 
             foreach (var arg in cleanedGameArgs)
             {
@@ -1147,16 +1226,36 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     .Replace("${auth_player_name}", accName)
                     .Replace("${auth_uuid}", accUuid)
                     .Replace("${auth_access_token}", accToken)
+                    // 1.6 之前（含 Beta / Alpha / rd 系列）用 --session，占位符是另一个名字。
+                    // 漏掉它游戏收到的就是字面量 ${auth_session}，登录直接失败。
+                    .Replace("${auth_session}", accToken)
+                    .Replace("${profile_name}", accName)
+                    .Replace("${user_properties}", "{}")
+                    .Replace("${auth_xuid}", string.Empty)
+                    .Replace("${clientid}", string.Empty)
                     .Replace("${version_name}", versionId)
                     .Replace("${game_directory}", gameDir)
                     .Replace("${assets_root}", Path.Combine(mcFolder, "assets"))
+                    .Replace("${game_assets}", gameAssetsDir)
                     .Replace("${assets_index_name}", assetsIndex)
                     .Replace("${user_type}", accType)
                     .Replace("${version_type}", "release")
                     .Replace("${resolution_width}", winW.ToString())
                     .Replace("${resolution_height}", winH.ToString());
                 psi.ArgumentList.Add(replaced);
+
+                // 漏掉任何一个 ${...} 都会让游戏收到字面量，症状是「参数看着都在、就是不生效」。
+                // 这里只记参数名，不记值 —— 值里有 accessToken，不能进日志。
+                if (replaced.Contains("${", StringComparison.Ordinal))
+                    unresolvedGameArgs.Add(arg.Split(' ')[0]);
             }
+
+            if (unresolvedGameArgs.Count > 0)
+            {
+                Serilog.Log.Warning("[启动] {Version} 有 {Count} 个游戏参数含未替换的占位符：{Args}",
+                    versionId, unresolvedGameArgs.Count, string.Join(", ", unresolvedGameArgs));
+            }
+            diag($"Game args: {psi.ArgumentList.Count} total, unresolved placeholders: {unresolvedGameArgs.Count}, assetsDir={gameAssetsDir}");
 
             // 窗体大小 / 全屏：1.13 以前的版本用的是老式 minecraftArguments，
             // 其 game 参数数组是空的（我们只补了空的 arguments.game），
@@ -1217,20 +1316,216 @@ namespace VibrantbitLauncher.ViewModels.Pages
         }
 
         /// <summary>
-        /// 粗略判断一个文件是不是 zip/jar：只看前两个字节是不是 "PK"。
-        /// 用来识别「下载到的是 HTML 错误页 / 空壳」——这类文件同样"存在"，但游戏一定起不来。
+        /// 为「资源索引带 <c>map_to_resources</c> 或 <c>virtual</c>」的老版本铺一份解包资源。
+        ///
+        /// <para>
+        /// 现代版本直接从 <c>assets/objects/&lt;hash[0..2]&gt;/&lt;hash&gt;</c> 按索引取文件，
+        /// 但 1.6 及更早的游戏只会去两个固定目录里翻：
+        /// <c>virtual</c>（1.6.x）→ <c>assets/virtual/&lt;索引id&gt;/</c>，
+        /// <c>map_to_resources</c>（pre-1.6）→ <c>&lt;gameDir&gt;/resources/</c>。
+        /// </para>
+        ///
+        /// <para>
+        /// 幂等：目标文件已存在就跳过，所以第二次启动只做几百次 <c>File.Exists</c>。
+        /// 源文件缺失（资源没下全）也跳过 —— 那是「补全资源」的活，这里不替它兜底。
+        /// </para>
         /// </summary>
-        private static bool IsZipFile(string path)
+        private static void EnsureLegacyAssets(
+            string mcFolder, string assetsId, string gameDir, Action<string> diag)
         {
+            if (string.IsNullOrWhiteSpace(assetsId))
+                return;
+
+            var indexPath = Path.Combine(mcFolder, "assets", "indexes", assetsId + ".json");
+            if (!File.Exists(indexPath))
+                return;
+
             try
             {
-                using var fs = File.OpenRead(path);
-                return fs.ReadByte() == 'P' && fs.ReadByte() == 'K';
+                using var doc = JsonDocument.Parse(File.ReadAllText(indexPath));
+                var root = doc.RootElement;
+
+                var isVirtual = root.TryGetProperty("virtual", out var virtualEl)
+                                && virtualEl.ValueKind == JsonValueKind.True;
+                var isMapToResources = root.TryGetProperty("map_to_resources", out var mapEl)
+                                       && mapEl.ValueKind == JsonValueKind.True;
+
+                // 1.7 及之后两者都没有：游戏直接按 hash 读 objects，不需要副本
+                if (!isVirtual && !isMapToResources)
+                    return;
+
+                if (!root.TryGetProperty("objects", out var objects)
+                    || objects.ValueKind != JsonValueKind.Object)
+                {
+                    return;
+                }
+
+                var targetDir = isVirtual
+                    ? Path.Combine(mcFolder, "assets", "virtual", assetsId)
+                    : Path.Combine(gameDir, "resources");
+
+                Directory.CreateDirectory(targetDir);
+
+                var copied = 0;
+                var missing = 0;
+
+                foreach (var item in objects.EnumerateObject())
+                {
+                    var hash = item.Value.TryGetProperty("hash", out var hashEl) ? hashEl.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(hash) || hash.Length < 2)
+                        continue;
+
+                    var target = Path.Combine(targetDir, item.Name.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(target))
+                        continue;
+
+                    var source = Path.Combine(mcFolder, "assets", "objects", hash[..2], hash);
+                    if (!File.Exists(source))
+                    {
+                        missing++;
+                        continue;
+                    }
+
+                    var dir = Path.GetDirectoryName(target);
+                    if (!string.IsNullOrEmpty(dir))
+                        Directory.CreateDirectory(dir);
+
+                    File.Copy(source, target, overwrite: true);
+                    copied++;
+                }
+
+                if (copied > 0 || missing > 0)
+                    diag($"Legacy assets: {copied} copied, {missing} missing → {targetDir}");
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                // 铺不出来最多是没贴图，不该拦启动
+                diag($"Legacy assets failed: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        ///
+        /// <para>
+        /// 官方格式就是空格分隔，个别加载器（早期 Forge / LiteLoader）会写成
+        /// <c>--tweakClass "a.b.C"</c> 这种带引号的形式，所以按空白切分时要认双引号。
+        /// 引号本身不进参数 —— 它只是给启动器看的。
+        /// </para>
+        /// </summary>
+        private static List<string> SplitLegacyArguments(string raw)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(raw))
+                return result;
+
+            var current = new StringBuilder();
+            var inQuotes = false;
+
+            foreach (var ch in raw)
+            {
+                if (ch == '"')
+                {
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+
+                if (!inQuotes && char.IsWhiteSpace(ch))
+                {
+                    if (current.Length > 0)
+                    {
+                        result.Add(current.ToString());
+                        current.Clear();
+                    }
+                    continue;
+                }
+
+                current.Append(ch);
+            }
+
+            if (current.Length > 0)
+                result.Add(current.ToString());
+
+            return result;
+        }
+
+        /// <summary>
+        /// 把 natives 分类器 jar 解压到 <paramref name="nativesDir"/>。
+        ///
+        /// <para>
+        /// <b>为什么必须有这一步</b>：1.12.2 及更早的版本用 LWJGL 2，它是靠 JVM 从
+        /// <c>-Djava.library.path</c> 目录里 dlopen 一个 <c>lwjgl.dll</c> / <c>liblwjgl.so</c> 来工作的，
+        /// 而那个文件只存在于 <c>lwjgl-platform-&lt;ver&gt;-natives-windows.jar</c> 里。
+        /// 只把 jar 放进 classpath 是没用的 —— jar 以内没有 native 可用，游戏就会在
+        /// <c>Display.create()</c> 处抛 <c>UnsatisfiedLinkError: no lwjgl in java.library.path</c>。
+        /// </para>
+        ///
+        /// <para>
+        /// 幂等：目标文件已存在且长度一致就跳过，这样重复启动不会反复重写正在被游戏占用的 dll。
+        /// 单个包解压失败只记日志，不拦启动（真缺了游戏会自己报错，比启动器瞎猜准）。
+        /// </para>
+        /// </summary>
+        private static void ExtractNatives(
+            string nativesDir, List<(string Path, string[] Exclude)> jars, Action<string> diag)
+        {
+            var extracted = 0;
+            var failed = 0;
+            var root = Path.GetFullPath(nativesDir);
+            var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            foreach (var (jar, exclude) in jars)
+            {
+                if (!File.Exists(jar))
+                {
+                    diag($"Natives jar missing: {jar}");
+                    continue;
+                }
+
+                try
+                {
+                    using var archive = System.IO.Compression.ZipFile.OpenRead(jar);
+                    foreach (var entry in archive.Entries)
+                    {
+                        // 目录项没有 Name，跳过
+                        if (string.IsNullOrEmpty(entry.Name))
+                            continue;
+
+                        var entryName = entry.FullName.Replace('\\', '/');
+
+                        // extract.exclude（LWJGL 一律排除 META-INF/）：签名文件解出来会让
+                        // Java 报重复签名，是这片老代码最常见的「莫名其妙起不来」来源之一。
+                        if (exclude.Any(p => entryName.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                            continue;
+
+                        var target = Path.GetFullPath(
+                            Path.Combine(nativesDir, entryName.Replace('/', Path.DirectorySeparatorChar)));
+
+                        // zip slip 防护：包内条目不得写到 natives 目录之外
+                        if (!target.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        var dir = Path.GetDirectoryName(target);
+                        if (!string.IsNullOrEmpty(dir))
+                            Directory.CreateDirectory(dir);
+
+                        if (File.Exists(target) && new FileInfo(target).Length == entry.Length)
+                            continue;
+
+                        using (var input = entry.Open())
+                        using (var output = File.Create(target))
+                        {
+                            input.CopyTo(output);
+                        }
+                        extracted++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    diag($"Extract natives failed ({Path.GetFileName(jar)}): {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            if (extracted > 0 || failed > 0)
+                diag($"Natives: extracted {extracted} file(s) from {jars.Count} jar(s), {failed} failed");
         }
 
         /// <summary>
@@ -1398,24 +1693,10 @@ namespace VibrantbitLauncher.ViewModels.Pages
             return kept;
         }
 
-        private static string GetLibraryPath(JsonElement lib, string mcFolder)
-        {
-            if (lib.TryGetProperty("downloads", out var dl) && dl.TryGetProperty("artifact", out var art))
-            {
-                if (art.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String)
-                    return Path.Combine(mcFolder, "libraries", path.GetString());
-            }
-            if (lib.TryGetProperty("name", out var name))
-            {
-                var parts = name.GetString().Split(':');
-                if (parts.Length >= 3)
-                {
-                    var group = parts[0].Replace('.', '/');
-                    return Path.Combine(mcFolder, "libraries", group, parts[1], parts[2], $"{parts[1]}-{parts[2]}.jar");
-                }
-            }
-            return null;
-        }
+        // 库路径解析只有一份实现（InstanceIntegrityChecker.GetLibraryPath）：
+        // 启动前体检说「资源完整」而启动时却找不到文件，几乎都是两处口径分叉造成的。
+        // 它按 artifact.path → classifiers[natives[本平台]] → maven 坐标 的顺序解析，
+        // 覆盖了 LWJGL2 时代「只有分类器、没有 artifact」的老写法。
 
         /// <summary>
         /// 按设置页「主界面 · 启动后行为」对启动器自身执行动作。

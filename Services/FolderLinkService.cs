@@ -110,6 +110,12 @@ public static class FolderLinkService
     {
         if (OperatingSystem.IsWindows())
         {
+            // 路径会被塞进一条 cmd 命令串并用双引号包住，所以路径本身不能再带引号 / 换行。
+            // 实例目录名可能是从整合包里带进来的（不完全由本机用户决定），
+            // 一个 `" & ...` 就能跳出引号去执行别的命令 —— 这里直接拒绝。
+            EnsureCmdSafePath(linkPath, "链接路径");
+            EnsureCmdSafePath(targetPath, "目标路径");
+
             // mklink 是 cmd 内建命令，只能通过 cmd 调；/J 建的是 junction，无需提权
             var psi = new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{linkPath}\" \"{targetPath}\"")
             {
@@ -132,5 +138,19 @@ public static class FolderLinkService
         }
 
         Directory.CreateSymbolicLink(linkPath, targetPath);
+    }
+
+    /// <summary>
+    /// 命令串里的路径只允许「普通文件系统字符」：引号、换行、NUL 都能跳出双引号改变命令语义。
+    ///
+    /// <para>
+    /// 只拦这几种，不去猜 cmd 的元字符（<c>&amp; | ^</c> 在双引号内不生效），
+    /// 免得把合法的中文、空格、括号路径也一起挡掉。
+    /// </para>
+    /// </summary>
+    private static void EnsureCmdSafePath(string path, string what)
+    {
+        if (path.IndexOfAny(new[] { '"', '\r', '\n', '\0' }) >= 0)
+            throw new IOException($"{what}含有不被允许的字符（引号或换行）：{path}");
     }
 }

@@ -17,6 +17,10 @@ internal static class UiShell
         d["最大化"] = "Maximize";
         d["关闭"] = "Close";
 
+        // ===== 侧栏抽屉按钮 =====
+        d["收起侧栏"] = "Collapse sidebar";
+        d["展开侧栏"] = "Expand sidebar";
+
         // ===== 账户卡片 =====
         d["账户"] = "Accounts";
         d["还没有添加账户"] = "No accounts yet";

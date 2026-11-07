@@ -132,11 +132,19 @@ namespace VibrantbitLauncher.ViewModels.Windows
         private FANavigationViewPaneDisplayMode _navigationMode = FANavigationViewPaneDisplayMode.Left;
 
         /// <summary>
-        /// 导航栏的摆放方式。新设计固定为常驻左侧文字导航（<see cref="FANavigationViewPaneDisplayMode.Left"/>）。
+        /// 导航栏的摆放方式。默认常驻左侧文字导航（<see cref="FANavigationViewPaneDisplayMode.Left"/>），
+        /// 点了侧栏顶部的抽屉按钮后切成只留图标的
+        /// <see cref="FANavigationViewPaneDisplayMode.LeftCompact"/>。
         ///
         /// <para>
-        /// 仍然是绑定而不是 XAML 里写死：窗口在小屏上会收窄，那时需要切到紧凑模式。
-        /// 但不再由主题决定 —— 主题包机制已经整体移除，界面只有一种形态。
+        /// 只作为 <see cref="IsNavigationCompact"/> 的输出，不要单独赋值：
+        /// 两个字段各存一份状态，迟早会出现「按钮说收起了、侧栏还展着」。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>不要绑到 PaneDisplayMode 上</b>（1.0.33.1 起）：换模式是瞬间换宽度，
+        /// 绑定过去就没有收放动画了。视图侧的 <c>ToggleNavigationAsync</c> 拿它当触发信号，
+        /// 先跑完宽度动画再切模式。
         /// </para>
         /// </summary>
         public FANavigationViewPaneDisplayMode NavigationMode
@@ -145,6 +153,35 @@ namespace VibrantbitLauncher.ViewModels.Windows
             private set => SetProperty(ref _navigationMode, value);
         }
 
+        private bool _isNavigationCompact;
+
+        /// <summary>
+        /// 侧栏是否收成「只留图标」的紧凑形态。
+        ///
+        /// <para>
+        /// 不写进设置：这是当场调节的观看方式，跟着窗口这一次活，
+        /// 下次启动回到默认的展开态（玩家装完就忘了自己收过，会以为功能丢了）。
+        /// </para>
+        /// </summary>
+        public bool IsNavigationCompact
+        {
+            get => _isNavigationCompact;
+            private set
+            {
+                if (!SetProperty(ref _isNavigationCompact, value))
+                    return;
+
+                NavigationMode = value
+                    ? FANavigationViewPaneDisplayMode.LeftCompact
+                    : FANavigationViewPaneDisplayMode.Left;
+
+                OnPropertyChanged(nameof(IsNavigationExpanded));
+            }
+        }
+
+        /// <summary>侧栏是否展开（文字可见）。抽屉按钮上那截文字靠它显隐。</summary>
+        public bool IsNavigationExpanded => !_isNavigationCompact;
+
         public MainWindowViewModel()
         {
             imagePath = @"avares://VibrantbitLauncher.Avalonia/Assets/Blank.jpg";
@@ -152,6 +189,7 @@ namespace VibrantbitLauncher.ViewModels.Windows
             ShowMainWindowCommand = new RelayCommand(ShowMainWindow);
             OpenSettingsCommand = new RelayCommand(OpenSettings);
             ApplicationExitCommand = new RelayCommand(ApplicationExit);
+            ToggleNavigationCommand = new RelayCommand(() => IsNavigationCompact = !IsNavigationCompact);
 
             WeakReferenceMessenger.Default.Register<string, string>(this, "UpdateImagePath", (_, m) => UpdateImagePath(m));
             WeakReferenceMessenger.Default.Register<Type, string>(this, "NavigateTo", (_, m) => NavigateToPage(m));
@@ -349,6 +387,9 @@ namespace VibrantbitLauncher.ViewModels.Windows
         public RelayCommand ShowMainWindowCommand { get; private set; }
         public RelayCommand OpenSettingsCommand { get; private set; }
         public RelayCommand ApplicationExitCommand { get; private set; }
+
+        /// <summary>侧栏抽屉按钮：展开 ↔ 紧凑来回切。</summary>
+        public RelayCommand ToggleNavigationCommand { get; private set; }
         #endregion
 
         #region 私有方法

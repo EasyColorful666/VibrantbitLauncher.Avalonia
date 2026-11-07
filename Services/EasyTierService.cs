@@ -11,6 +11,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 
@@ -142,6 +143,96 @@ namespace VibrantbitLauncher.Services
 
         /// <summary>当前平台对应的 GitHub Release 资产名。</summary>
         public static string ReleaseAssetName => $"{PackageFolderName}-v{CoreVersion}.zip";
+
+        /// <summary>
+        /// 当前平台安装包的官方 SHA256（取自 GitHub Release 资产自带的 <c>digest</c>）。
+        ///
+        /// <para>
+        /// <b>为什么必须校验</b>：这个 zip 解压出来的核心会被以管理员权限启动，而下载链路
+        /// 要经过第三方加速代理 —— 不校验就等于把「以管理员身份执行任意程序」的入口交出去，
+        /// 代理、DNS 劫持、公司网关里的证书替换都能往里塞东西。
+        /// </para>
+        ///
+        /// <para>
+        /// 升级 <see cref="CoreVersion"/> 时必须一起更新这张表。漏更新只会「装不上」并明确报错，
+        /// 不会「装上一个假的」—— 失败方向是安全的。
+        /// </para>
+        /// </summary>
+        public static string ExpectedPackageSha256 => PackageFolderName switch
+        {
+            "easytier-windows-x86_64" => "27af91e270e554709b048bd32327fefd2dfce5062ae1e8701af7550c6f525f84",
+            "easytier-windows-arm64" => "37023f8a3451c9234b17ee2089a03dc344ce90d803b5b359cb6c46682b0549b4",
+            "easytier-windows-i686" => "bf557daeccc5525d95b8a230c339d75554fb52d82d1e050e9a5202c92c02e09e",
+            "easytier-linux-x86_64" => "61b659eaedba658fa66fe47d17e1426cdd77e5d02fa15fed447bb4357c09dfd6",
+            "easytier-linux-aarch64" => "f533ec25a7ea714e09f645615012200278058525795cc3bb690ff011aec1a70f",
+            "easytier-linux-armv7" => "93b1d2831e45db1fd3ca1d8d68c191b300bd69d331ca1858394a0cf884363cc3",
+            "easytier-macos-x86_64" => "89fc28a6e6995259d76ce3f11775220e8a21c760e94df91a6a9db30a69b6982e",
+            "easytier-macos-aarch64" => "4be1882d1aa36d31c1d6ba0596f2cf8a097e371f8da124212324b2e0f8df7e4b",
+            _ => string.Empty
+        };
+
+        /// <summary>
+        /// 校验下载回来的核心包。通过返回 <c>null</c>，否则返回一句能直接给玩家看的原因。
+        ///
+        /// <para>
+        /// 没登记当前平台的校验值同样算失败（fail-closed）：宁可让这个平台暂时装不上，
+        /// 也不要把一个没核对过的可执行文件请进管理员权限里。
+        /// </para>
+        /// </summary>
+        public static async Task<string?> VerifyPackageAsync(string zipPath, CancellationToken ct = default)
+        {
+            var expected = ExpectedPackageSha256;
+
+            if (expected.Length == 0)
+                return "当前平台没有登记联机内核的校验值，为避免运行来路不明的程序，已停止安装";
+
+            try
+            {
+                await using var stream = File.OpenRead(zipPath);
+                var hash = await System.Security.Cryptography.SHA256
+                    .HashDataAsync(stream, ct)
+                    .ConfigureAwait(false);
+
+                var actual = Convert.ToHexString(hash).ToLowerInvariant();
+
+                if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                    return null;
+
+                Serilog.Log.Warning(
+                    "联机内核校验失败：期望 {Expected}，实际 {Actual}（{Path}）",
+                    expected, actual, zipPath);
+
+                return "安装包校验失败（SHA256 不匹配）：下载内容与官方发布的不一致，可能被中间人替换或已损坏。已停止安装，请换个网络后重试";
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "校验联机内核失败：{Path}", zipPath);
+                return "无法读取刚下载的安装包：" + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// 日志里的联机码只留前 6 位。
+        ///
+        /// <para>
+        /// 联机码能推出网络名与密码，完整写进日志就等于把它贴在磁盘上 ——
+        /// 崩溃报告、日志打包发给别人时都会跟着走。前 6 位（<c>U/XXXX</c>）足够排错时对上房间，
+        /// 又不足以反推剩下 12 位。
+        /// </para>
+        /// </summary>
+        private static string MaskKey(string? key)
+        {
+            var value = (key ?? string.Empty).Trim();
+
+            if (value.Length == 0)
+                return "(空)";
+
+            return value.Length <= 6 ? "****" : value[..6] + "…";
+        }
 
         /// <summary>核心可执行文件名（Windows 带 .exe）。</summary>
         public static string CoreFileName =>
@@ -785,7 +876,7 @@ namespace VibrantbitLauncher.Services
             }
 
             StatusMessage = "已脱钩（启动器退出后仍在运行）";
-            Serilog.Log.Information("EasyTier 内核已与启动器脱钩，继续在后台运行（密钥 {Key}）", NetworkKey);
+            Serilog.Log.Information("EasyTier 内核已与启动器脱钩，继续在后台运行（密钥 {Key}）", MaskKey(NetworkKey));
             return true;
         }
 
@@ -857,7 +948,7 @@ namespace VibrantbitLauncher.Services
             NotifyStateChanged();
 
             Serilog.Log.Information("已接管上次退出时保留的 EasyTier 内核（密钥 {Key}，身份 {Role}，虚拟 IP {Ip}）",
-                NetworkKey, IsHost ? "房主" : "房客", selfIp);
+                MaskKey(NetworkKey), IsHost ? "房主" : "房客", selfIp);
             return true;
         }
 

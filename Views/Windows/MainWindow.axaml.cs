@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Animation;
@@ -12,7 +14,9 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Controls;
 using FluentAvalonia.UI.Windowing;
@@ -26,6 +30,7 @@ public partial class MainWindow : FAAppWindow
 {
     private readonly TransitioningContentControl _pageHost;
     private NavigationService? _navigation;
+    private MainWindowViewModel? _viewModel;
 
     /// <summary>
     /// 首帧初始化是否已经做过。Hide → Show（收进托盘后再打开）会再次触发 Opened，
@@ -68,6 +73,10 @@ public partial class MainWindow : FAAppWindow
 
         var vm = new MainWindowViewModel();
         DataContext = vm;
+        _viewModel = vm;
+
+        // 抽屉按钮：PaneDisplayMode 走绑定自动跟，另外两件绑定表达不了的事在这里补
+        vm.PropertyChanged += OnViewModelPropertyChanged;
 
         // 把导航服务挂到全局入口，供各 ViewModel 直接跳转
         _navigation = new NavigationService(_pageHost);
@@ -104,6 +113,155 @@ public partial class MainWindow : FAAppWindow
 
         // ④ 分辨率 / 缩放变化（改显示设置、拔插外接屏）后重新适配一次
         TryWatchScreenChanges();
+
+    }
+
+    // ==================== 侧栏抽屉 ====================
+
+    /// <summary>导航模板里的 <see cref="SplitView"/>（侧栏宽度就是它的 OpenPaneLength）。</summary>
+    private SplitView? _navSplitView;
+
+    /// <summary>正在播放的收放动画；连点两下时用来掐掉上一段。</summary>
+    private CancellationTokenSource? _navAnimationCts;
+
+    /// <summary>
+    /// 侧栏展开 / 收起。
+    ///
+    /// <para>
+    /// <see cref="MainWindowViewModel.NavigationMode"/> 只是个状态位，真正的切换在这里：
+    /// 面板宽度由导航模板里的 <see cref="SplitView"/> 决定，换 PaneDisplayMode 是**瞬间**
+    /// 换宽度（控件自己不做过渡）。所以先把 OpenPaneLength 动画一遍让宽度滑过去，
+    /// 收完落定到 48 才切 LeftCompact —— 中途切过去宽度会立刻跳到 48，动画等于白做。
+    /// </para>
+    ///
+    /// <para>
+    /// 动画用 <see cref="FillMode.Forward"/>：收起后的 48 要留在属性上，
+    /// 下次展开才能从 48 接着跑（用 None 会先弹回 184 再收，闪一下）。
+    /// </para>
+    /// </summary>
+    private async Task ToggleNavigationAsync(bool compact)
+    {
+        // 连点：上一段立刻作废，新的一段从「当前实际宽度」接着跑，不会跳回去重来。
+        _navAnimationCts?.Cancel();
+        _navAnimationCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _navAnimationCts = cts;
+
+        // 导航项的左右内边距先切，Margin 过渡会把它补成一小段滑动。
+        ApplyCompactItemPadding(compact);
+
+        // 提示语只写**中文原文**，翻译层自己会换成当前语言；
+        // 直接写译文会被记成「原文」，切回中文时那句提示就再也回不来了。
+        ToolTip.SetTip(NavDrawerButton, compact ? "展开侧栏" : "收起侧栏");
+
+        var splitView = TryGetNavigationSplitView();
+        var duration = MotionSettings.Ms(compact ? MotionSettings.ExitMs : MotionSettings.EnterMs);
+
+        // 拿不到模板 / 关掉了动效 / 精简档：直接落到终态，一步到位。
+        if (splitView is null || duration <= TimeSpan.Zero || !MotionSettings.AllowMovement)
+        {
+            ApplyPaneMode(compact);
+            return;
+        }
+
+        // 展开必须先回到 Left 模式：只有 Left 下侧栏宽度才跟着 OpenPaneLength 走。
+        // 收起时反过来 —— 整个动画期间都留在 Left，宽度才有得滑。
+        if (!compact)
+            ApplyPaneMode(compact: false);
+
+        var from = splitView.OpenPaneLength;
+        var to = compact ? RootNavigation.CompactPaneLength : RootNavigation.OpenPaneLength;
+
+        try
+        {
+            await AnimatePaneWidthAsync(splitView, from, to, duration, compact, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (cts.IsCancellationRequested)
+            return;
+
+        ApplyPaneMode(compact);
+    }
+
+    /// <summary>把侧栏宽度从 <paramref name="from"/> 滑到 <paramref name="to"/>。</summary>
+    private static Task AnimatePaneWidthAsync(
+        SplitView splitView,
+        double from,
+        double to,
+        TimeSpan duration,
+        bool compact,
+        CancellationToken token)
+    {
+        if (Math.Abs(from - to) < 0.5d)
+            return Task.CompletedTask;
+
+        var animation = new Animation
+        {
+            Duration = duration,
+            // 进 decelerate、出 accelerate：方向不同，曲线就不同。
+            Easing = compact ? MotionSettings.Exit : MotionSettings.Enter,
+            FillMode = FillMode.Forward,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0d),
+                    Setters = { new Setter(SplitView.OpenPaneLengthProperty, from) }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1d),
+                    Setters = { new Setter(SplitView.OpenPaneLengthProperty, to) }
+                }
+            }
+        };
+
+        return animation.RunAsync(splitView, token);
+    }
+
+    /// <summary>
+    /// 切换到目标形态。
+    ///
+    /// <para>
+    /// 顺序要紧：先定 PaneDisplayMode，再定 IsPaneOpen。
+    /// Left 必须是 true 才有完整宽度；LeftCompact 必须是 false，
+    /// 否则侧栏会「浮」在内容之上 —— 那是临时展开的行为，不是我们要的常驻图标条。
+    /// </para>
+    /// </summary>
+    private void ApplyPaneMode(bool compact)
+    {
+        RootNavigation.PaneDisplayMode = compact
+            ? FANavigationViewPaneDisplayMode.LeftCompact
+            : FANavigationViewPaneDisplayMode.Left;
+
+        RootNavigation.IsPaneOpen = !compact;
+    }
+
+    /// <summary>紧凑态把导航项的左右内边距清零（否则 48px 里放不下 40px 的选中底块）。</summary>
+    private void ApplyCompactItemPadding(bool compact)
+    {
+        foreach (var item in EnumerateMenuItems(RootNavigation.MenuItems)
+                     .Concat(EnumerateMenuItems(RootNavigation.FooterMenuItems)))
+        {
+            item.Classes.Set("navCompact", compact);
+        }
+    }
+
+    /// <summary>取导航模板里的 SplitView；模板套上之后才有，取到就缓存。</summary>
+    private SplitView? TryGetNavigationSplitView()
+        => _navSplitView ??= RootNavigation.GetVisualDescendants().OfType<SplitView>().FirstOrDefault();
+
+    /// <summary>导航模式变了就放动画。绑定管不到这件事，所以走属性变更回调。</summary>
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_viewModel is null || e.PropertyName != nameof(MainWindowViewModel.NavigationMode))
+            return;
+
+        _ = ToggleNavigationAsync(_viewModel.IsNavigationCompact);
     }
 
     // ==================== 窗口尺寸（按屏幕分辨率自适应） ====================

@@ -34,6 +34,31 @@ public partial class JavaDownloadPage : UserControl
     private CancellationTokenSource? _cts;
     private bool _busy;
 
+    /// <summary>
+    /// 主版本列表请求的代次。只有「最新这一代」的结果才允许写进 <see cref="_releases"/>。
+    ///
+    /// <para>
+    /// 光取消上一个请求不够：请求可能已经拿到 JSON、正排队等 UI 线程，
+    /// 这时取消已经不会让它抛异常了，旧数据照样会填回列表 ——
+    /// 表现就是「切到 Java 17，列表里还是 Java 21 的内容」。
+    /// </para>
+    /// </summary>
+    private int _releasesGeneration;
+
+    /// <summary>正在进行的版本列表请求。切版本时取消，省下没人在等的流量。</summary>
+    private CancellationTokenSource? _releasesCts;
+
+    /// <summary>
+    /// 刷新主版本列表时抑制 <see cref="MajorBox"/> 的 SelectionChanged。
+    ///
+    /// <para>
+    /// 重建 ItemsSource + 设 SelectedItem 会触发一次 SelectionChanged，
+    /// 而刷新按钮自己还要再明确加载一次 —— 不抑制就是同一个版本请求两遍
+    /// （后果不只是浪费：两代的先后顺序由网络决定，列表会闪一下）。
+    /// </para>
+    /// </summary>
+    private bool _suppressMajorReload;
+
     /// <summary>安装根目录（页面上的可编辑路径框）。</summary>
     private string RuntimeRoot =>
         string.IsNullOrWhiteSpace(PathBox.Text)
@@ -118,31 +143,76 @@ public partial class JavaDownloadPage : UserControl
             var majors = await JavaRuntimeService.GetAvailableMajorsAsync().ConfigureAwait(true);
             var list = majors.ToList();
 
-            MajorBox.ItemsSource = list;
-
             // 默认选 21：现代整合包最常见的要求（1.20.5+ 基本都要 21）
             var preferred = list.Contains(21) ? 21 : list.FirstOrDefault();
-            MajorBox.SelectedItem = preferred;
 
-            if (MajorBox.SelectedItem is null && list.Count > 0)
-                await LoadReleasesAsync(list[0]).ConfigureAwait(true);
+            // 换掉 ItemsSource 会把 SelectedItem 顶成 null，再赋一次又会触发 SelectionChanged；
+            // 这里统一由本方法收尾时显式加载一次，中间那次事件直接忽略。
+            _suppressMajorReload = true;
+            try
+            {
+                MajorBox.ItemsSource = list;
+                if (list.Count > 0)
+                    MajorBox.SelectedItem = preferred;
+            }
+            finally
+            {
+                _suppressMajorReload = false;
+            }
+
+            if (list.Count > 0)
+                await LoadReleasesAsync(preferred).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "加载 Java 主版本失败");
+            EmptyText.IsVisible = true;
             EmptyText.Text = "获取 Java 版本列表失败，请检查网络后点「刷新」重试";
         }
     }
 
+    /// <summary>
+    /// 拉某个主版本的发行版列表。
+    ///
+    /// <para>
+    /// 同一时刻只认最后一次切换：新请求开始时旧请求被取消，且旧请求即便已经拿到数据、
+    /// 只要代次过期就整批丢弃。两件事都要做 —— 只取消会让「已在排队等 UI 线程」的结果漏网，
+    /// 只判代次则白等一遍超时。这正是「切了主版本、列表还停在上一个版本」的成因。
+    /// </para>
+    /// </summary>
     private async Task LoadReleasesAsync(int major)
     {
+        var generation = ++_releasesGeneration;
+
+        var stale = _releasesCts;
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        _releasesCts = cts;
+        if (stale is not null)
+        {
+            try
+            {
+                stale.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 上一个请求先一步自己收尾了，没什么可取消的
+            }
+
+            stale.Dispose();
+        }
+
         _releases.Clear();
         EmptyText.IsVisible = true;
         EmptyText.Text = $"正在获取 Java {major} 的版本…";
 
         try
         {
-            var items = await JavaRuntimeService.GetReleasesAsync(major).ConfigureAwait(true);
+            var items = await JavaRuntimeService.GetReleasesAsync(major, cts.Token).ConfigureAwait(true);
+
+            // 数据到齐再一次性填：中途往 ObservableCollection 里逐条 Add，
+            // 会让用户看见「列表自己长出来一半」的样子。
+            if (generation != _releasesGeneration)
+                return;
 
             foreach (var item in items)
                 _releases.Add(item);
@@ -152,11 +222,32 @@ public partial class JavaDownloadPage : UserControl
                 ? $"没有找到适用于 {JavaRuntimeService.PlatformText} 的 Java {major} 发行版"
                 : string.Empty;
         }
+        catch (OperationCanceledException)
+        {
+            // 切到别的版本了：下一代负责显示，这里什么都不用改
+            if (generation != _releasesGeneration)
+                return;
+
+            // 没被取代却取消了 = 20 秒超时。以前只写日志，界面上永远停着「正在获取…」
+            Log.Warning("获取 Java {Major} 版本列表超时", major);
+            EmptyText.IsVisible = true;
+            EmptyText.Text = "获取版本列表超时（Adoptium 接口响应太慢），请点「刷新」重试";
+        }
         catch (Exception ex)
         {
+            if (generation != _releasesGeneration)
+                return;
+
             Log.Warning(ex, "获取 Java {Major} 版本列表失败", major);
             EmptyText.IsVisible = true;
             EmptyText.Text = "获取版本列表失败（Adoptium 接口不可达），请稍后点「刷新」重试";
+        }
+        finally
+        {
+            if (ReferenceEquals(_releasesCts, cts))
+                _releasesCts = null;
+
+            cts.Dispose();
         }
     }
 
@@ -175,6 +266,9 @@ public partial class JavaDownloadPage : UserControl
 
     private void MajorBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (_suppressMajorReload)
+            return;
+
         if (MajorBox.SelectedItem is int major)
             _ = LoadReleasesAsync(major);
     }
@@ -187,11 +281,10 @@ public partial class JavaDownloadPage : UserControl
         try
         {
             ReloadButton.IsEnabled = false;
+
+            // 主版本列表与当前版本的发行版列表由它一并刷新，这里不要再加载一遍 ——
+            // 重复请求会让同一个版本的两批数据抢着写入，谁后到谁赢
             await LoadMajorsAsync().ConfigureAwait(true);
-
-            if (MajorBox.SelectedItem is int major)
-                await LoadReleasesAsync(major).ConfigureAwait(true);
-
             RefreshInstalled();
         }
         finally

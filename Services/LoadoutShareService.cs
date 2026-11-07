@@ -306,9 +306,19 @@ public static class LoadoutShareService
         string sourceLabel = "配装码",
         CancellationToken ct = default)
     {
+        var trustedCount = TrustedFiles(manifest).Count;
+        var untrusted = UntrustedFileCount(manifest);
+
+        if (untrusted > 0)
+        {
+            Serilog.Log.Warning("配装分享：{Count} 个文件的下载地址不在可信源内，已跳过", untrusted);
+            AppServices.Notifications?.Warning(
+                $"有 {untrusted} 个文件指向不受信任的下载地址，已跳过（只接受 Modrinth 官方源）");
+        }
+
         // 没有可下载的模组、也没有游戏版本 → 真的无从下手。
         // 但「有版本、没模组」是合法的（纯原版配装）：对方只想让启动器帮他装个本体 + 加载器。
-        if (manifest.ShareableCount == 0 && string.IsNullOrWhiteSpace(manifest.Minecraft))
+        if (trustedCount == 0 && string.IsNullOrWhiteSpace(manifest.Minecraft))
         {
             AppServices.Notifications?.Warning(
                 "这个分享码里既没有可下载的模组，也没有记录游戏版本，无法自动安装");
@@ -363,9 +373,22 @@ public static class LoadoutShareService
         if (string.IsNullOrWhiteSpace(instanceId))
             throw new LoadoutShareException("没有选择要导入的实例");
 
-        var files = manifest.Files.Where(f => f.Shareable).ToList();
+        var files = TrustedFiles(manifest);
+        var untrusted = UntrustedFileCount(manifest);
+
+        if (untrusted > 0)
+        {
+            Serilog.Log.Warning("配装分享：{Count} 个文件的下载地址不在可信源内，已跳过", untrusted);
+            AppServices.Notifications?.Warning(
+                $"有 {untrusted} 个文件指向不受信任的下载地址，已跳过（只接受 Modrinth 官方源）");
+        }
+
         if (files.Count == 0)
-            throw new LoadoutShareException("这个分享码里没有任何可自动下载的模组");
+        {
+            throw new LoadoutShareException(untrusted > 0
+                ? "这个分享码里的文件都指向不受信任的下载地址，已全部跳过"
+                : "这个分享码里没有任何可自动下载的模组");
+        }
 
         var modsFolder = GameInstanceHelper.ResolveInstanceFolder(instanceId, "mods");
         Directory.CreateDirectory(modsFolder);
@@ -391,7 +414,7 @@ public static class LoadoutShareService
 
             try
             {
-                await DownloadAsync(file.Url!, target, ct);
+                await DownloadAsync(file.Url!, target, file.Sha1, ct);
                 done++;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -409,10 +432,51 @@ public static class LoadoutShareService
         return done;
     }
 
+    /// <summary>
+    /// 配装码里的下载地址是否可信。
+    ///
+    /// <para>
+    /// <b>为什么必须限定域名</b>：分享码是一段可以随手转发的文本，里面的
+    /// <c>url</c> + <c>path</c> 决定了「往实例的 mods 目录里放什么」。如果允许任意地址，
+    /// 别人发一个「配装码」就能把任意 jar 投递到玩家的 mods 里 —— 下次启动游戏就是任意代码执行。
+    /// 清单里自带的 sha1 也挡不住，因为那个 sha1 同样由发码的人写。
+    /// </para>
+    ///
+    /// <para>
+    /// 配装码里的文件本来就只来自 Modrinth（导出时按项目的版本文件填的），
+    /// 所以限定官方 CDN 不会砍掉正常用法，只砍掉「指向别处」的那一类。
+    /// </para>
+    /// </summary>
+    public static bool IsTrustedDownloadUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            return false;
+
+        // 明文 http 一律不认：内容可以被路径上任何人替换
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var host = uri.Host;
+
+        return host.Equals("modrinth.com", StringComparison.OrdinalIgnoreCase)
+               || host.EndsWith(".modrinth.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>把清单里能从可信源下载的文件挑出来（其余的会在导入时跳过并提示）。</summary>
+    private static List<LoadoutFile> TrustedFiles(LoadoutManifest manifest)
+        => manifest.Files.Where(f => f.Shareable && IsTrustedDownloadUrl(f.Url)).ToList();
+
+    /// <summary>清单里「有地址但不是可信源」的文件数 —— 用来在导入前给出提示。</summary>
+    private static int UntrustedFileCount(LoadoutManifest manifest)
+        => manifest.Files.Count(f => f.Shareable && !IsTrustedDownloadUrl(f.Url));
+
     /// <summary>把清单转成 Modrinth 规范的 <c>.mrpack</c>，交给整合包安装器。</summary>
     private static void WriteModrinthPack(LoadoutManifest manifest, string targetPath)
     {
-        var files = manifest.Files.Where(f => f.Shareable).Select(f => new Dictionary<string, object?>
+        var files = TrustedFiles(manifest).Select(f => new Dictionary<string, object?>
         {
             ["path"] = f.Path,
             ["hashes"] = string.IsNullOrWhiteSpace(f.Sha1) ? new Dictionary<string, string>() : new Dictionary<string, string> { ["sha1"] = f.Sha1 },
@@ -552,11 +616,12 @@ public static class LoadoutShareService
     /// 下载配装清单里的一个文件。1.0.7.15 起统一走 <see cref="FileDownloader"/> ——
     /// 分块并行 + 续传 + 校验，并且会把字节数报进全局速度表（配装码导入的进度条就是靠它）。
     /// </summary>
-    private static async Task DownloadAsync(string url, string targetPath, CancellationToken ct)
+    private static async Task DownloadAsync(string url, string targetPath, string sha1, CancellationToken ct)
     {
         var item = new DownloadItem(
             url,
             targetPath,
+            Sha1: string.IsNullOrWhiteSpace(sha1) ? null : sha1.Trim(),
             DisplayName: Path.GetFileName(targetPath));
 
         await FileDownloader.DownloadAsync(item, onBytes: null, onStatus: null, ct: ct)

@@ -164,6 +164,27 @@ namespace VibrantbitLauncher.Services
             var versionJson = await ReadNodeAsync(versionEntry, ct)
                 ?? throw new ModpackException($"{loaderName} 的 version.json 解析失败");
 
+            // 安装器会被直接 <c>java -jar</c> 执行，而 maven 不提供 sha1 旁文件，没法做哈希校验。
+            // 退一步做「版本自证」：version.json 里的 id 必须写着自己要装的那个版本
+            // （Forge 是 1.20.1-forge-47.1.105，NeoForge 是 neoforge-21.1.80）。
+            // 挡不住蓄意伪造，但能挡住「下错版本」和「拿另一个 jar 顶上」。
+            var declaredId = versionJson["id"]?.ToString() ?? string.Empty;
+            if (declaredId.Length > 0
+                && !declaredId.Contains(picked, StringComparison.OrdinalIgnoreCase))
+            {
+                // Windows 上文件被 zip 占着删不掉，先关掉再清
+                zip.Dispose();
+                TryDelete(installerJar);
+
+                Serilog.Log.Warning(
+                    "{Loader} 安装器版本不符：声明 {Declared}，期望 {Expected}（{Path}）",
+                    loaderName, declaredId, picked, installerJar);
+
+                throw new ModpackException(
+                    $"{loaderName} 安装器的版本标识是「{declaredId}」，与要装的 {picked} 不符。"
+                    + "已停止安装，请换个下载源后重试");
+            }
+
             var profileEntry = zip.GetEntry("install_profile.json")
                 ?? throw new ModpackException($"{loaderName} 安装器里没有 install_profile.json");
             var profileJson = await ReadNodeAsync(profileEntry, ct)
@@ -673,6 +694,14 @@ namespace VibrantbitLauncher.Services
         /// </summary>
         private static string BuildInstallerUrl(string mcVersion, string forgeVersion, bool neoForge)
         {
+            // 版本号会被直接拼进 URL：带 / \ ? # 之类的字符能改掉请求路径（配装码里的
+            // loaderVersion 是别人写的，不完全可信）。这里先挡一道，拼出来的地址才可预期。
+            if (forgeVersion.Length == 0 || forgeVersion.Length > 64
+                || forgeVersion.Any(c => c is '/' or '\\' or '?' or '#' or '&' or ' ' or '"' or '\''))
+            {
+                throw new ModpackException($"加载器版本号不合法：{forgeVersion}");
+            }
+
             if (!neoForge)
                 return $"https://maven.minecraftforge.net/net/minecraftforge/forge/{mcVersion}-{forgeVersion}/forge-{mcVersion}-{forgeVersion}-installer.jar";
 

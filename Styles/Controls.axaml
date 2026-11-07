@@ -312,12 +312,30 @@
     <!--
         导航项：常驻文字侧栏，行高比默认更松（40px），
         选中态用浅灰底而不是强调色块 —— 侧栏是"位置指示"，不是"操作"。
+
+        左右 8 的内边距是**展开态**的取值。收成图标条时，导航控件给每一项的可用宽度
+        只有 CompactPaneLength（48），再各让 8 出去只剩 32，模板里的选中底块还要
+        再内缩 4 —— 于是底块被压成 24 宽的一条、图标被挤到右半边（1.0.33.0 实测）。
+        所以紧凑态用 .navCompact 把左右内边距清零，底块恢复 40×36、图标回到中线。
+
+        Margin 的过渡是给「展开 / 收起」那次切换用的：内边距滑过去，
+        底块不会在宽度动画开始时突然胖一圈。
     -->
     <Style Selector="ui|FANavigationViewItem">
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
         <Setter Property="MinHeight" Value="40" />
         <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="Margin" Value="8,1" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <ThicknessTransition Property="Margin" Duration="0:0:0.20" Easing="{StaticResource EaseEnter}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <!--  紧凑（图标条）：左右不留边，选中底块才填满整条 48  -->
+    <Style Selector="ui|FANavigationViewItem.navCompact">
+        <Setter Property="Margin" Value="0,1" />
     </Style>
 
     <!--  ==================== 6. FluentAvalonia 专属控件  ====================  -->

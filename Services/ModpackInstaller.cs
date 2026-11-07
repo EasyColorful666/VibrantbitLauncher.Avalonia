@@ -104,6 +104,16 @@ public static class ModpackInstaller
 
         /// <summary>期望大小（可为 0）。</summary>
         public long Size { get; init; }
+
+        /// <summary>
+        /// 清单里声明的 SHA1（Modrinth 的 <c>hashes.sha1</c>，可能为空）。
+        ///
+        /// <para>
+        /// 有就必须校验：整合包里的 jar 会被游戏当模组加载，等于在游戏进程里执行。
+        /// 只比体积挡不住「同体积的替换包」。
+        /// </para>
+        /// </summary>
+        public string Sha1 { get; init; } = string.Empty;
     }
 
     /// <summary>
@@ -348,7 +358,12 @@ public static class ModpackInstaller
                 if (f.TryGetProperty("fileSize", out var sizeEl) && sizeEl.ValueKind == JsonValueKind.Number)
                     size = sizeEl.GetInt64();
 
-                files.Add(new ModpackFile { Path = path, Url = url!, Size = size });
+                // Modrinth 的清单一定带 hashes.sha1；有就拿来校验，没有（别的打包工具）退回只比体积
+                var sha1 = string.Empty;
+                if (f.TryGetProperty("hashes", out var hashes) && hashes.ValueKind == JsonValueKind.Object)
+                    sha1 = GetString(hashes, "sha1");
+
+                files.Add(new ModpackFile { Path = path, Url = url!, Size = size, Sha1 = sha1 });
             }
 
             if (skipped > 0)
@@ -730,12 +745,12 @@ public static class ModpackInstaller
                         Report(PercentOfFiles(), $"正在下载 {Path.GetFileName(file.Path)}",
                             startedFile: file.Path);
 
-                        if (!(File.Exists(target) && file.Size > 0 && new FileInfo(target).Length == file.Size))
+                        if (!IsFileComplete(target, file.Size, file.Sha1))
                         {
                             var dir = Path.GetDirectoryName(target);
                             if (!string.IsNullOrEmpty(dir))
                                 Directory.CreateDirectory(dir);
-                            await DownloadFileAsync(file.Url, target, FileTimeout, token);
+                            await DownloadFileAsync(file.Url, target, file.Sha1, FileTimeout, token);
                         }
 
                         Interlocked.Increment(ref filesDone);
@@ -767,12 +782,52 @@ public static class ModpackInstaller
 
         // ---------- 5. 铺 overrides ----------
         var overridden = 0;
+        var blockedOverrides = 0;
         if (manifest.OverrideFolders.Count > 0)
         {
             phase = ModpackPhase.Overrides;
             Report(92, "写入整合包自带文件");
+
+            // 版本 JSON 与依赖库**不允许**被整合包覆盖：
+            // 版本 JSON 里的 arguments.jvm 能写 -javaagent / -XX:OnOutOfMemoryError 这类参数，
+            // 库目录里的 jar 又直接进启动类路径 —— 让随包的 overrides 改这两处，
+            // 等于给「发个整合包给你」开了个执行任意代码的口子。它们本来就该由安装流程生成。
+            //
+            // 注意区分两种布局：版本隔离时 gameRoot 就是 versions/<id>（mods/config 都在这儿，
+            // 不能整目录封掉），只封版本自己的 json / jar；不隔离时 gameRoot 是 .minecraft，
+            // 整个 versions/ 都该封 —— 否则能顺手续写其它实例的版本文件。
+            var protectedDirs = new List<string> { Path.Combine(mcFolder, "libraries") };
+            var protectedFiles = new List<string>();
+
+            if (string.Equals(
+                    Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar),
+                    Path.GetFullPath(mcFolder).TrimEnd(Path.DirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                protectedDirs.Add(Path.Combine(mcFolder, "versions"));
+            }
+            else
+            {
+                protectedFiles.Add(Path.Combine(gameRoot, instanceId + ".json"));
+                protectedFiles.Add(Path.Combine(gameRoot, instanceId + ".jar"));
+            }
+
             foreach (var folder in manifest.OverrideFolders)
-                overridden += await ExtractOverridesAsync(filePath, folder, gameRoot, ct);
+            {
+                var (copied, blocked) = await ExtractOverridesAsync(
+                    filePath, folder, gameRoot, protectedDirs, protectedFiles, ct);
+                overridden += copied;
+                blockedOverrides += blocked;
+            }
+
+            if (blockedOverrides > 0)
+            {
+                Serilog.Log.Warning(
+                    "整合包里有 {Count} 个文件试图覆盖版本 / 依赖库目录，已跳过", blockedOverrides);
+                warnings.Add(
+                    $"整合包里有 {blockedOverrides} 个文件试图覆盖版本或依赖库文件，已跳过"
+                    + "（这类文件会影响启动参数，只能由启动器自己生成）");
+            }
         }
 
         // ---------- 6. 收尾 ----------
@@ -921,10 +976,13 @@ public static class ModpackInstaller
     // ==================== 覆盖层解包 ====================
 
     /// <summary>把整合包里的某个覆盖层目录铺到实例根目录，返回写入的文件数。</summary>
-    private static async Task<int> ExtractOverridesAsync(
-        string filePath, string folderName, string instanceRoot, CancellationToken ct)
+    private static async Task<(int Copied, int Blocked)> ExtractOverridesAsync(
+        string filePath, string folderName, string instanceRoot,
+        IReadOnlyList<string> protectedDirs, IReadOnlyList<string> protectedFiles,
+        CancellationToken ct)
     {
         var count = 0;
+        var blocked = 0;
 
         try
         {
@@ -955,6 +1013,14 @@ public static class ModpackInstaller
                     continue;
                 }
 
+                // 落到受保护目录 / 文件上的条目直接跳过（见调用处的说明）
+                if (IsUnderAny(target, protectedDirs) || IsOneOf(target, protectedFiles))
+                {
+                    Serilog.Log.Warning("整合包覆盖层试图改写受保护目录，已跳过：{Entry}", entry.FullName);
+                    blocked++;
+                    continue;
+                }
+
                 var dir = Path.GetDirectoryName(target);
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
@@ -978,7 +1044,51 @@ public static class ModpackInstaller
             Serilog.Log.Warning(ex, "解包整合包覆盖层失败：{Folder}", folderName);
         }
 
-        return count;
+        return (count, blocked);
+    }
+
+    /// <summary>
+    /// <paramref name="path"/> 是否落在任意一个受保护目录里（含目录本身）。
+    ///
+    /// <para>
+    /// 用「目录 + 分隔符」前缀比较，避免 <c>versions-old</c> 这种同前缀的兄弟目录被误伤。
+    /// Windows 上路径大小写不敏感，统一按 OrdinalIgnoreCase 比。
+    /// </para>
+    /// </summary>
+    private static bool IsUnderAny(string path, IReadOnlyList<string> roots)
+    {
+        var full = Path.GetFullPath(path);
+
+        foreach (var root in roots)
+        {
+            var rootFull = Path.GetFullPath(root)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            if (string.Equals(full, rootFull, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (full.StartsWith(rootFull + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>路径是否等于清单里的某个文件（Windows 上大小写不敏感）。</summary>
+    private static bool IsOneOf(string path, IReadOnlyList<string> files)
+    {
+        var full = Path.GetFullPath(path);
+
+        foreach (var file in files)
+        {
+            if (string.Equals(full, Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     // ==================== 实例 id / 目录 ====================
@@ -1201,15 +1311,59 @@ public static class ModpackInstaller
     /// <paramref name="url"/> 的镜像改写、换源、重试都在内核里统一处理。
     /// </summary>
     private static async Task DownloadFileAsync(
-        string url, string targetPath, TimeSpan timeout, CancellationToken ct)
+        string url, string targetPath, string sha1, TimeSpan timeout, CancellationToken ct)
     {
         var item = new DownloadItem(
             url,
             targetPath,
+            Sha1: string.IsNullOrWhiteSpace(sha1) ? null : sha1.Trim(),
             DisplayName: Path.GetFileName(targetPath));
 
         await FileDownloader.DownloadAsync(item, onBytes: null, onStatus: null, ct: ct)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 本地文件是否已经和清单一致。
+    ///
+    /// <para>
+    /// 有 sha1 就真算一遍：整合包里的 jar 会被游戏当模组加载（= 在游戏进程里执行代码），
+    /// 只比体积的话，一个同体积的替换包能一直留在实例里，重装也「跳过」。
+    /// 没有 sha1 时退回原来的「体积对就算了」。
+    /// </para>
+    /// </summary>
+    private static bool IsFileComplete(string path, long size, string? sha1)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+
+            if (!info.Exists || info.Length == 0)
+                return false;
+
+            if (size > 0 && info.Length != size)
+                return false;
+
+            // 清单既没给体积也没给哈希 —— 没有判断依据，重下比留在那儿更稳妥
+            if (size <= 0 && string.IsNullOrWhiteSpace(sha1))
+                return false;
+
+            if (string.IsNullOrWhiteSpace(sha1))
+                return size > 0;
+
+            using var stream = File.OpenRead(path);
+            var actual = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(stream));
+
+            if (string.Equals(actual, sha1.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            Serilog.Log.Warning("整合包文件校验不一致，将重新下载：{Path}", path);
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>每次尝试独立临时名，避免并发下载同名目标时互相锁死（同 FabricDownloader 的做法）。</summary>

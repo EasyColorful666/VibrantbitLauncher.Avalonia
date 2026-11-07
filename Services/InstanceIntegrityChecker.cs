@@ -88,8 +88,27 @@ public sealed class IntegrityReport
 /// </summary>
 public static class InstanceIntegrityChecker
 {
-    /// <summary>客户端 jar 的合理下限：正常十几 MB，小于这个基本是错误页 / 空文件。</summary>
-    private const long MinClientJarSize = 512 * 1024;
+    /// <summary>
+    /// 客户端 jar 的体积下限，只用来挡住空文件 / 几百字节的错误页。
+    ///
+    /// <para>
+    /// ⚠️ 这个值**不能按现代版本的体积来定**。老版本的客户端本体非常小：
+    /// <c>rd-132211</c>（2009 年第一个公开版本）只有 26 KB，<c>c0.30_01c</c> 约 0.3 MB。
+    /// 1.0.34.0 之前这里写的是 512 KB，于是所有 2009 年的 Classic 版本都会被判成
+    /// 「客户端文件损坏」，而文件其实完好无损。
+    /// </para>
+    ///
+    /// <para>
+    /// 真正能判「被截断」的是结构而不是体积，见 <see cref="LooksLikeValidJar"/>。
+    /// </para>
+    /// </summary>
+    private const long MinClientJarSize = 1024;
+
+    /// <summary>zip 结尾记录（EOCD）的签名长度，用于判断压缩包是否写完整。</summary>
+    private const int EocdSignatureLength = 4;
+
+    /// <summary>EOCD 搜索窗口：注释最长 65535 字节，多给一点余量。</summary>
+    private const int EocdSearchWindow = 66 * 1024;
 
     /// <summary>体检入口。</summary>
     public static IntegrityReport Check(string mcFolder, string versionId)
@@ -115,18 +134,14 @@ public static class InstanceIntegrityChecker
                 Detail = $"{root}.jar 不存在（{clientJar}）",
             });
         }
-        else
+        else if (!LooksLikeValidJar(clientJar, out var reason))
         {
-            var size = new FileInfo(clientJar).Length;
-            if (size < MinClientJarSize || !IsZipFile(clientJar))
+            report.Issues.Add(new IntegrityIssue
             {
-                report.Issues.Add(new IntegrityIssue
-                {
-                    Kind = IntegrityIssueKind.ClientJar,
-                    Title = "客户端文件损坏",
-                    Detail = $"{root}.jar 只有 {size} 字节，或不是有效的 jar（多半是被限速 / 代理截断）",
-                });
-            }
+                Kind = IntegrityIssueKind.ClientJar,
+                Title = "客户端文件损坏",
+                Detail = $"{root}.jar {reason}（多半是下载被限速 / 代理截断，重新下载即可）",
+            });
         }
 
         // ── ② 资源索引 + ③ 资源对象 ──────────────────────────────────────
@@ -145,7 +160,7 @@ public static class InstanceIntegrityChecker
             }
             else
             {
-                var missing = CountMissingAssetObjects(mcFolder, indexPath);
+                var missing = CountMissingAssetObjects(mcFolder, indexPath, assetsId, versionId);
                 if (missing > 0)
                 {
                     report.Issues.Add(new IntegrityIssue
@@ -254,17 +269,41 @@ public static class InstanceIntegrityChecker
         }
     }
 
-    /// <summary>统计资源索引里有多少个对象在本地缺失（只判断存在性，不校验哈希 —— 哈希校验交给补全时的库）。</summary>
-    private static int CountMissingAssetObjects(string mcFolder, string indexPath)
+    /// <summary>
+    /// 统计资源索引里有多少个对象在本地缺失（只判断存在性，不校验哈希 —— 哈希校验交给补全时的库）。
+    ///
+    /// <para>
+    /// 1.6 / 1.7 时代的资源索引带 <c>virtual</c> 或 <c>map_to_resources</c> 标记，游戏读的不是
+    /// <c>assets/objects</c>，而是**解包出来的副本**（<c>assets/virtual/&lt;id&gt;/…</c> 或
+    /// <c>resources/…</c>）。这类实例如果是从别的启动器搬过来的，可能只有副本、没有 objects，
+    /// 游戏跑得好好的，按 objects 逐个查就会报出上千个「缺失」。所以副本存在就算有。
+    /// </para>
+    /// </summary>
+    private static int CountMissingAssetObjects(
+        string mcFolder, string indexPath, string assetsId, string versionId)
     {
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(indexPath));
-            if (!doc.RootElement.TryGetProperty("objects", out var objects)
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("objects", out var objects)
                 || objects.ValueKind != JsonValueKind.Object)
             {
                 return 0;
             }
+
+            var useVirtual = root.TryGetProperty("virtual", out var virtualEl)
+                             && virtualEl.ValueKind == JsonValueKind.True;
+            var useResources = root.TryGetProperty("map_to_resources", out var mapEl)
+                               && mapEl.ValueKind == JsonValueKind.True;
+
+            var virtualDir = Path.Combine(mcFolder, "assets", "virtual", assetsId);
+            // 版本隔离开着时游戏读的是 versions/<id>/resources，两个位置都算
+            var resourceDirs = new[]
+            {
+                Path.Combine(mcFolder, "resources"),
+                Path.Combine(mcFolder, "versions", versionId, "resources"),
+            };
 
             var missing = 0;
             foreach (var item in objects.EnumerateObject())
@@ -274,8 +313,18 @@ public static class InstanceIntegrityChecker
                     continue;
 
                 var path = Path.Combine(mcFolder, "assets", "objects", hash[..2], hash);
-                if (!File.Exists(path))
-                    missing++;
+                if (File.Exists(path))
+                    continue;
+
+                var relative = item.Name.Replace('/', Path.DirectorySeparatorChar);
+
+                if (useVirtual && File.Exists(Path.Combine(virtualDir, relative)))
+                    continue;
+
+                if (useResources && resourceDirs.Any(dir => File.Exists(Path.Combine(dir, relative))))
+                    continue;
+
+                missing++;
             }
 
             return missing;
@@ -406,42 +455,235 @@ public static class InstanceIntegrityChecker
         }
     }
 
-    /// <summary>与启动流程同口径的库路径解析：优先 downloads.artifact.path，退化按 maven 坐标拼。</summary>
-    private static string? GetLibraryPath(JsonElement lib, string mcFolder)
+    /// <summary>
+    /// 与启动流程同口径的库路径解析：
+    /// <c>downloads.artifact.path</c> → <c>downloads.classifiers[natives[本平台]]</c> → 按 maven 坐标拼。
+    ///
+    /// <para>
+    /// ⚠️ 中间那一步不能省。1.13 之前（LWJGL2 时代）的 <c>lwjgl-platform</c> /
+    /// <c>jinput-platform</c> / <c>twitch-platform</c> 在 JSON 里**只有 classifiers、没有 artifact**，
+    /// 本地真实文件名是 <c>xxx-&lt;ver&gt;-natives-windows.jar</c>。漏掉这一步就会退化成按
+    /// <c>name</c> 拼出 <c>xxx-&lt;ver&gt;.jar</c> —— 那个文件从头到尾都不存在，于是**每个**
+    /// 老版本都会报「依赖库缺失 2~4 个」，补全也补不回来（下载器同样只会下分类器）。
+    /// </para>
+    ///
+    /// <para>
+    /// 返回 <c>null</c> 表示「这一项在本平台不需要 / 无法定位」，调用方直接跳过、不报缺失。
+    /// </para>
+    /// </summary>
+    internal static string? GetLibraryPath(JsonElement lib, string mcFolder)
     {
-        if (lib.TryGetProperty("downloads", out var dl)
-            && dl.TryGetProperty("artifact", out var art)
-            && art.TryGetProperty("path", out var pathEl)
-            && pathEl.GetString() is { Length: > 0 } rel)
+        if (lib.TryGetProperty("downloads", out var dl) && dl.ValueKind == JsonValueKind.Object)
         {
-            return Path.Combine(mcFolder, "libraries", rel.Replace('/', Path.DirectorySeparatorChar));
+            // ① 普通制品：直接进 classpath 的那个 jar
+            if (dl.TryGetProperty("artifact", out var art)
+                && art.TryGetProperty("path", out var pathEl)
+                && pathEl.GetString() is { Length: > 0 } rel)
+            {
+                return Path.Combine(mcFolder, "libraries", rel.Replace('/', Path.DirectorySeparatorChar));
+            }
+
+            // ② 只有分类器：按 natives 映射取本平台那一个
+            if (dl.TryGetProperty("classifiers", out var classifiers)
+                && classifiers.ValueKind == JsonValueKind.Object)
+            {
+                var key = ResolveNativesClassifierKey(lib);
+                if (key is null)
+                    return null;
+
+                if (!classifiers.TryGetProperty(key, out var cl)
+                    || cl.GetPropertyOrDefault("path") is not { Length: > 0 } clRel)
+                {
+                    // 声明了 natives，但分类器表里没有这个键 —— 启动时也取不到，不该算缺失
+                    return null;
+                }
+
+                return Path.Combine(mcFolder, "libraries", clRel.Replace('/', Path.DirectorySeparatorChar));
+            }
         }
 
+        // ③ 老 Forge / 早期加载器：库声明里连 downloads 都没有，只能按 maven 坐标拼
         if (lib.TryGetProperty("name", out var nameEl)
             && nameEl.GetString() is { Length: > 0 } name)
         {
-            var parts = name.Split(':');
-            if (parts.Length >= 3)
-            {
-                var group = parts[0].Replace('.', Path.DirectorySeparatorChar);
-                return Path.Combine(mcFolder, "libraries", group, parts[1], parts[2], $"{parts[1]}-{parts[2]}.jar");
-            }
+            return MavenPath(mcFolder, name);
         }
 
         return null;
     }
 
-    /// <summary>前 4 字节是不是 ZIP 头（PK\x03\x04）——用来识别「文件在、内容是被拦截后的 HTML」。</summary>
-    private static bool IsZipFile(string path)
+    /// <summary>
+    /// 取这个库在本平台的 **natives 压缩包**路径（要解压到 natives 目录的那个 jar）。
+    ///
+    /// <para>
+    /// 与 <see cref="GetLibraryPath"/> 的区别：后者回答「体检时该找哪个文件」，
+    /// 可能是普通 artifact、也可能是 natives 分类器；这里**只认分类器**，
+    /// 因为启动链路需要拿它解压 dll / so / dylib。
+    /// </para>
+    ///
+    /// <para>
+    /// 老 Forge 那种连 <c>downloads</c> 都没有的库、以及没声明 <c>natives</c> 的库，都返回
+    /// <c>null</c> —— 它们本来就没有原生库要解压。
+    /// </para>
+    /// </summary>
+    internal static string? GetNativesJarPath(JsonElement lib, string mcFolder)
     {
+        if (!lib.TryGetProperty("downloads", out var dl) || dl.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (!dl.TryGetProperty("classifiers", out var classifiers)
+            || classifiers.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var key = ResolveNativesClassifierKey(lib);
+        if (key is null || !classifiers.TryGetProperty(key, out var classifier))
+            return null;
+
+        if (classifier.GetPropertyOrDefault("path") is not { Length: > 0 } rel)
+            return null;
+
+        return Path.Combine(mcFolder, "libraries", rel.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    /// <summary>
+    /// 取 <c>extract.exclude</c> 里声明要跳过的条目前缀（LWJGL 系一律是 <c>META-INF/</c>）。
+    /// 老版本的 natives 包里除了 dll 还塞了签名文件，原样解出来会被 Java 当成重复签名。
+    /// </summary>
+    internal static string[] GetNativesExclude(JsonElement lib)
+    {
+        if (!lib.TryGetProperty("extract", out var extract) || extract.ValueKind != JsonValueKind.Object)
+            return Array.Empty<string>();
+
+        if (!extract.TryGetProperty("exclude", out var exclude) || exclude.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+
+        return exclude.EnumerateArray()
+            .Select(e => e.GetString())
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToArray()!;
+    }
+
+    /// <summary>
+    /// 按 maven 坐标拼本地路径，支持 <c>group:artifact:version[:classifier][@ext]</c>。
+    ///
+    /// <para>
+    /// classifier 必须带上：老 Forge 的库写成 <c>net.minecraftforge:forge:1.7.10-10.13.4.1614:universal@jar</c>，
+    /// 真实文件名是 <c>forge-1.7.10-10.13.4.1614-universal.jar</c>；忽略最后一段就会去找
+    /// 一个不存在的 <c>forge-1.7.10-10.13.4.1614.jar</c>。
+    /// </para>
+    /// </summary>
+    internal static string? MavenPath(string mcFolder, string name)
+    {
+        var at = name.IndexOf('@');
+        if (at > 0)
+            name = name[..at];
+
+        var parts = name.Split(':');
+        if (parts.Length < 3)
+            return null;
+
+        var group = parts[0].Replace('.', Path.DirectorySeparatorChar);
+        var artifact = parts[1];
+        var version = parts[2];
+        var classifier = parts.Length >= 4 && parts[3].Length > 0 ? "-" + parts[3] : string.Empty;
+
+        return Path.Combine(mcFolder, "libraries", group, artifact, version,
+            $"{artifact}-{version}{classifier}.jar");
+    }
+
+    /// <summary>
+    /// 从 <c>natives</c> 映射里取出本平台的分类器键（如 <c>natives-windows-64</c>）。
+    ///
+    /// <para>
+    /// 值是模板，Windows 上可能是 <c>natives-windows-${arch}</c>，要把 <c>${arch}</c>
+    /// 换成 <c>32</c> / <c>64</c>。没有本平台的键就返回 <c>null</c>（不需要这个库）。
+    /// </para>
+    /// </summary>
+    private static string? ResolveNativesClassifierKey(JsonElement lib)
+    {
+        if (!lib.TryGetProperty("natives", out var natives) || natives.ValueKind != JsonValueKind.Object)
+            return null;
+
+        string? template = null;
+        foreach (var entry in natives.EnumerateObject())
+        {
+            if (!string.Equals(entry.Name, CurrentOsName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            template = entry.Value.GetString();
+            break;
+        }
+
+        if (string.IsNullOrWhiteSpace(template))
+            return null;
+
+        return template.Replace("${arch}", CurrentOsArch == Architecture.X86 ? "32" : "64",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>取一个可能缺失的字符串属性；没有就返回 null。</summary>
+    private static string? GetPropertyOrDefault(this JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) ? value.GetString() : null;
+
+    /// <summary>
+    /// 判断客户端 jar 是不是一个**结构完整**的 zip。
+    ///
+    /// <para>
+    /// 只看体积不行（见 <see cref="MinClientJarSize"/> 的注释），只看开头 4 字节也不行：
+    /// 被截断的 jar 开头照样是 <c>PK\x03\x04</c>，只有写完整了才会在结尾带 EOCD 记录
+    /// （<c>PK\x05\x06</c>）。两者都查，才能把「真的坏了」和「老版本本来就小」分开。
+    /// </para>
+    /// </summary>
+    /// <param name="reason">不合法时给出给用户看的短句（如「结尾缺少目录结构」）。</param>
+    internal static bool LooksLikeValidJar(string path, out string reason)
+    {
+        reason = string.Empty;
+
         try
         {
             using var fs = File.OpenRead(path);
-            var buf = new byte[4];
-            return fs.Read(buf, 0, 4) == 4 && buf[0] == 0x50 && buf[1] == 0x4B;
+
+            if (fs.Length < MinClientJarSize)
+            {
+                reason = $"只有 {fs.Length} 字节";
+                return false;
+            }
+
+            var head = new byte[4];
+            if (fs.Read(head, 0, 4) != 4 || head[0] != 0x50 || head[1] != 0x4B)
+            {
+                reason = "不是 jar 文件（开头不是 zip 结构）";
+                return false;
+            }
+
+            // 在结尾一段里找 EOCD：写完整的 zip 一定有，截断的没有
+            var window = (int)Math.Min(fs.Length, EocdSearchWindow);
+            var tail = new byte[window];
+            fs.Seek(-window, SeekOrigin.End);
+
+            var read = 0;
+            while (read < window)
+            {
+                var n = fs.Read(tail, read, window - read);
+                if (n <= 0)
+                    break;
+                read += n;
+            }
+
+            for (var i = read - EocdSignatureLength; i >= 0; i--)
+            {
+                if (tail[i] == 0x50 && tail[i + 1] == 0x4B && tail[i + 2] == 0x05 && tail[i + 3] == 0x06)
+                    return true;
+            }
+
+            reason = "结尾缺少 zip 目录结构（文件没下完）";
+            return false;
         }
-        catch
+        catch (Exception ex)
         {
+            reason = "无法读取（" + ex.GetType().Name + "）";
             return false;
         }
     }

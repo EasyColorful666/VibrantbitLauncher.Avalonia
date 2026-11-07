@@ -50,9 +50,22 @@ public partial class InstallEasyTierWindow : UserControl, Services.IInlinePage
                 $"https://v4.gh-proxy.org/https://github.com/EasyTier/EasyTier/releases/download/v{EasyTierService.CoreVersion}/{assetName}",
                 zipPath);
 
+            // 先校验再解压：解压出来的核心会被以管理员权限启动，而下载要经过第三方加速代理。
+            // 校验不通过就直接删掉，绝不把没核对过的可执行文件留在磁盘上。
+            statusText.Text = "正在校验安装包…";
+
+            var verifyError = await EasyTierService.VerifyPackageAsync(zipPath);
+
+            if (verifyError is not null)
+            {
+                try { File.Delete(zipPath); } catch { /* 删不掉也不影响，下次下载会覆盖 */ }
+
+                Serilog.Log.Warning("联机内核安装已中止：{Reason}", verifyError);
+                throw new InvalidOperationException(verifyError);
+            }
+
             statusText.Text = "正在解压…";
             ZipFile.ExtractToDirectory(zipPath, vblDirectory, Encoding.UTF8, true);
-
             if (File.Exists(zipPath))
                 File.Delete(zipPath);
 
