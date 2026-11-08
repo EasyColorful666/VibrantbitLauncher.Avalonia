@@ -280,20 +280,9 @@ public partial class App : Application
                 Log.CloseAndFlush();
             };
 
-            // ⑩ 首次运行：先跑开机向导，向导结束（关闭）后再留在主界面
-            if (SettingsService.Current.IsFirstRun)
-            {
-                // 只挂一次：向导关闭时会把主窗口 Show 回来，而 Hide→Show 会**再次触发 Opened**；
-                // 若不取消订阅就会创建第二个向导，DI 单例的向导页面二次挂载会直接抛异常。
-                void OnMainWindowOpenedOnce(object? sender, EventArgs e)
-                {
-                    mainWindow.Opened -= OnMainWindowOpenedOnce;
-                    ShowWelcomeWizard(desktop, mainWindow);
-                }
-
-                mainWindow.Opened += OnMainWindowOpenedOnce;
-            }
-            else if (ShouldOfferPerformanceMode())
+            // ⑩ 首次运行的开机向导由主窗口自己在 OnOpened 里铺开 —— 它现在是主窗口内的
+            //    一整层覆盖（占据整个程序），不再是独立窗口，App 这边只管「低配机器问一次性能模式」。
+            if (!SettingsService.Current.IsFirstRun && ShouldOfferPerformanceMode())
             {
                 // 非首次运行 + 机器看起来吃力 + 还没问过 → 问一次要不要开性能模式
                 void OnMainWindowOpenedForPerf(object? sender, EventArgs e)
@@ -518,71 +507,6 @@ public partial class App : Application
 
     /// <summary>启动后自动刷新下载页数据的延迟（毫秒）。</summary>
     private const int StartupRefreshDelayMs = 1300;
-
-    /// <summary>
-    /// 首次启动时弹出开机向导。
-    ///
-    /// <para>
-    /// 向导是**必须走完**的初始配置流程（游戏目录、Java、账户都在里面配），所以关闭它有两种含义：
-    /// <list type="bullet">
-    /// <item>点最后一页的「开始使用」→ 配置完成，转入主界面；</item>
-    /// <item>点标题栏的关闭按钮 / Alt+F4 → 放弃初始配置，<b>整个程序随之退出</b>，
-    /// <c>IsFirstRun</c> 保持为 true，下次启动重新进入向导。</item>
-    /// </list>
-    /// 以前两种情况都只是 <c>mainWindow.Show()</c>，于是「第一次打开就点关闭」会把人丢进
-    /// 一个 Java 都没配的主界面，点启动只会看到「未找到匹配的 Java 版本」。
-    /// </para>
-    ///
-    /// <para>
-    /// 向导以主窗口为 owner 显示会出问题：owner 隐藏时部分平台会把子窗口一起藏掉，
-    /// 所以主窗口走 Hide、向导独立显示，由这里手工接管收尾。
-    /// </para>
-    /// </summary>
-    private static void ShowWelcomeWizard(IClassicDesktopStyleApplicationLifetime desktop, MainWindow mainWindow)
-    {
-        // 向导期间先隐藏主窗口：走的是平台层的 Hide，不会触发 Closed，
-        // 也不会让生命周期判定「窗口已关闭」而提前退出进程。
-        mainWindow.Hide();
-
-        var welcome = new WelcomeWindow();
-
-        // 兜底：主窗口处于 Hide 状态时，生命周期可能判定「已无窗口」而请求退出 —— 向导期间一律拦下。
-        //
-        // ⚠️ 这个处理器**必须在 Closed 里第一时间退订**，不能靠 IsFirstRun 之类的条件持续挂着：
-        // 用户放弃配置时 IsFirstRun 仍是 true，若继续挂着，下面主动发起的 Shutdown 会被自己取消；
-        // 而走完向导（IsFirstRun=false）时若还挂着也不安全 —— 将来任何一次分支判断失误，
-        // 都会让主界面的「退出」变成关不掉的死循环。
-        void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e) => e.Cancel = true;
-
-        desktop.ShutdownRequested += OnShutdownRequested;
-
-        welcome.Closed += (_, _) =>
-        {
-            // 先摘掉兜底：否则下面 Shutdown() 会被它取消，向导窗口关了但进程还在
-            desktop.ShutdownRequested -= OnShutdownRequested;
-
-            // ① 走完向导 → 记下「以后不用再引导」并进主界面
-            if (welcome.IsCompleted)
-            {
-                SettingsService.Current.IsFirstRun = false;
-                SettingsService.Save();
-                Log.Information("开机向导完成，已标记 IsFirstRun=false");
-
-                mainWindow.Show();
-                mainWindow.Activate();
-                return;
-            }
-
-            // ② 用户直接关掉向导 → 放弃初始配置，退出整个程序。
-            //    IsFirstRun 故意不改：下次启动重新走一遍向导，避免留下配了一半的环境
-            //    （没有 Java、没有游戏目录的「主界面」点启动只会报「未找到匹配的 Java 版本」）。
-            Log.Information("开机向导被直接关闭（未完成配置），退出启动器");
-            desktop.Shutdown();
-        };
-
-        // 不设 owner：owner 处于隐藏状态时，部分平台会连带把子窗口一起藏掉。
-        welcome.Show();
-    }
 
     /// <summary>构建宿主与依赖注入容器。</summary>
     private static IHost BuildHost()

@@ -279,12 +279,41 @@
                         ZIndex="100" />
 
             <!--
-                内嵌子页宿主（1.0.8.2 起：窗口原样嵌进来，不做任何改装）。
+                ==================== 首次使用向导层 ====================
 
-                遮罩 + 卡片的结构抽进了 InlineHostOverlay：首次使用向导期间主窗口是隐藏的，
-                向导里的账户按钮同样要弹这些子页，那边也挂同一个控件。
+                向导以前是一个独立的 890×556 窗口（主窗口 Hide 掉再弹出来）。现在改成
+                主窗口内的一整层：盖住标题栏行与侧栏，**占据整个程序**，
+                只保留自己的一条标题栏（拖窗 / 最小化 / 关闭仍在）。
+
+                为什么是覆盖层而不是主界面的一个页面：
+                ① 向导要抢占整屏，而 FANavigationView 的内容区永远在侧栏右边；
+                ② 走完向导要「原地」变成启动页，覆盖层淡出比换窗口干净得多。
+
+                层序：侧栏 / 内容(0) < 本层(90) < 轻提示(100) < 拖放遮罩(200) < 内嵌浮层(400)。
+                轻提示留在上面是有意的 —— 向导里登录成功等提示要能被看到。
             -->
-            <ctrl:InlineHostOverlay x:Name="InlineOverlay" Grid.Row="1" ZIndex="150" />
+            <Grid x:Name="WelcomeLayer"
+                  Grid.RowSpan="2"
+                  ZIndex="90"
+                  RowDefinitions="Auto,*"
+                  IsVisible="False"
+                  Opacity="1"
+                  Background="{DynamicResource SurfaceCanvasBrush}">
+
+                <Grid.Transitions>
+                    <Transitions>
+                        <!-- 走完向导时整层淡出（150ms Exit），露出下面已经就位的启动页 -->
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="{StaticResource EaseExit}" />
+                    </Transitions>
+                </Grid.Transitions>
+
+                <ctrl:TitleBar Grid.Row="0"
+                               Height="44"
+                               Title="首次使用向导"
+                               Icon="/Assets/icon.ico" />
+
+                <ContentControl x:Name="WelcomePageHost" Grid.Row="1" />
+            </Grid>
 
         </Grid>
 
@@ -333,5 +362,15 @@
                 </StackPanel>
             </Border>
         </Border>
+        <!--
+            内嵌子页宿主（1.0.8.2 起：窗口原样嵌进来，不做任何改装）。
+
+            遮罩 + 卡片的结构在 InlineHostOverlay 里，放在**整窗最上层**：
+            首次使用向导占据整个窗口时，账户页弹出的「微软 / 外置 / 离线」子页
+            也要压在向导之上；以前向导是独立窗口，各自挂一个浮层，
+            现在同一个窗口里只留一个 —— 否则 InlineHost 会挑到被盖住的那个，
+            表现为「点了没反应」。
+        -->
+        <ctrl:InlineHostOverlay x:Name="InlineOverlay" ZIndex="400" />
     </Grid>
 </Window>

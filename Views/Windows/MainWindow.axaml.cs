@@ -116,6 +116,100 @@ public partial class MainWindow : FAAppWindow
 
     }
 
+    // ==================== 首次使用向导（窗口内覆盖层） ====================
+
+    /// <summary>向导层自己的导航宿主；向导期间它接管 <see cref="AppNavigation.Current"/>。</summary>
+    private ContentControlNavigationHost? _welcomeHost;
+
+    /// <summary>向导接管前的导航入口（就是主界面的 NavigationService），结束后还回去。</summary>
+    private INavigationService? _previousNavigation;
+
+    private bool _welcomeActive;
+
+    /// <summary>「放弃配置」只记一次日志：关窗会因飞出动效再走一遍 Closing（见 WindowMotion）。</summary>
+    private bool _welcomeAbandonLogged;
+
+    /// <summary>
+    /// 进入开机向导：把覆盖层铺满整窗，并用一个临时导航宿主接管页面跳转。
+    ///
+    /// <para>
+    /// 向导页面里写的是 <c>AppNavigation.Navigate(...)</c>（与主界面页面同一套写法），
+    /// 不切导航入口的话，「下一步」会把页面塞进被盖住的内容区 —— 用户看到的就是点了没反应。
+    /// </para>
+    /// </summary>
+    private void StartWelcomeWizard()
+    {
+        if (_welcomeActive)
+            return;
+
+        _welcomeActive = true;
+        _welcomeAbandonLogged = false;
+
+        // 上一轮的页面实例若还挂着，先摘掉：向导页面是 DI 单例，二次挂载会抛
+        // 「already has a visual parent」。
+        WelcomePageHost.Content = null;
+        WelcomeLayer.Opacity = 1;
+        WelcomeLayer.IsVisible = true;
+
+        _welcomeHost = new ContentControlNavigationHost(WelcomePageHost);
+        _previousNavigation = AppNavigation.Current;
+        AppNavigation.Current = _welcomeHost;
+
+        Serilog.Log.Information("首次运行：进入开机向导（占据整个窗口）");
+        _welcomeHost.Navigate(typeof(Views.Pages.WelcomePage));
+    }
+
+    /// <summary>
+    /// 向导的最后一页（「开始使用」）调用：记为配置完成，转主界面。
+    ///
+    /// <para>
+    /// 顺序要紧 —— 先把启动页铺到下面，再让向导层淡出，中途不会出现空白的内容区。
+    /// </para>
+    /// </summary>
+    public void CompleteWelcomeWizard()
+    {
+        if (!_welcomeActive)
+            return;
+
+        SettingsService.Current.IsFirstRun = false;
+        SettingsService.Save();
+        Serilog.Log.Information("开机向导完成，已标记 IsFirstRun=false");
+
+        _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
+
+        EndWelcomeWizard();
+    }
+
+    /// <summary>收起向导层并把导航入口还给主界面（可重复调用）。</summary>
+    private void EndWelcomeWizard()
+    {
+        _welcomeActive = false;
+
+        WelcomePageHost.Content = null;
+        AppNavigation.Current = _previousNavigation ?? _navigation;
+        _previousNavigation = null;
+        _welcomeHost = null;
+
+        var duration = MotionSettings.Ms(MotionSettings.ExitMs);
+        if (!MotionSettings.AllowMovement || duration <= TimeSpan.Zero)
+        {
+            WelcomeLayer.Opacity = 0;
+            WelcomeLayer.IsVisible = false;
+            return;
+        }
+
+        // 淡出播完才隐藏：先 IsVisible=false 会把过渡直接掐断（元素一消失过渡就没对象了）。
+        // 多给 60ms 容错，避免在最后一帧被隐藏而看着"跳一下"。
+        WelcomeLayer.Opacity = 0;
+        DispatcherTimer.RunOnce(
+            () =>
+            {
+                if (!_welcomeActive)
+                    WelcomeLayer.IsVisible = false;
+            },
+            duration + TimeSpan.FromMilliseconds(60));
+    }
+
     // ==================== 侧栏抽屉 ====================
 
     /// <summary>导航模板里的 <see cref="SplitView"/>（侧栏宽度就是它的 OpenPaneLength）。</summary>
@@ -357,6 +451,21 @@ public partial class MainWindow : FAAppWindow
         if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
             return;
 
+        // 向导期间关窗 = 放弃初始配置，整个程序退出，绝不收进托盘。
+        //
+        // IsFirstRun 故意不改：下次启动重新走一遍向导 ——
+        // 留下一个没有 Java、没有游戏目录的「主界面」，点启动只会报「未找到匹配的 Java 版本」。
+        if (_welcomeActive)
+        {
+            if (!_welcomeAbandonLogged)
+            {
+                _welcomeAbandonLogged = true;
+                Serilog.Log.Information("开机向导被直接关闭（未完成配置），退出启动器");
+            }
+
+            return;
+        }
+
         if (!SettingsService.Current.MinimizeToTray)
             return;
 
@@ -406,8 +515,12 @@ public partial class MainWindow : FAAppWindow
         // （低配机器上动画一卡就会长时间停在半透明状态，观感就是白屏）。
         _ = WindowMotion.FlyInAsync(AppRoot);
 
-        // 默认进入「启动」页
-        _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
+        // 首次运行先走开机向导：它盖住整个窗口（含标题栏与侧栏），主界面等它走完再铺。
+        // 非首次才直接进「启动」页。
+        if (SettingsService.Current.IsFirstRun)
+            StartWelcomeWizard();
+        else
+            _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
 
         // Mica 只在 Windows 11 上有效。
         // 老系统上 TransparencyLevelHint 会被忽略，而我们同时把 Background 设成了
@@ -626,6 +739,15 @@ public partial class MainWindow : FAAppWindow
     /// <summary>根据拖进来的东西是不是整合包，切换光标效果与覆盖层。</summary>
     private void UpdateDropFeedback(DragEventArgs e)
     {
+        // 向导期间不接受拖放：覆盖层是整窗最上层，提示会盖在向导上，
+        // 而这时用户还没配好游戏目录，装进去也没有意义。
+        if (_welcomeActive)
+        {
+            e.DragEffects = DragDropEffects.None;
+            HideDropOverlay();
+            return;
+        }
+
         var paths = GetDroppedPaths(e);
         var modpack = paths.FirstOrDefault(p => ModpackInstaller.LooksLikeModpack(p));
 
@@ -701,6 +823,9 @@ public partial class MainWindow : FAAppWindow
     private async void OnDrop(object? sender, DragEventArgs e)
     {
         HideDropOverlay();
+
+        if (_welcomeActive)
+            return;
 
         var paths = GetDroppedPaths(e);
         if (paths.Count == 0)
