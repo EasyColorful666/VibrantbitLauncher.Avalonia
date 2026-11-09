@@ -113,7 +113,6 @@ public partial class MainWindow : FAAppWindow
 
         // ④ 分辨率 / 缩放变化（改显示设置、拔插外接屏）后重新适配一次
         TryWatchScreenChanges();
-
     }
 
     // ==================== 首次使用向导（窗口内覆盖层） ====================
@@ -268,7 +267,7 @@ public partial class MainWindow : FAAppWindow
 
         try
         {
-            await AnimatePaneWidthAsync(splitView, from, to, duration, compact, cts.Token);
+            await AnimatePaneWidthAsync(splitView, from, to, duration, cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -287,7 +286,6 @@ public partial class MainWindow : FAAppWindow
         double from,
         double to,
         TimeSpan duration,
-        bool compact,
         CancellationToken token)
     {
         if (Math.Abs(from - to) < 0.5d)
@@ -296,8 +294,12 @@ public partial class MainWindow : FAAppWindow
         var animation = new Animation
         {
             Duration = duration,
-            // 进 decelerate、出 accelerate：方向不同，曲线就不同。
-            Easing = compact ? MotionSettings.Exit : MotionSettings.Enter,
+            // 尺寸变化用**对称 S 曲线**，不用内容转场那套「进减速 / 出加速」：
+            // 那两条曲线在区间两端斜率极大，136px 的距离会被压进一两帧里跳完
+            // （实测展开第二帧就从 63 蹦到 127，看着就是卡一下）。
+            // 侧栏宽度是连续滑动的空间关系，不是「内容落定 / 快走」，
+            // 起手和收尾都要慢，中间匀速，才不会有被拽一下的感觉。
+            Easing = MotionSettings.Symmetric,
             FillMode = FillMode.Forward,
             Children =
             {
@@ -343,6 +345,43 @@ public partial class MainWindow : FAAppWindow
         {
             item.Classes.Set("navCompact", compact);
         }
+    }
+
+    /// <summary>
+    /// 启动时把侧栏摆回上次退出时的形态。
+    ///
+    /// <para>
+    /// 宽度要一起落定：<see cref="SplitView.OpenPaneLength"/> 是展开动画的起点，
+    /// 只切 <see cref="FANavigationView.PaneDisplayMode"/> 的话它还停在 184，
+    /// 下次点展开时 from 与 to 相等，会被判成「不用动」—— 宽度瞬间跳过去，
+    /// 看着就是卡一下。
+    /// </para>
+    /// </summary>
+    private void RestoreNavigationPaneState()
+    {
+        if (_viewModel is null || !_viewModel.IsNavigationCompact)
+            return;
+
+        ApplyCompactItemPadding(true);
+        ApplyPaneMode(compact: true);
+
+        // 提示语只写中文原文（翻译层自己换），写译文会被记成原文。
+        ToolTip.SetTip(NavDrawerButton, "展开侧栏");
+
+        if (TryGetNavigationSplitView() is { } splitView)
+        {
+            splitView.OpenPaneLength = RootNavigation.CompactPaneLength;
+            return;
+        }
+
+        // 模板偶尔还没套上：等这一轮布局跑完再落一次宽度。
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (TryGetNavigationSplitView() is { } sv)
+                    sv.OpenPaneLength = RootNavigation.CompactPaneLength;
+            },
+            DispatcherPriority.Loaded);
     }
 
     /// <summary>取导航模板里的 SplitView；模板套上之后才有，取到就缓存。</summary>
@@ -506,6 +545,10 @@ public partial class MainWindow : FAAppWindow
         _shownOnce = true;
 
         var perfMode = SettingsService.Current.PerformanceMode;
+
+        // 侧栏形态跨启动保留：上次收着就一直收着（含按钮提示语与项内边距）。
+        RestoreNavigationPaneState();
+
 
         // 万一构造函数里拿不到屏幕信息（Screens 尚未就绪），这里补算一次；重复调用是幂等的。
         ApplyScreenFit();

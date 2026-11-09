@@ -328,7 +328,7 @@
         <Setter Property="Margin" Value="8,1" />
         <Setter Property="Transitions">
             <Transitions>
-                <ThicknessTransition Property="Margin" Duration="0:0:0.20" Easing="{StaticResource EaseEnter}" />
+                <ThicknessTransition Property="Margin" Duration="0:0:0.15" Easing="{StaticResource EaseEnter}" />
             </Transitions>
         </Setter>
     </Style>

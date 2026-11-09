@@ -16,14 +16,26 @@ public sealed class MissingDependency
     public string ModId { get; init; } = string.Empty;
     public string VersionRange { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Modrinth 的项目 id（只在「联网核对前置」这条路里有值）。
+    /// 有它就按 id 直接取版本，比按 mod id 猜项目准得多。
+    /// </summary>
+    public string ProjectId { get; init; } = string.Empty;
+
+    /// <summary>项目名（Modrinth 的 title），没有就用 <see cref="ModId"/> 展示。</summary>
+    public string Title { get; init; } = string.Empty;
+
     /// <summary>谁在要它（展示成「被 A、B 需要」）。</summary>
     public List<string> RequiredBy { get; init; } = new();
 
     /// <summary>人类可读的一行。</summary>
-    public string Describe() =>
-        RequiredBy.Count == 0
-            ? ModId
-            : $"{ModId}（被 {string.Join("、", RequiredBy.Take(3))}{(RequiredBy.Count > 3 ? " 等" : "")} 需要）";
+    public string Describe()
+    {
+        var name = string.IsNullOrWhiteSpace(Title) ? ModId : Title;
+        return RequiredBy.Count == 0
+            ? name
+            : $"{name}（被 {string.Join("、", RequiredBy.Take(3))}{(RequiredBy.Count > 3 ? " 等" : "")} 需要）";
+    }
 }
 
 /// <summary>同一个模组 id 装了多份（版本冲突）。</summary>
@@ -249,8 +261,155 @@ public static class ModDependencyResolver
     }
 
     /// <summary>
-    /// 判断一个模组能否在指定加载器的实例里被加载。
+    /// 联网核对「Modrinth 上标为必需、但 jar 里没写进 depends」的前置。
     ///
+    /// <para>
+    /// <b>为什么需要这一层</b>：<see cref="Analyze"/> 只读 jar 里的加载器元数据，而相当一部分模组
+    /// 的前置只标在 Modrinth 页面上。典型是 RoughlyEnoughItems —— 它的 <c>fabric.mod.json</c>
+    /// 里 depends 只有 fabric-api 与 architectury，实际运行时却要 Cloth Config 的
+    /// <c>me.shedaniel.math</c>；加载器检查一路放行，游戏初始化到一半才
+    /// <c>ClassNotFoundException</c> 崩掉，体检还报「依赖完整」。
+    /// </para>
+    ///
+    /// <para>
+    /// 做法：按 SHA1 批量认领本地 mods 目录里的文件（一次请求），拿到每个版本的
+    /// <c>dependencies</c>，把 <c>required</c> 且本地没有对应项目的那几个挑出来。
+    /// 认不出来（不是 Modrinth 文件）或联网失败都只是少一层信息，不影响本地体检结果。
+    /// </para>
+    /// </summary>
+    public static async Task<List<MissingDependency>> AnalyzeModrinthRequirementsAsync(
+        ModHealthReport report,
+        CancellationToken ct = default)
+    {
+        var extra = new List<MissingDependency>();
+        if (report.Installed.Count == 0)
+            return extra;
+
+        // 只算「能在本实例加载」的模组：Forge 实例 mods 里放着的 Fabric 模组本来就不参与加载，
+        // 拿它的前置要求去报缺失只会制造噪音（和 Analyze 的口径保持一致）。
+        var incompatible = new HashSet<string>(
+            report.Incompatible.Select(m => m.FilePath), StringComparer.OrdinalIgnoreCase);
+
+        var byHash = new Dictionary<string, InstalledMod>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in report.Installed)
+        {
+            if (incompatible.Contains(mod.FilePath))
+                continue;
+
+            var sha1 = TryComputeSha1(mod.FilePath);
+            if (sha1 is not null)
+                byHash[sha1] = mod;
+        }
+
+        if (byHash.Count == 0)
+            return extra;
+
+        ct.ThrowIfCancellationRequested();
+
+        var versions = await ModrinthApi.GetVersionsByHashesAsync(byHash.Keys.ToList(), ct);
+        if (versions.Count == 0)
+            return extra;
+
+        // 本地已有这些项目 —— 它们既算「已提供」，也不该被报成缺失
+        var installedProjects = new HashSet<string>(
+            versions.Values.Select(v => v.ProjectId).Where(id => id.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        var needed = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (hash, version) in versions)
+        {
+            var owner = byHash.TryGetValue(hash, out var mod)
+                ? (string.IsNullOrWhiteSpace(mod.Name) ? mod.FileName : mod.Name)
+                : version.Name;
+
+            foreach (var dep in version.Dependencies)
+            {
+                if (!dep.IsRequired || installedProjects.Contains(dep.ProjectId))
+                    continue;
+
+                if (!needed.TryGetValue(dep.ProjectId, out var list))
+                    needed[dep.ProjectId] = list = new List<string>();
+
+                if (!list.Contains(owner))
+                    list.Add(owner);
+            }
+        }
+
+        if (needed.Count == 0)
+        {
+            Serilog.Log.Information(
+                "模组前置核对（Modrinth）：{Count} 个文件命中，没有发现未声明的必需前置", versions.Count);
+            return extra;
+        }
+
+        var projects = await ModrinthApi.GetProjectsAsync(needed.Keys.ToList(), ct);
+
+        // 本地体检已经报过的 id 就不要再列一遍（同一个前置不该出现两行）
+        var alreadyReported = new HashSet<string>(
+            report.Missing.Select(m => m.ModId), StringComparer.OrdinalIgnoreCase);
+
+        // 有些前置是**打在别人的 jar 里**带进来的（JEI 内嵌 mezz_config、Mod Menu 21 内嵌
+        // placeholder-api），Modrinth 元数据照样标 required。只按「本地没这个项目」判会误报，
+        // 所以再拿「已装模组 id + 它们的嵌套 jar 模组 id」兜一层，归一化后同名就算已提供。
+        var nested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in report.Installed)
+        {
+            if (incompatible.Contains(mod.FilePath))
+                continue;
+
+            nested.Add(ModMetadataReader.NormalizeId(mod.ModId));
+            foreach (var id in mod.NestedIds)
+                nested.Add(ModMetadataReader.NormalizeId(id));
+        }
+
+        foreach (var (projectId, requiredBy) in needed)
+        {
+            projects.TryGetValue(projectId, out var info);
+            var slug = string.IsNullOrWhiteSpace(info?.Slug) ? projectId : info!.Slug;
+
+            if (alreadyReported.Contains(slug) || alreadyReported.Contains(projectId))
+                continue;
+
+            if (nested.Contains(ModMetadataReader.NormalizeId(slug))
+                || nested.Contains(ModMetadataReader.NormalizeId(projectId)))
+                continue;
+
+            extra.Add(new MissingDependency
+            {
+                ModId = slug,
+                ProjectId = projectId,
+                Title = info?.Title ?? string.Empty,
+                RequiredBy = requiredBy,
+            });
+        }
+
+        Serilog.Log.Information(
+            "模组前置核对（Modrinth）：{Count} 个文件命中，补出 {Extra} 个未在 jar 里声明的必需前置",
+            versions.Count, extra.Count);
+
+        return extra;
+    }
+
+    /// <summary>算一个文件的 SHA1（流式，不把大 jar 整个读进内存）。失败返回 null。</summary>
+    private static string? TryComputeSha1(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+
+            using var stream = File.OpenRead(path);
+            using var sha1 = System.Security.Cryptography.SHA1.Create();
+            return Convert.ToHexString(sha1.ComputeHash(stream)).ToLowerInvariant();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "计算模组哈希失败：{Path}", path);
+            return null;
+        }
+    }
+
+
     /// <para>
     /// 判定依据是 jar 里**声明了哪些**加载器（<see cref="InstalledMod.Loaders"/>），不是文件名、
     /// 也不是它的依赖长什么样 —— 双声明（同时带 fabric.mod.json 与 mods.toml）的 jar 两边的实例都认。
@@ -314,15 +473,28 @@ public static class ModDependencyResolver
 
         try
         {
-            var project = await ModrinthApi.FindProjectByModIdAsync(missing.ModId, loaderTag, gameVersion, ct);
+            // 有项目 id 就直接按 id 取，别再去搜名字：搜出来的可能是同名的另一个项目，
+            // 装上去照样起不来（而且用户完全看不出哪里错了）。
+            ModrinthApi.ProjectInfo? project;
+            if (missing.ProjectId.Length > 0)
+            {
+                var projects = await ModrinthApi.GetProjectsAsync(new[] { missing.ProjectId }, ct);
+                projects.TryGetValue(missing.ProjectId, out project);
+            }
+            else
+            {
+                project = await ModrinthApi.FindProjectByModIdAsync(missing.ModId, loaderTag, gameVersion, ct);
+            }
+
             if (project is null)
                 return Fail(missing, requiredBy, "在 Modrinth 上没有找到这个模组（可能是自制库或纯服务端模组），请手动安装");
 
-            var versions = await ModrinthApi.GetProjectVersionsAsync(project.Slug, loaderTag, gameVersion, ct);
+            var key = project.ProjectId.Length > 0 ? project.ProjectId : project.Slug;
+            var versions = await ModrinthApi.GetProjectVersionsAsync(key, loaderTag, gameVersion, ct);
             if (versions.Count == 0)
             {
                 // 退一步：不筛加载器 / 版本再试一次，至少告诉用户项目存在
-                versions = await ModrinthApi.GetProjectVersionsAsync(project.Slug, null, null, ct);
+                versions = await ModrinthApi.GetProjectVersionsAsync(key, null, null, ct);
                 if (versions.Count == 0)
                     return Fail(missing, requiredBy, $"Modrinth 上「{project.Title}」没有可用版本");
             }

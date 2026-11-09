@@ -64,6 +64,17 @@ public static class MotionSettings
     /// <summary>出场曲线：先慢后快，内容"快走"。</summary>
     public static Easing Exit { get; } = new SplineEasing(0.3d, 0d, 1d, 1d);
 
+    /// <summary>
+    /// 对称 S 曲线：起手慢、中间匀速、收尾慢。
+    ///
+    /// <para>
+    /// 给「尺寸连续变化」用（侧栏收放那类），不能拿 <see cref="Enter"/> / <see cref="Exit"/>
+    /// 顶替：那两条曲线一端斜率接近 0、另一端极大，136px 的距离会被压进一两帧跳完，
+    /// 看着就是"卡一下"（1.0.34.5 实测展开第二帧从 63 直接蹦到 127）。
+    /// </para>
+    /// </summary>
+    public static Easing Symmetric { get; } = new SplineEasing(0.33d, 0d, 0.67d, 1d);
+
     // ==================== 档位 ====================
 
     /// <summary>当前生效的档位：Full / Reduced / Off。</summary>

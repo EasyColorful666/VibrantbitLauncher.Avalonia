@@ -212,6 +212,33 @@ public partial class InstanceToolsWindow : UserControl, Services.IInlinePage
             InstalledSection.IsVisible = true;
 
             HealthSummary.Text = report.Summary();
+
+            // ---- 联网再核一遍：Modrinth 上标为必需、却没写进 jar 元数据的前置 ----
+            // 只读本地 fabric.mod.json / mods.toml 查不出这类问题：加载器检查一路放行，
+            // 游戏初始化到一半才 NoClassDefFoundError 崩掉，界面却显示「依赖完整」。
+            AnalyzeStatus.Text = "正在核对 Modrinth 上的必装前置…";
+            var onlineMissing = await ModDependencyResolver.AnalyzeModrinthRequirementsAsync(report);
+            foreach (var m in onlineMissing)
+            {
+                if (report.Missing.Any(x =>
+                        string.Equals(x.ModId, m.ModId, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                report.Missing.Add(m);
+                _missing.Add(new MissingItem
+                {
+                    ModId = m.ModId,
+                    StatusText = "待补全",
+                    Detail = m.Describe() + " · 只在 Modrinth 上标注的必装前置",
+                });
+            }
+
+            if (onlineMissing.Count > 0)
+            {
+                MissingEmptyText.IsVisible = _missing.Count == 0;
+                HealthSummary.Text = report.Summary();
+            }
+
             AnalyzeStatus.Text = report.Warnings.Count > 0
                 ? string.Join("；", report.Warnings)
                 : string.Empty;

@@ -159,8 +159,13 @@ namespace VibrantbitLauncher.ViewModels.Windows
         /// 侧栏是否收成「只留图标」的紧凑形态。
         ///
         /// <para>
-        /// 不写进设置：这是当场调节的观看方式，跟着窗口这一次活，
-        /// 下次启动回到默认的展开态（玩家装完就忘了自己收过，会以为功能丢了）。
+        /// 写进设置并跨启动保留：这是对界面的长期偏好（小屏 / 分屏用户会一直收着），
+        /// 每次启动都弹回展开态等于把用户的调整白做了。
+        /// </para>
+        ///
+        /// <para>
+        /// <b>初始值直接落字段，不走 setter</b>：构造期还没人订阅 <see cref="NavigationMode"/>，
+        /// 走 setter 只会白白多一次属性通知，而且会在设置加载完成前触发一次保存。
         /// </para>
         /// </summary>
         public bool IsNavigationCompact
@@ -176,6 +181,9 @@ namespace VibrantbitLauncher.ViewModels.Windows
                     : FANavigationViewPaneDisplayMode.Left;
 
                 OnPropertyChanged(nameof(IsNavigationExpanded));
+
+                SettingsService.Current.NavigationCompact = value;
+                SettingsService.Save();
             }
         }
 
@@ -186,6 +194,12 @@ namespace VibrantbitLauncher.ViewModels.Windows
         {
             imagePath = @"avares://VibrantbitLauncher.Avalonia/Assets/Blank.jpg";
 
+            // 侧栏形态从设置里恢复：上次收起过就一直收着。
+            // 直接写字段，不经过 setter（构造期还没订阅者，也不该在这里保存一次）。
+            _isNavigationCompact = SettingsService.Current.NavigationCompact;
+            _navigationMode = _isNavigationCompact
+                ? FANavigationViewPaneDisplayMode.LeftCompact
+                : FANavigationViewPaneDisplayMode.Left;
             ShowMainWindowCommand = new RelayCommand(ShowMainWindow);
             OpenSettingsCommand = new RelayCommand(OpenSettings);
             ApplicationExitCommand = new RelayCommand(ApplicationExit);

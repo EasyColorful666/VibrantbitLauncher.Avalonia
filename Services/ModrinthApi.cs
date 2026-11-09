@@ -84,9 +84,33 @@ public static class ModrinthApi
         public List<string> Loaders { get; init; } = new();
         public List<FileInfo> Files { get; init; } = new();
 
+        /// <summary>
+        /// 这个版本声明的依赖（Modrinth 的元数据，不是 jar 里的 <c>fabric.mod.json</c>）。
+        ///
+        /// <para>
+        /// <b>两者不是一回事</b>：不少模组只在 Modrinth 页面标「必需前置」，却没写进
+        /// <c>fabric.mod.json</c> 的 depends —— 于是游戏能过加载器检查、启动到一半才
+        /// <c>ClassNotFoundException</c> 崩掉（RoughlyEnoughItems 缺 Cloth Config 就是这样）。
+        /// 本地体检只能看到前者，这条数据补的正是后者。
+        /// </para>
+        /// </summary>
+        public List<VersionDependency> Dependencies { get; init; } = new();
+
         /// <summary>主文件（Modrinth 标了 <c>primary</c> 的那个；没有则取第一个）。</summary>
         public FileInfo? PrimaryFile =>
             Files.FirstOrDefault(f => f.Primary) ?? Files.FirstOrDefault();
+    }
+
+    /// <summary>版本的一条依赖声明。</summary>
+    public sealed class VersionDependency
+    {
+        public string ProjectId { get; init; } = string.Empty;
+        public string VersionId { get; init; } = string.Empty;
+
+        /// <summary><c>required</c> / <c>optional</c> / <c>incompatible</c> / <c>embedded</c>。</summary>
+        public string DependencyType { get; init; } = string.Empty;
+
+        public bool IsRequired => string.Equals(DependencyType, "required", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>版本里的一个文件。</summary>
@@ -201,6 +225,76 @@ public static class ModrinthApi
             : ParseVersion(doc.RootElement);
     }
 
+    /// <summary>
+    /// 批量按 SHA1 反查（一次请求认完整个 mods 目录）。
+    ///
+    /// <para>
+    /// 逐条调 <see cref="GetVersionByHashAsync"/> 在 20 个模组的实例上就是 20 次请求，
+    /// Modrinth 会开始限流；官方给了 <c>POST /version_files</c>，一次最多 1000 个哈希。
+    /// </para>
+    ///
+    /// <para>返回的键是**小写** sha1。</para>
+    /// </summary>
+    public static async Task<Dictionary<string, VersionInfo>> GetVersionsByHashesAsync(
+        IReadOnlyList<string> sha1s,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, VersionInfo>(StringComparer.OrdinalIgnoreCase);
+        if (sha1s.Count == 0)
+            return result;
+
+        var body = JsonSerializer.Serialize(new { hashes = sha1s, algorithm = "sha1" });
+        var doc = await PostJsonAsync("https://api.modrinth.com/v2/version_files", body, ct);
+        if (doc is null || doc.RootElement.ValueKind != JsonValueKind.Object)
+            return result;
+
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.Value.ValueKind != JsonValueKind.Object)
+                continue;
+
+            result[prop.Name] = ParseVersion(prop.Value);
+        }
+
+        return result;
+    }
+
+    /// <summary>批量取项目基本信息（标题 / slug），用于「缺前置」的展示文案。</summary>
+    public static async Task<Dictionary<string, ProjectInfo>> GetProjectsAsync(
+        IReadOnlyList<string> ids,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, ProjectInfo>(StringComparer.OrdinalIgnoreCase);
+        if (ids.Count == 0)
+            return result;
+
+        var url = "https://api.modrinth.com/v2/projects?ids="
+                  + Uri.EscapeDataString(JsonSerializer.Serialize(ids));
+
+        var doc = await GetJsonAsync(url, ct);
+        if (doc is null || doc.RootElement.ValueKind != JsonValueKind.Array)
+            return result;
+
+        foreach (var p in doc.RootElement.EnumerateArray())
+        {
+            var info = new ProjectInfo
+            {
+                Slug = Str(p, "slug"),
+                ProjectId = Str(p, "id"),
+                Title = Str(p, "title"),
+                Description = Str(p, "description"),
+                Downloads = p.TryGetProperty("downloads", out var d) && d.ValueKind == JsonValueKind.Number
+                    ? d.GetInt64()
+                    : 0,
+            };
+
+            if (info.ProjectId.Length > 0)
+                result[info.ProjectId] = info;
+        }
+
+        return result;
+    }
+
     // ==================== 解析 ====================
 
     private static VersionInfo ParseVersion(JsonElement v)
@@ -225,6 +319,24 @@ public static class ModrinthApi
             }
         }
 
+        var dependencies = new List<VersionDependency>();
+        if (v.TryGetProperty("dependencies", out var ds) && ds.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var d in ds.EnumerateArray())
+            {
+                var projectId = Str(d, "project_id");
+                if (projectId.Length == 0)
+                    continue;
+
+                dependencies.Add(new VersionDependency
+                {
+                    ProjectId = projectId,
+                    VersionId = Str(d, "version_id"),
+                    DependencyType = Str(d, "dependency_type"),
+                });
+            }
+        }
+
         return new VersionInfo
         {
             Id = Str(v, "id"),
@@ -234,12 +346,20 @@ public static class ModrinthApi
             GameVersions = StrArray(v, "game_versions"),
             Loaders = StrArray(v, "loaders"),
             Files = files,
+            Dependencies = dependencies,
         };
     }
 
     // ==================== 网络 ====================
 
     private static async Task<JsonDocument?> GetJsonAsync(string url, CancellationToken ct)
+        => await RequestJsonAsync(url, null, ct);
+
+    /// <summary>POST 一个 JSON 体并拿回 JSON（批量哈希查询用）。</summary>
+    private static async Task<JsonDocument?> PostJsonAsync(string url, string body, CancellationToken ct)
+        => await RequestJsonAsync(url, body, ct);
+
+    private static async Task<JsonDocument?> RequestJsonAsync(string url, string? body, CancellationToken ct)
     {
         for (var attempt = 1; attempt <= 3; attempt++)
         {
@@ -248,7 +368,13 @@ public static class ModrinthApi
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(RequestTimeout);
 
-                using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                using var request = new HttpRequestMessage(
+                    body is null ? HttpMethod.Get : HttpMethod.Post, url);
+
+                if (body is not null)
+                    request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+
+                using var resp = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 if (!resp.IsSuccessStatusCode)
                 {
                     // 404 是「这个哈希 / 项目不存在」，重试没有意义

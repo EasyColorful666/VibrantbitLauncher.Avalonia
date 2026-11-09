@@ -81,6 +81,16 @@ namespace VibrantbitLauncher.Services
         public string AfterLaunchAction { get; set; } = "None";
 
         /// <summary>
+        /// 侧边导航栏是否收成「只留图标」的紧凑形态。
+        ///
+        /// <para>
+        /// 用户点标题栏左上角的抽屉按钮切换一次就记住一次。这是对界面的长期偏好
+        /// （小屏 / 分屏用户会一直收着），不是「这一次的临时观感」，所以要跨启动保留。
+        /// </para>
+        /// </summary>
+        public bool NavigationCompact { get; set; }
+
+        /// <summary>
         /// 性能模式：为低配电脑（尤其是 Windows 7 x86 老机器）关闭一切「好看但费性能」的效果。
         ///
         /// 关闭项：Mica 云母材质、壁纸背景、页面切换过渡、控件悬停 / 按下动画、卡片阴影、
