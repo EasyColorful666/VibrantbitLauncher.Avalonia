@@ -63,3 +63,4 @@ nunit-*.xml
 /publish/
 /dist/
 /android
+/docs
