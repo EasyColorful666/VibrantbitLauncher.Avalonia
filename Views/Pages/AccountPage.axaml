@@ -66,7 +66,7 @@
         <!--  类型胶囊：中性底 + 次色字，绝不用主色（主色预算留给渐变环）  -->
         <Style Selector="Border.typeChip">
             <Setter Property="Padding" Value="8,2" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
             <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -587,7 +587,7 @@
                     </Grid>
 
                     <!--  账户列表：一整组行，不是一排卡片  -->
-                    <Border Grid.Row="2" Classes="groupCard" Padding="6">
+                    <Border Grid.Row="2" Classes="groupCard" Padding="6" VerticalAlignment="Top">
                         <ListBox
                             x:Name="listbox1"
                             Background="Transparent"

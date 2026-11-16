@@ -30,5 +30,6 @@ internal static class TranslationTable
         UiMessages3.AddTo(En);
         UiMessages4.AddTo(En);
         UiNetwork.AddTo(En);
+        UiUpdate.AddTo(En);
     }
 }

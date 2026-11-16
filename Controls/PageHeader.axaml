@@ -21,7 +21,7 @@
         层级现在完全靠字号与字重：28 SemiBold → 12 灰，
         中间不留任何装饰物。这需要标题足够大才撑得住，所以 display 档没有再缩小。
 
-        ⚠️ 这里不用 {Binding} 也不用 {TemplateBinding}：
+        注意：这里不用 {Binding} 也不用 {TemplateBinding}：
         UserControl 的 x:Name 进不了同名 namescope，ElementName / $parent 这类
         反射绑定一旦失效是**静默**的 —— 表现就是"所有页面标题凭空消失"，还查不出原因。
         文案由代码在属性变更时直接写进控件，行为完全确定。

@@ -23,7 +23,7 @@
 
     <Application.Styles>
         <!--
-            ⚠️ PreferSystemTheme / PreferUserAccentColor 必须是 False（1.0.7.14 血案）：
+            注意：PreferSystemTheme / PreferUserAccentColor 必须是 False（1.0.7.14 血案）：
             为 True 时 FluentAvalonia 会**自己**把 Application.RequestedThemeVariant 改成
             「操作系统」的主题、并把系统强调色写进 NavigationView 等专属资源。
             而本工程所有手写色（窗口底色 / 遮罩 / 拖放面板）都是按用户设置算好写进资源的，
@@ -38,7 +38,7 @@
         <StyleInclude Source="avares://VibrantbitLauncher.Avalonia/Styles/Animations.axaml" />
 
         <!--
-            ⚠️ 所有窗口的不透明底色兜底（1.0.6.11「换台电脑整窗透明」防线之三）：
+            注意：所有窗口的不透明底色兜底（1.0.6.11「换台电脑整窗透明」防线之三）：
             二级窗口若 XAML 里漏写 Background（窗口层和根 Grid 层都没有），
             窗口就是「无背景」——DWM 合成开的机器上表现为整窗透明透出桌面，
             合成关的机器上表现为白屏。这里给应用级样式兜底。

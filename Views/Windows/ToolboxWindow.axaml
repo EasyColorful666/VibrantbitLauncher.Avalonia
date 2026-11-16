@@ -21,7 +21,7 @@
     <!--
         ==================== 半透明外壳 ====================
         窗口本身完全透明，可见的这块玻璃是下面这层 Border：
-        底色用 SurfaceGlassBrush（深色 #CC1E2026 / 浅色 #D9FFFFFF），是「能看见后面游戏画面、
+        底色用 SurfaceGlassBrush（暗色深、亮色浅，各留一成透明），是「能看见后面游戏画面、
         但字还看得清」的那一档透明度。窗口不支持逐像素透明时会在代码后置里退回不透明底色。
     -->
     <Border
@@ -29,7 +29,6 @@
         Background="{DynamicResource SurfaceGlassBrush}"
         BorderBrush="{DynamicResource HairlineStrongBrush}"
         BorderThickness="1"
-        BoxShadow="0 16 40 0 #40000000"
         CornerRadius="{DynamicResource RadiusL}">
 
         <Grid RowDefinitions="Auto,*,Auto">

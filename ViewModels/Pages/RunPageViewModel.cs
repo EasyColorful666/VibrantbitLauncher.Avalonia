@@ -161,7 +161,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             OnPropertyChanged(nameof(ShowShortcuts));
 
             GreetingText = BuildGreeting();
-            InstanceCountText = $"{MinecraftVersions.Count} 个实例";
+            InstanceCountText = MinecraftVersions.Count.ToString();
 
             var root = SettingsService.ResolveMinecraftFolder();
             var versionsDir = Path.Combine(root, "versions");
@@ -191,7 +191,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
             {
                 var bytes = SumDirectory(root, maxDepth: 4, skipNames: new[] { "logs", "crash-reports" });
                 var text = bytes <= 0 ? "—" : FormatSize(bytes);
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => InstanceSizeText = $"占用 {text}");
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => InstanceSizeText = text);
             });
         }
 

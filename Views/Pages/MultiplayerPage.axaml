@@ -15,7 +15,7 @@
     <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
 
         <!--  ===== 页头 =====  -->
-        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="由 EasyTier 组一张虚拟局域网：房主在游戏里「对局域网开放」，房客用虚拟 IP 直连。联机码与陶瓦联机是同一套算法，勾上兼容模式后两边还能进同一个房间。" />
+        <ctrl:PageHeader Grid.Row="0" Title="多人联机" Subtitle="房主在游戏里「对局域网开放」，房客用虚拟 IP 直连。" />
 
         <ScrollViewer Grid.Row="1" Margin="0,16,0,0"
                       HorizontalScrollBarVisibility="Disabled"

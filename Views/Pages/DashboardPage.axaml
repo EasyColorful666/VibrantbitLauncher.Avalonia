@@ -1,5 +1,5 @@
 ﻿<UserControl
-             xmlns:ctrl="using:VibrantbitLauncher.Controls"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
     x:Class="VibrantbitLauncher.Views.Pages.DashboardPage"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -12,61 +12,112 @@
     x:DataType="vm:DashboardPageViewModel"
     mc:Ignorable="d">
 
-    <Grid Margin="{StaticResource PagePadding}" RowDefinitions="Auto,*">
+    <!--
+        ============================================================================
+        新闻页 · Feed（图文信息流）
+        ============================================================================
 
-        <!--  页面标题区  -->
-        <ctrl:PageHeader Grid.Row="0" Title="新闻" Subtitle="Minecraft 官方最新动态" />
+        上一版是等宽卡片墙（336×200 的图墙，标题压在图上）。
+        图墙的问题是：**每张卡的信息量只有标题**，剩下全靠图撑；
+        一旦封面风格不统一，整屏就像拼贴。而且卡片尺寸固定，中英文标题一样挤两行。
 
-        <!--  新闻图墙：图铺满卡片，标题叠在底部渐变上  -->
+        现在改成信息流：一行一条，左图右字。
+          200×112 的封面（16:9）只负责"认得出是哪条"，
+          标题、摘要、日期在自己的列里按正常行高排 —— 中英文都不会挤。
+
+        分行的依据是 1px 细线（列表本来就是一列），不再给每一行装框：
+        信息流里框越多越吵，读者要找的是"下一条"，不是"这一张卡"。
+    -->
+
+    <Grid Classes="page" RowDefinitions="Auto,*">
+
+        <ctrl:PageHeader
+            Grid.Row="0"
+            Subtitle="Minecraft 官方动态，来自 launchercontent.mojang.com"
+            Title="新闻">
+            <ctrl:PageHeader.Actions>
+                <Border Classes="chip">
+                    <TextBlock Classes="caption" Text="{Binding News.Count, StringFormat='{}{0} 条'}" />
+                </Border>
+            </ctrl:PageHeader.Actions>
+        </ctrl:PageHeader>
+
         <ScrollViewer
             Grid.Row="1"
-            Padding="0,0,8,0"
+            Padding="0,0,40,0"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <ItemsControl Classes="stagger" ItemsSource="{Binding News}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+            <StackPanel>
 
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="helpers:NewsItem">
-                        <Border
-                            Width="296"
-                            Height="184"
-                            Margin="{StaticResource CardGap}"
-                            Classes="hoverCard lift"
-                            ClipToBounds="True">
-                            <Grid>
-                                <Image Source="{Binding Image}" Stretch="UniformToFill" />
+                <!--  分区标签：一行小字 + 一条细线，把"标题区"和"内容区"分开  -->
+                <Grid Margin="0,0,0,4" ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Classes="sectionTitle" Text="最新" />
+                    <Border
+                        Grid.Column="1"
+                        Height="1"
+                        Margin="14,0,0,0"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource HairlineBrush}" />
+                </Grid>
 
-                                <!--  底部渐变，保证白色标题在任何图上都可读  -->
-                                <Border>
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0%,35%" EndPoint="0%,100%">
-                                            <GradientStop Offset="0" Color="#00000000" />
-                                            <GradientStop Offset="1" Color="#E6000000" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
+                <ItemsControl Classes="stagger" ItemsSource="{Binding News}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="helpers:NewsItem">
+                            <Border
+                                Padding="0,14"
+                                BorderBrush="{DynamicResource HairlineBrush}"
+                                BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="200,*" ColumnSpacing="20">
 
-                                <TextBlock
-                                    Margin="16,0,16,14"
-                                    VerticalAlignment="Bottom"
-                                    FontFamily="{DynamicResource AppFont}"
-                                    FontSize="{DynamicResource FontSizeBodyLarge}"
-                                    FontWeight="SemiBold"
-                                    Foreground="{StaticResource AppOnImageTextBrush}"
-                                    MaxHeight="46"
-                                    Text="{Binding Title}"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="Wrap" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                                    <!--  封面：圆角裁剪 + 悬停缓慢推近（只在可读尺寸下才有意义）  -->
+                                    <Border
+                                        Grid.Column="0"
+                                        Width="200"
+                                        Height="112"
+                                        Background="{DynamicResource SurfaceSunkenBrush}"
+                                        ClipToBounds="True"
+                                        CornerRadius="{DynamicResource RadiusS}">
+                                        <Image
+                                            Classes="zoom"
+                                            RenderTransformOrigin="50%,50%"
+                                            Source="{Binding Image}"
+                                            Stretch="UniformToFill" />
+                                    </Border>
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Spacing="6">
+
+                                        <TextBlock Classes="caption" Text="{Binding Date}" />
+
+                                        <TextBlock
+                                            Classes="subtitle"
+                                            HorizontalAlignment="Left"
+                                            MaxWidth="640"
+                                            FontWeight="SemiBold"
+                                            LineHeight="24"
+                                            MaxHeight="48"
+                                            Text="{Binding Title}"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="Wrap" />
+
+                                        <TextBlock
+                                            Classes="caption"
+                                            HorizontalAlignment="Left"
+                                            MaxWidth="640"
+                                            LineHeight="20"
+                                            MaxHeight="40"
+                                            Text="{Binding Text}"
+                                            TextTrimming="CharacterEllipsis"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
     </Grid>
 </UserControl>

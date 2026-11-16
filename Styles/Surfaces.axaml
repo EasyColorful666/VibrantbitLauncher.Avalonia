@@ -3,20 +3,23 @@
 
     <!--
         ============================================================================
-        材质层 · 明亮清爽
+        材质层 · Paper（纸面浮层）
         ============================================================================
 
-        和上一版（极光 + 玻璃 + 卡片三层叠加）彻底断开了。
-        现在只有两种面，界线极弱：
+        这一版换了骨架：以前整窗就是一张白纸，所有内容平铺在纸上；
+        现在窗口是一块**浅灰画布**，内容区是一张**悬浮的白纸**（左右下各留 8px）。
+        所有页面都住在这张纸里，于是"换布局"这件事在全局一次成立。
 
-          画布  Canvas      —— 整窗底。亮色是纯白，暗色是近黑。
-          卡片  Card        —— 白底 + 1px 浅描边。不做玻璃、不做投影。
+        三层面料，从上往下：
 
-        为什么要砍掉玻璃和极光：这两样都是「装饰性」的，
-        它们在深色沉浸式界面里负责氛围，在明亮清爽的界面里只负责显脏 ——
-        半透明层叠白底的结果是灰，不是通透。
+          纸面 Sheet   —— 白 / 近黑，18px 圆角 + 1px 细边 + 一层几乎看不见的投影
+          轨道 Rail    —— 侧栏专用，比纸面低一档的极浅灰
+          下沉 Sunken  —— 输入框 / 列表底 / 代码块
 
-        ⚠️ 全部用 DynamicResource 引用：ThemeDictionaries 里的键
+        为什么敢用投影了：上一版是"纯白画布"，白底上的投影只会变成一圈脏边；
+        现在纸面浮在灰画布上，投影有了参照物，2px 的扩散就足够表达"离桌面 1mm"。
+
+        注意：全部用 DynamicResource 引用：ThemeDictionaries 里的键
         无法被 StaticResource 在解析期找到，写成 StaticResource 直接抛 XamlLoadException。
     -->
 
@@ -25,47 +28,93 @@
         <!--  ==================== 亮色  ====================  -->
         <ResourceDictionary x:Key="Light">
 
-            <!--  画布：纯白。眼睛长时间对着它也不累，因为内容区有足够的灰阶层次  -->
-            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFFFFFFF" />
+            <!--  画布：窗口底。比纸面暗一档，纸面才浮得起来  -->
+            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FFE9ECF2" />
 
-            <!--
-                区块底：比画布低一档的浅灰。
-                用来区分「这块是一组」—— 设置页的分组、侧栏、表格抬头。
-                不用分割线，用底色差。这是 Notion 的做法。
-            -->
+            <!--  组内底：设置分组 / 表格抬头 / 空态块  -->
             <SolidColorBrush x:Key="SurfaceCanvasSubtleBrush" Color="#FFF7F8FA" />
 
-            <!--  卡片：纯白 + 描边。描边是它和画布唯一的区分手段  -->
+            <!--  纸面：内容区本体。整窗唯一的大面积纯白  -->
+            <SolidColorBrush x:Key="SurfaceSheetBrush" Color="#FFFFFFFF" />
+
+            <!--
+                有壁纸时的纸面：85% 白。壁纸从前是铺满整窗的，
+                纸面一盖就全没了 —— 这里留一点透出来，读起来还是"纸"，不是"玻璃"。
+            -->
+            <SolidColorBrush x:Key="SurfaceSheetVeilBrush" Color="#D9FFFFFF" />
+
+            <!--  卡片：与纸面同色，靠 1px 描边和悬停投影区分  -->
             <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FFFCFCFD" />
 
-            <!--  浮层 / 弹卡：唯一比卡片更亮的存在（靠投影而非底色）  -->
+            <!--  浮层 / 弹卡  -->
             <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#FFFFFFFF" />
 
-            <!--  历史键：glass 类仍被页面引用，改成实心白，不再做半透明  -->
+            <!--  侧栏轨道：比纸面暗半档，不用分割线也能读出"这是另一区"  -->
+            <SolidColorBrush x:Key="SurfaceRailBrush" Color="#FFF8F9FB" />
+
+            <!--
+                FluentAvalonia 导航视图的侧栏底色。键名是它官方模板里的名字，
+                定义在这里（而不是 MainWindow.Resources）才能跟着明暗主题走。
+            -->
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#FFF8F9FB" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#FFF8F9FB" />
+
+            <!--
+                导航项的状态色。默认（Fluent 官方）是「强调色 12% 底 + 强调色文字 + 左侧色条」，
+                一块 168×40 的蓝底在纸面布局里太响了 —— 侧栏是"位置"，不是"操作"。
+                这里改成：选中 = 白底胶囊（比轨道亮一档）+ 深色文字，强调色只留那根 2px 指示条。
+            -->
+            <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#FFF0F2F6" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#FFE6E9F0" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#FFF7F8FA" />
+            <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#FF3A4149" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FF14171C" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#FF14171C" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FF14171C" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FF14171C" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FF14171C" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrushSelected" Color="#FFE5E8EE" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#FFE8EAEF" />
+
+            <!--  历史键：glass 类仍被页面引用，改成实心，不再做半透明  -->
             <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FFFFFFFF" />
 
             <!--  下沉区（输入框底 / 列表底 / 代码块）  -->
-            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FFF3F4F7" />
+            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FFF1F3F6" />
 
-            <!--  细线：#EAECF0 是白底上"刚好看得见"的最低对比  -->
-            <SolidColorBrush x:Key="HairlineBrush" Color="#FFEAECF0" />
-            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FFD6DAE1" />
+            <!--  细线：白底上"刚好看得见"的最低对比（Hairline 键）  -->
+            <SolidColorBrush x:Key="HairlineBrush" Color="#FFE8EAEF" />
+            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FFD9DDE4" />
 
-            <!--  卡片内高光：新语言无高光，保留键名给历史页面，值为全透明  -->
+            <!--  纸面外沿：比普通细线略深一点，因为它压在灰画布上  -->
+            <SolidColorBrush x:Key="ShellBorderBrush" Color="#FFE3E6EC" />
+
+            <!--  卡片内高光：新语言无高光，保留键名给历史页面  -->
             <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00FFFFFF" />
 
             <!--
-                标题栏：与画布同色，不加分隔线。
-                顶栏和内容连成一片，靠留白而不是色块区分 —— Linear / Notion 都是这样。
+                标题栏：现在是**画布的一部分**（在纸面之上、灰底之中）。
+                它和纸面同高，所以用纸面色；下面的纸面从它底下开始。
             -->
-            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FFF2F3F6" />
             <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FF14171C" />
-            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FFF2F3F6" />
-            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FFE8EAEE" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FFF2F3F6" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FFE7E9EE" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FFDDE0E7" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FF14171C" />
+
+            <!--  关闭按钮：Windows 约定的红底白叉  -->
+            <SolidColorBrush x:Key="AppCloseSurfaceBrush" Color="#FFC42B1C" />
+            <SolidColorBrush x:Key="AppCloseSurfacePressedBrush" Color="#FFB0241A" />
+            <SolidColorBrush x:Key="AppCloseGlyphBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppCloseGlyphPressedBrush" Color="#B0FFFFFF" />
 
             <!--  遮罩 / 浮层底  -->
             <SolidColorBrush x:Key="ScrimBrush" Color="#4D0B0E14" />
@@ -74,24 +123,52 @@
         <!--  ==================== 暗色  ====================  -->
         <ResourceDictionary x:Key="Dark">
 
-            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FF0E1014" />
-            <SolidColorBrush x:Key="SurfaceCanvasSubtleBrush" Color="#FF14171C" />
-            <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FF171A20" />
-            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FF14171C" />
-            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#FF1C2027" />
-            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FF171A20" />
-            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FF1C2027" />
-            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FF1D2128" />
-            <SolidColorBrush x:Key="HairlineBrush" Color="#FF262A32" />
-            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FF363B45" />
+            <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="#FF05060A" />
+            <SolidColorBrush x:Key="SurfaceCanvasSubtleBrush" Color="#FF12151B" />
+            <SolidColorBrush x:Key="SurfaceSheetBrush" Color="#FF101319" />
+            <SolidColorBrush x:Key="SurfaceSheetVeilBrush" Color="#D90B0E13" />
+            <SolidColorBrush x:Key="SurfaceCardBrush" Color="#FF151920" />
+            <SolidColorBrush x:Key="SurfaceCardSoftBrush" Color="#FF12161C" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="#FF1B202A" />
+            <SolidColorBrush x:Key="SurfaceRailBrush" Color="#FF0C0F14" />
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#FF0C0F14" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#FF0C0F14" />
+
+            <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#FF171B22" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#FF1E242D" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#FF1A1F27" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#FF1F252E" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#FF242B35" />
+            <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#FFB6BECD" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FFF2F4F7" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrushSelected" Color="#FF2A313C" />
+            <SolidColorBrush x:Key="NavigationViewItemBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#FF232833" />
+            <SolidColorBrush x:Key="SurfaceGlassBrush" Color="#FF151920" />
+            <SolidColorBrush x:Key="SurfaceGlassStrongBrush" Color="#FF1B202A" />
+            <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#FF1A1E26" />
+            <SolidColorBrush x:Key="HairlineBrush" Color="#FF232833" />
+            <SolidColorBrush x:Key="HairlineStrongBrush" Color="#FF333A47" />
+            <SolidColorBrush x:Key="ShellBorderBrush" Color="#FF262C38" />
             <SolidColorBrush x:Key="CardTopSheenBrush" Color="#00000000" />
 
-            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FF0E1014" />
+            <SolidColorBrush x:Key="AppHeaderBarBrush" Color="#FF080A0E" />
             <SolidColorBrush x:Key="AppHeaderBarForegroundBrush" Color="#FFF2F4F7" />
-            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FF1A1E25" />
-            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FF232830" />
-            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FF1A1E25" />
+            <SolidColorBrush x:Key="AppHeaderBarHoverBrush" Color="#FF161A21" />
+            <SolidColorBrush x:Key="AppHeaderBarPressedBrush" Color="#FF1F2430" />
+            <SolidColorBrush x:Key="AppHeaderNavSelectedBrush" Color="#FF151920" />
             <SolidColorBrush x:Key="AppHeaderNavSelectedForegroundBrush" Color="#FFF2F4F7" />
+
+            <SolidColorBrush x:Key="AppCloseSurfaceBrush" Color="#FFC42B1C" />
+            <SolidColorBrush x:Key="AppCloseSurfacePressedBrush" Color="#FFA3200F" />
+            <SolidColorBrush x:Key="AppCloseGlyphBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="AppCloseGlyphPressedBrush" Color="#B0FFFFFF" />
 
             <SolidColorBrush x:Key="ScrimBrush" Color="#8C000000" />
         </ResourceDictionary>

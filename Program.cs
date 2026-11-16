@@ -64,8 +64,12 @@ internal static class Program
             // Win10 上反复 TDR 后驱动拉黑本进程）。这时候**本次直接改用软件渲染**，
             // 界面朴素但一定出得来。下一次成功启动后计数归零，又会自动回到 GPU ——
             // 所以它既是兜底也是自愈，用户不需要去设置里找开关。
+            // 阈值是 **2**，不是 1：单次非正常退出太常见了 —— 任务管理器结束、
+            // 自动更新替换程序（脚本会先杀掉旧进程）、断电，都会留下一条"没走到 EXIT"。
+            // 按 1 判会让用户更新完就掉进软件渲染，动画全卡，还弹一句"上次启动失败"。
+            // 连着两次才算 GPU 这条路真的走不通。
             ForceSoftwareRendering = AppEnvironment.IsLowEndHardware
-                                     || StartupTrace.LastFailures > 0
+                                     || StartupTrace.LastFailures >= 2
                                      || ReadPerformanceModeFromSettings()
                                      || HasFlag("--software-render")
                                      || string.Equals(

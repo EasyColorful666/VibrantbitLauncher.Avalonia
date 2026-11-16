@@ -10,10 +10,35 @@
     d:DesignWidth="1000"
     mc:Ignorable="d">
 
+    <!--
+        ============================================================================
+        启动页 · Stage（左列表 / 右舞台）
+        ============================================================================
+
+        以前是「页头 → 主视觉区 → 列表 → 右栏设置」，四段竖着叠，
+        视线要来回跳三次。现在只分两块，左右并置：
+
+            ┌───────────────┬──────────────────────────────────────┐
+            │ 全部实例       │ 当前实例                              │
+            │  · 实例 A      │ SkyFactory4            [ 启动游戏 ]    │
+            │  · 实例 B      │ [Minecraft] [1.21.1] [Fabric]        │
+            │  · 实例 C      │ ─────────────────────────────        │
+            │               │ 6 个实例    占用 12.4 GB              │
+            │ [装模组][整合包]│ ─────────────────────────────        │
+            │ 用配装码添加    │ 运行环境：Java / 目录 / 外观           │
+            └───────────────┴──────────────────────────────────────┘
+
+        为什么这样切：选择实例和启动游戏是**同一件事的两步**，放在同一屏的左右两侧，
+        眼睛横移一次就完成；而"设置 Java、换目录"是低频操作，收进右下角一张卡里，
+        不再和主操作抢同一列。
+
+        尺寸关系（"一个主角"的落地）：
+          实例名 30 / 启动按钮 52 高 / 列表行 56 —— 主角靠尺寸与留白说话，不靠颜色。
+    -->
+
     <UserControl.Styles>
         <!--
             「分段胶囊」：外观二选一。
-
             用 RadioButton 而不是两个 Button：语义上它本来就是二选一，
             键盘方向键 / 屏幕阅读器都能正确识别，视觉上被模板去掉圆点改成胶囊。
         -->
@@ -61,51 +86,149 @@
         </Style>
 
         <!--
-            版本行：不再是"每行一张卡"，而是同一张卡里的一行。
-            每行都描边会让十个版本变成十个框，屏幕上全是线 ——
-            新语言里列表靠 hover 底色和行距区分，不靠框。
+            实例行：同一张卡里的一行，不是"每行一张卡"。
+            选中态 = 一条 2px 强调色竖条 + 浅灰底 + 名字加粗 ——
+            不用整块底色，是因为列表要长时间挂在屏幕上，色块会一直抢注意力。
         -->
-        <Style Selector="ListBox#versionList ListBoxItem">
+        <Style Selector="ListBox#launchList ListBoxItem">
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
         </Style>
+
+        <Style Selector="ListBox#launchList ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        </Style>
+
+        <Style Selector="ListBox#launchList ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
+        </Style>
+
+        <Style Selector="ListBox#launchList ListBoxItem:selected:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        </Style>
+
+        <Style Selector="Border.selectionBar">
+            <Setter Property="Width" Value="2" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="ListBox#launchList ListBoxItem:selected Border.selectionBar">
+            <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.rowTitle">
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+
+        <Style Selector="ListBox#launchList ListBoxItem:selected TextBlock.rowTitle">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!--
+            磁贴：空状态里的「装一个」入口。
+            用 Button 而不是 Border 套手势 —— 键盘能聚焦、回车能触发、按下有回弹，
+            这些都不该为了"看起来像卡片"而丢掉。
+        -->
+        <Style Selector="Button.tile">
+            <!--  Fluent 的按钮默认宽度贴合内容，磁贴要撑满自己那一列  -->
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="MinHeight" Value="98" />
+            <Setter Property="Padding" Value="16,13" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+        </Style>
+
+        <Style Selector="Button.tile /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+        </Style>
     </UserControl.Styles>
 
-    <Grid Classes="page" ColumnDefinitions="*,308">
+    <Grid Classes="page" RowDefinitions="Auto,*">
 
-        <!--  ==================== 左：选版本 + 启动  ====================  -->
+        <ctrl:PageHeader
+            x:Name="pageHeader"
+            Grid.Row="0"
+            Subtitle="左边挑一个实例，右边直接开始游戏。"
+            Title="启动">
+            <ctrl:PageHeader.Actions>
+                <Button Classes="subtle" Command="{Binding RefreshCommand}" Content="重新扫描" />
+            </ctrl:PageHeader.Actions>
+        </ctrl:PageHeader>
+
+        <!--
+            分栏：列表吃满剩余宽度，右侧信息栏固定宽度。
+            列表是本页的主角（实例一多就要扫一眼全名和加载器），
+            右边只是「当前选中的那一个」+ 三项低频设置，宽度够用即可。
+            固定右栏而不是给比例 —— 窗口拉宽时多出来的宽度应该全给列表。
+        -->
         <Grid
-            Grid.Column="0"
-            Margin="0,0,28,0"
-            RowDefinitions="Auto,Auto,*,Auto">
+            x:Name="contentRoot"
+            Grid.Row="1"
+            MaxWidth="1440"
+            RowDefinitions="Auto,*,Auto"
+            ColumnDefinitions="*,340"
+            ColumnSpacing="28">
 
-            <ctrl:PageHeader
+            <!--  ==================== 左：标题 + 列表 + 操作条  ====================
+                  标题行单独占网格第一行，右栏从第二行开始 —— 这样右栏卡片顶边
+                  永远和列表卡片顶边对齐，不用写死一个补偿边距。
+            -->
+            <Grid
+                x:Name="listHeader"
                 Grid.Row="0"
-                Subtitle="选中一个版本后点右下角的主按钮；版本列表来自游戏目录"
-                Title="启动">
-                <ctrl:PageHeader.Actions>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Classes="subtle" Command="{Binding RefreshCommand}" Content="刷新" />
-                    </StackPanel>
-                </ctrl:PageHeader.Actions>
-            </ctrl:PageHeader>
+                Grid.Column="0"
+                Margin="2,0,0,10"
+                ColumnDefinitions="*,Auto">
 
-            <TextBlock
+                <TextBlock
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    Classes="sectionTitle"
+                    Text="全部实例" />
+
+                <!--  添加实例收进一个按钮 + 菜单：三种添加方式（模组 / 整合包 / 配装码）
+                      原来在列表底下排了三行按钮，把左栏压得很满，也抢了列表的注意力。
+                      现在列表独占整列高度，添加是一次性的动作，收进菜单即可。  -->
+                <Button
+                    Grid.Column="1"
+                    Classes="subtle"
+                    Content="添加"
+                    IsVisible="{Binding ShowShortcuts}">
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Click="OnAddModClick" Header="装模组" />
+                            <MenuItem Click="OnAddModpackClick" Header="装整合包" />
+                            <Separator />
+                            <MenuItem Click="OnLoadoutCodeClick" Header="用配装码添加" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+
+            <Grid
+                x:Name="instanceColumn"
                 Grid.Row="1"
-                Margin="0,0,0,14"
-                Classes="body"
-                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                IsVisible="{Binding ShowGreeting}"
-                Text="{Binding GreetingText}" />
+                Grid.RowSpan="2"
+                Grid.Column="0"
+                RowDefinitions="*,Auto">
 
-            <Grid Grid.Row="2" IsVisible="{Binding ShowLaunchCard}">
-                <!--  版本列表：一整张卡片，行与行之间只有留白  -->
-                <Border Padding="6" Classes="card" VerticalAlignment="Top">
+                <Border
+                    x:Name="versionListCard"
+                    Grid.Row="0"
+                    VerticalAlignment="Stretch">
                     <ListBox
-                        x:Name="listBox"
+                        x:Name="launchList"
                         Background="Transparent"
                         BorderThickness="0"
                         ItemsSource="{Binding MinecraftVersions}"
@@ -113,14 +236,15 @@
                         ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="0,1" ColumnDefinitions="Auto,*,Auto,Auto">
+                                <Grid Height="56" ColumnDefinitions="4,Auto,*">
+                                    <Border Grid.Column="0" Classes="selectionBar" />
+
                                     <Border
-                                        Grid.Column="0"
-                                        Width="34"
-                                        Height="34"
-                                        Margin="10,0,12,0"
-                                        VerticalAlignment="Center"
-                                        Background="{DynamicResource AppAccentSurfaceBrush}"
+                                        Grid.Column="1"
+                                        Width="32"
+                                        Height="32"
+                                        Margin="4,0,10,0"
+                                        Background="{DynamicResource SurfaceSunkenBrush}"
                                         CornerRadius="{DynamicResource RadiusS}">
                                         <Image
                                             Width="20"
@@ -130,202 +254,333 @@
                                     </Border>
 
                                     <StackPanel
-                                        Grid.Column="1"
-                                        Margin="0,10"
+                                        Grid.Column="2"
+                                        Margin="0,0,8,0"
                                         VerticalAlignment="Center"
                                         Spacing="2">
-                                        <TextBlock Classes="body" FontWeight="SemiBold" Text="{Binding Version}" />
-                                        <TextBlock Classes="caption" Text="Minecraft · 点击右侧按钮管理这个实例" />
+                                        <TextBlock Classes="rowTitle" Text="{Binding Version}" />
+                                        <TextBlock Classes="caption" Text="Minecraft" />
                                     </StackPanel>
-
-                                    <Button
-                                        Grid.Column="2"
-                                        Margin="8,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Classes="subtle"
-                                        Command="{Binding ToolsCommand}"
-                                        CommandParameter="{Binding Version}"
-                                        Content="工具箱" />
-
-                                    <Button
-                                        Grid.Column="3"
-                                        Margin="2,0,4,0"
-                                        VerticalAlignment="Center"
-                                        Classes="subtle"
-                                        Command="{Binding SettingsCommand}"
-                                        CommandParameter="{Binding Version}"
-                                        Content="设置" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </Border>
 
-                <!--  空状态：游戏目录里还没有版本（有版本时由 code-behind 整体隐藏）  -->
+                <!--  ==================== 操作条  ====================
+                     启动是这一页的终点动作，版本设置 / 工具箱 / 配装码是它的三个旁支。
+                     原来它们贴在右栏的卡片里，卡片一窄就挤成一团；
+                     现在挪到列表下方压住页脚，跟"选实例"这条动线在同一个竖列上：
+                     先在上面挑，最后在下面按。
+                -->
                 <StackPanel
-                    x:Name="versionEmptyState"
-                    MaxWidth="360"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="8">
-                    <Border
-                        Width="56"
-                        Height="56"
-                        HorizontalAlignment="Center"
-                        Margin="0,0,0,6"
-                        Background="{DynamicResource SurfaceSunkenBrush}"
-                        CornerRadius="{DynamicResource RadiusL}">
-                        <ui:FASymbolIcon
-                            x:Name="emptyIcon"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            FontSize="{StaticResource IconSizeLarge}"
-                            Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                            Symbol="Folder" />
-                    </Border>
-                    <TextBlock
-                        x:Name="emptyTitle"
-                        HorizontalAlignment="Center"
-                        Classes="subtitle"
-                        FontWeight="SemiBold"
-                        Text="还没有可用的游戏版本" />
-                    <TextBlock
-                        x:Name="emptyHint"
-                        HorizontalAlignment="Center"
-                        Classes="caption"
-                        TextAlignment="Center"
-                        TextWrapping="Wrap"
-                        Text="到「下载中心」安装一个版本，或用配装码一键添加" />
-                    <Button
-                        x:Name="emptyLoadoutButton"
-                        Margin="0,12,0,0"
-                        HorizontalAlignment="Center"
-                        Classes="accent"
-                        Click="OnLoadoutCodeClick"
-                        Content="用配装码添加游戏" />
-                </StackPanel>
-            </Grid>
-
-            <!--  ==================== 底部：主操作  ====================
-                 启动按钮是全页唯一的实心色块。没有光晕、没有渐变 ——
-                 明亮清爽里的"主角"靠对比度（实心蓝 vs 一片白）而不是靠装饰。
-
-                 布局：主按钮贴左，次要操作贴右。中间的大段留白本身就是分隔，
-                 不需要再加竖线或分组框。
-            -->
-            <Grid
-                Grid.Row="3"
-                Margin="0,20,0,0"
-                ColumnDefinitions="Auto,*,Auto"
-                IsVisible="{Binding ShowLaunchCard}">
-
-                <Button
-                    Grid.Column="0"
-                    Height="46"
-                    Padding="30,0"
-                    Classes="accent"
-                    CornerRadius="{DynamicResource RadiusM}"
-                    Click="OnLaunchClick">
-                    <StackPanel Orientation="Horizontal" Spacing="9">
-                        <ui:FASymbolIcon FontSize="{StaticResource IconSizeBody}" Symbol="Play" />
-                        <TextBlock
-                            FontSize="{DynamicResource FontSizeSubtitle}"
-                            FontWeight="SemiBold"
-                            Text="启动游戏" />
-                    </StackPanel>
-                </Button>
-
-                <StackPanel
-                    Grid.Column="2"
-                    VerticalAlignment="Center"
+                    Grid.Row="2"
+                    Margin="0,16,0,0"
                     Orientation="Horizontal"
-                    Spacing="2">
+                    Spacing="8"
+                    IsVisible="{Binding ShowLaunchCard}">
+                    <Button
+                        MinWidth="176"
+                        Classes="launch"
+                        Click="OnLaunchClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <ui:FASymbolIcon FontSize="{StaticResource IconSizeBody}" Symbol="Play" />
+                            <TextBlock Text="启动游戏" />
+                        </StackPanel>
+                    </Button>
+
                     <Button Classes="subtle" Click="OnVersionSettingsClick" Content="版本设置" />
+                    <Button
+                        Classes="subtle"
+                        Command="{Binding #launchList.SelectedItem.ToolsCommand}"
+                        CommandParameter="{Binding #launchList.SelectedItem.Version}"
+                        Content="工具箱" />
                     <Button Classes="subtle" Click="OnLoadoutCodeClick" Content="配装码" />
                 </StackPanel>
+
             </Grid>
-        </Grid>
 
-        <!--  ==================== 右：快捷设置  ====================
-            一整张卡片，内部用 1px 分割线分组。
-            以前是"三张等宽卡片 + 一块玻璃面板"，四五个框并排会把视线摊平；
-            现在收成一张，视线只走一条竖线。
-        -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,*">
+            <!--  ==================== 右：当前实例 + 运行环境  ====================
+                  右栏是固定窄条（340），只读信息 + 三项低频设置，操作一律不在这里。
+                  内容在小窗口下放不满，所以整栏一起滚 —— 分两段滚会出现
+                  「上面钉死、下面永远从底边开始」的半截卡。
+            -->
 
-            <TextBlock
-                Grid.Row="0"
-                Margin="0,0,0,12"
-                Classes="sectionTitle"
-                Text="快捷设置" />
 
             <ScrollViewer
+                x:Name="rightScroll"
                 Grid.Row="1"
-                Padding="0,0,4,0"
+                Grid.Column="1"
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="rightStack" MaxWidth="820">
+                <Border
+                    x:Name="launchStage"
+                    Margin="0,0,0,16"
+                    Padding="20,16"
+                    Classes="hero"
+                    IsVisible="{Binding ShowLaunchCard}">
+                    <StackPanel Spacing="0">
 
-                <StackPanel>
-
-                    <!--  ── 显示游戏卡片 ──  -->
-                    <Border Padding="16,14" Classes="card">
+                        <!--
+                            右栏是固定窄栏，标题和启动按钮不并排：
+                            并排时标题只剩两百来像素，长实例名当场截断。
+                            竖排之后标题独占整行，启动按钮撑满整栏，主操作反而更醒目。
+                        -->
                         <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                Classes="eyebrow"
+                                Text="当前实例" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                Classes="caption"
+                                IsVisible="{Binding ShowGreeting}"
+                                Text="{Binding GreetingText}"
+                                TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                        <TextBlock
+                            Margin="0,2,0,0"
+                            Classes="display"
+                            Text="{Binding #launchList.SelectedItem.Version, FallbackValue=未选择实例}"
+                            TextTrimming="CharacterEllipsis" />
+
+                        <StackPanel Margin="0,12,0,0" Orientation="Horizontal" Spacing="8">
+                            <Border Classes="chip">
+                                <TextBlock Classes="caption" Text="Minecraft" />
+                            </Border>
+                            <Border Classes="chip">
+                                <TextBlock
+                                    Classes="caption"
+                                    Text="{Binding #launchList.SelectedItem.Version, FallbackValue=—}" />
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel IsVisible="{Binding ShowInstanceOverview}">
+                        <Border Margin="0,12,0,0" Classes="hr" />
+
+                        <!--
+                            指标条：两个数字 + 一条竖线。
+                            它们不是装饰 —— "有几个实例、占了多少盘"是启动器上唯一值得常驻的两个数。
+                        -->
+                        <Grid Margin="0,12,0,0" ColumnDefinitions="Auto,Auto,*">
                             <StackPanel Grid.Column="0" Spacing="2">
-                                <TextBlock Classes="body" Text="显示游戏卡片" />
-                                <TextBlock Classes="caption" Text="关掉后只留右侧的模块" TextWrapping="Wrap" />
+                                <TextBlock Classes="value" Text="{Binding InstanceCountText}" />
+                                <TextBlock Classes="caption" Text="已安装" />
                             </StackPanel>
 
-                            <ToggleSwitch
+                            <Border
                                 Grid.Column="1"
+                                Width="1"
+                                Height="28"
+                                Margin="24,0"
                                 VerticalAlignment="Center"
-                                IsChecked="{Binding ShowLaunchCard, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
+                                Background="{DynamicResource HairlineBrush}" />
 
-                    <!--  ── 最近游玩 ──  -->
-                    <Border
-                        Margin="0,10,0,0"
-                        Padding="16,14"
-                        Classes="card"
-                        IsVisible="{Binding ShowRecent}">
-                        <StackPanel Spacing="6">
-                            <TextBlock Classes="sectionTitle" Text="最近游玩" />
+                            <StackPanel Grid.Column="2" Spacing="2">
+                                <TextBlock Classes="value" Text="{Binding InstanceSizeText}" />
+                                <TextBlock Classes="caption" Text="总大小" />
+                            </StackPanel>
+                        </Grid>
+                        </StackPanel>
+
+                        <!--  「最近」挤成一行：窄栏里再给它一行标签，卡片就要顶出视口。
+                              名字太长时 chip 自己折行（WrapPanel），不会横向顶破卡片。  -->
+                        <StackPanel
+                            Margin="0,12,0,0"
+                            Orientation="Horizontal"
+                            Spacing="2"
+                            IsVisible="{Binding ShowRecent}">
+                            <TextBlock
+                                Margin="0,0,6,0"
+                                VerticalAlignment="Center"
+                                Classes="caption"
+                                Text="最近" />
                             <ItemsControl ItemsSource="{Binding RecentInstances}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="2" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button
-                                            Padding="8,6"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Stretch"
+                                            Padding="0"
                                             Classes="subtle"
                                             Command="{Binding Command}"
-                                            CommandParameter="{Binding Id}">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock
-                                                    Grid.Column="0"
-                                                    VerticalAlignment="Center"
-                                                    Text="{Binding Id}"
-                                                    TextTrimming="CharacterEllipsis" />
-                                                <TextBlock
-                                                    Grid.Column="1"
-                                                    Margin="10,0,0,0"
-                                                    VerticalAlignment="Center"
-                                                    Classes="caption"
-                                                    Text="{Binding TimeText}" />
-                                            </Grid>
+                                            CommandParameter="{Binding Id}"
+                                            ToolTip.Tip="{Binding TimeText}">
+                                            <Border Padding="8,2" Classes="chip">
+                                                <TextBlock Classes="caption" Text="{Binding Id}" />
+                                            </Border>
                                         </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
-                    </Border>
+                    </StackPanel>
+                </Border>
+                    <!--
+                        空状态：一个实例都没有时的引导区。
 
-                    <!--  ── Minecraft 文件夹 / Java / 外观 ──  -->
-                    <Border Margin="0,10,0,0" Classes="card">
-                        <StackPanel>
+                        它不是"一张卡里放一句话"——空页面上唯一有价值的动作就是
+                        「装一个进来」，所以直接把三种装法摊开：下载版本 / 装整合包 /
+                        用配装码。用户不必先搞清「下载中心在哪」「配装码是什么」。
 
-                            <!--  Minecraft 文件夹  -->
-                            <Grid Margin="16,14" ColumnDefinitions="*,Auto">
+                        排版是三块等宽磁贴（图标 → 标题 → 一行说明），等高对齐。
+                        此时左栏整列收起（见 code-behind），引导区独占页面宽度，
+                        不会再出现「左边空一列、右边孤零零两张卡」的失衡。
+                    -->
+                    <StackPanel
+                        x:Name="emptyGuide"
+                        Margin="0,0,0,18"
+                        IsVisible="False"
+                        Spacing="0">
+
+                        <TextBlock
+                            x:Name="emptyTitle"
+                            Classes="subtitle"
+                            FontSize="{DynamicResource FontSizeTitle}"
+                            FontWeight="SemiBold"
+                            Text="还没有可用的游戏版本" />
+
+                        <TextBlock
+                            x:Name="emptyHint"
+                            Margin="0,4,0,0"
+                            Classes="caption"
+                            Text="先装一个版本，或者用别人分享的配装一键还原。" />
+
+                        <Grid Margin="0,18,0,0" ColumnDefinitions="*,12,*,12,*">
+
+                            <Button
+                                Grid.Column="0"
+                                Classes="tile"
+                                Click="OnOpenDownloadClick">
+                                <StackPanel Spacing="6">
+                                    <ui:FASymbolIcon
+                                        HorizontalAlignment="Left"
+                                        FontSize="{StaticResource IconSizeLarge}"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="Download" />
+                                    <TextBlock
+                                        Classes="body"
+                                        FontSize="{DynamicResource FontSizeSubtitle}"
+                                        FontWeight="SemiBold"
+                                        Text="下载游戏" />
+                                    <TextBlock
+                                        Classes="caption"
+                                        TextWrapping="Wrap"
+                                        Text="从官方源挑一个版本装上" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button
+                                Grid.Column="2"
+                                Classes="tile"
+                                Click="OnAddModpackClick">
+                                <StackPanel Spacing="6">
+                                    <ui:FASymbolIcon
+                                        HorizontalAlignment="Left"
+                                        FontSize="{StaticResource IconSizeLarge}"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="Folder" />
+                                    <TextBlock
+                                        Classes="body"
+                                        FontSize="{DynamicResource FontSizeSubtitle}"
+                                        FontWeight="SemiBold"
+                                        Text="装整合包" />
+                                    <TextBlock
+                                        Classes="caption"
+                                        TextWrapping="Wrap"
+                                        Text="一次装好整套模组" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button
+                                Grid.Column="4"
+                                Classes="tile"
+                                Click="OnLoadoutCodeClick">
+                                <StackPanel Spacing="6">
+                                    <ui:FASymbolIcon
+                                        HorizontalAlignment="Left"
+                                        FontSize="{StaticResource IconSizeLarge}"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Symbol="Code" />
+                                    <TextBlock
+                                        Classes="body"
+                                        FontSize="{DynamicResource FontSizeSubtitle}"
+                                        FontWeight="SemiBold"
+                                        Text="用配装码" />
+                                    <TextBlock
+                                        Classes="caption"
+                                        TextWrapping="Wrap"
+                                        Text="粘贴分享码一键还原" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!--  ==================== 运行环境  ====================
+                         Java / 目录 / 外观：低频但必须现场可改的三项，收成一张卡，
+                         用 1px 细线分段。它们不参与"启动"这条主路径，所以排在下面。
+                    -->
+                    <Border Padding="16,14" Classes="group">
+                        <StackPanel Spacing="0">
+
+                            <TextBlock
+                                Margin="0,0,0,8"
+                                Classes="sectionTitle"
+                                FontSize="{DynamicResource FontSizeBody}"
+                                Text="运行环境" />
+
+                            <!--  ── Java ──
+                                 窄栏里不能并排：标签 + 200 宽下拉 + 浏览键一共三百多像素，
+                                 挤在一行会把标签压塌。改成「标签 → 路径 → 下拉+浏览」三行。
+                            -->
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="body" Text="Java 运行环境" />
+                                <TextBlock
+                                    x:Name="quickJavaText"
+                                    Classes="caption"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap" />
+                            </StackPanel>
+
+                            <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+                                <ComboBox
+                                    x:Name="quickJavaCombo"
+                                    HorizontalAlignment="Stretch"
+                                    PlaceholderText="未检测到 Java"
+                                    SelectionChanged="OnQuickJavaSelectionChanged">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="1">
+                                                <TextBlock Text="{Binding JavaVersion}" />
+                                                <TextBlock
+                                                    Classes="caption"
+                                                    Text="{Binding JavaPath}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="NoWrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <Button
+                                    Grid.Column="1"
+                                    Margin="6,0,0,0"
+                                    Classes="subtle"
+                                    Click="OnQuickJavaBrowseClick"
+                                    Content="浏览" />
+                            </Grid>
+
+                            <Border Margin="0,8,0,0" Classes="hr" />
+
+                            <!--  ── 游戏目录 ──  -->
+                            <Grid Margin="0,10,0,0" ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" Spacing="2">
                                     <TextBlock Classes="body" Text="Minecraft 文件夹" />
                                     <TextBlock
@@ -337,63 +592,16 @@
 
                                 <Button
                                     Grid.Column="1"
-                                    Margin="12,0,0,0"
                                     VerticalAlignment="Center"
                                     Classes="subtle"
                                     Click="OnQuickMcFolderClick"
                                     Content="更改" />
                             </Grid>
 
-                            <Border Height="1" Background="{DynamicResource HairlineBrush}" />
+                            <Border Margin="0,8,0,0" Classes="hr" />
 
-                            <!--  Java 运行环境  -->
-                            <StackPanel Margin="16,14" Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0" Spacing="2">
-                                        <TextBlock Classes="body" Text="Java 运行环境" />
-                                        <TextBlock
-                                            x:Name="quickJavaText"
-                                            Classes="caption"
-                                            TextTrimming="CharacterEllipsis"
-                                            TextWrapping="NoWrap" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <ComboBox
-                                        x:Name="quickJavaCombo"
-                                        Grid.Column="0"
-                                        HorizontalAlignment="Stretch"
-                                        PlaceholderText="未检测到 Java"
-                                        SelectionChanged="OnQuickJavaSelectionChanged">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Spacing="1">
-                                                    <TextBlock Text="{Binding JavaVersion}" />
-                                                    <TextBlock
-                                                        Classes="caption"
-                                                        Text="{Binding JavaPath}"
-                                                        TextTrimming="CharacterEllipsis"
-                                                        TextWrapping="NoWrap" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-
-                                    <Button
-                                        Grid.Column="1"
-                                        Margin="6,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Classes="subtle"
-                                        Click="OnQuickJavaBrowseClick"
-                                        Content="浏览" />
-                                </Grid>
-                            </StackPanel>
-
-                            <Border Height="1" Background="{DynamicResource HairlineBrush}" />
-
-                            <!--  外观：分段胶囊  -->
-                            <Grid Margin="16,14" ColumnDefinitions="*,Auto">
+                            <!--  ── 外观 ──  -->
+                            <Grid Margin="0,10,0,0" ColumnDefinitions="*,Auto">
                                 <TextBlock
                                     Grid.Column="0"
                                     VerticalAlignment="Center"
@@ -418,53 +626,6 @@
                                             GroupName="QuickTheme" />
                                     </StackPanel>
                                 </Border>
-                            </Grid>
-
-                        </StackPanel>
-                    </Border>
-
-                    <!--  ── 实例概览 ──  -->
-                    <Border
-                        Margin="0,10,0,0"
-                        Padding="16,14"
-                        Classes="card"
-                        IsVisible="{Binding ShowInstanceOverview}">
-                        <StackPanel Spacing="4">
-                            <TextBlock Classes="sectionTitle" Text="实例概览" />
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock
-                                    Classes="number"
-                                    FontSize="{DynamicResource FontSizeTitle}"
-                                    Text="{Binding InstanceCountText}" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    Classes="caption"
-                                    Text="{Binding InstanceSizeText}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!--  ── 快捷入口 ──  -->
-                    <Border
-                        Margin="0,10,0,0"
-                        Padding="16,14"
-                        Classes="card"
-                        IsVisible="{Binding ShowShortcuts}">
-                        <StackPanel Spacing="8">
-                            <TextBlock Classes="sectionTitle" Text="快捷入口" />
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                <Button
-                                    Grid.Column="0"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding OpenModDownloadCommand}"
-                                    Content="装模组" />
-                                <Button
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Command="{Binding OpenModpackDownloadCommand}"
-                                    Content="装整合包" />
                             </Grid>
                         </StackPanel>
                     </Border>

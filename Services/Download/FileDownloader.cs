@@ -46,6 +46,16 @@ public static class FileDownloader
     /// 本次尝试的累计进度（已接收字节 / 总字节）。总字节为 0 表示服务器没报长度。
     /// 单文件场景（模组下载）直接拿它算百分比就行，不用自己攒增量。
     /// </param>
+    /// <param name="chunkCount">
+    /// 本次下载的分块数（= 内层并发连接数）。为空时按设置页的「单文件分块数」走。
+    /// 启动器自带程序包的更新用它显式抬到 8 块 —— 那个包固定二十多 MB，
+    /// 用户设置里可能是 1 块（给镜像限流准备的逃生阀），对 GitHub 直链没必要那么保守。
+    /// </param>
+    /// <param name="extraSources">
+    /// 额外候选地址（排在 <see cref="DownloadItem.AltUrl"/> 之后）。
+    /// 更新包的三条线路（v4 代理 / v6 代理 / 直连）就靠它一次性全塞进来，
+    /// 第一条不通自动换下一条，用户不用回窗口里重点一次。
+    /// </param>
     /// <returns>真正下载返回 <c>true</c>；目标文件已完整存在、跳过时返回 <c>false</c>。</returns>
     /// <exception cref="DownloadFailedException">所有候选源都失败时。</exception>
     public static async Task<bool> DownloadAsync(
@@ -54,7 +64,9 @@ public static class FileDownloader
         Action<string>? onStatus = null,
         CancellationToken ct = default,
         Action<long, long>? onProgress = null,
-        TimeSpan? idleTimeout = null)
+        TimeSpan? idleTimeout = null,
+        int? chunkCount = null,
+        IReadOnlyList<string>? extraSources = null)
     {
         if (item is null)
             throw new ArgumentNullException(nameof(item));
@@ -68,7 +80,7 @@ public static class FileDownloader
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        var candidates = BuildCandidates(item);
+        var candidates = BuildCandidates(item, extraSources);
         if (candidates.Count == 0)
             throw new DownloadFailedException(
                 $"没有可用的下载地址：{item.Name}", Array.Empty<string>(), null);
@@ -97,7 +109,8 @@ public static class FileDownloader
 
                 try
                 {
-                    await DownloadCoreAsync(url, item, onBytes, onProgress, idleTimeout, ct).ConfigureAwait(false);
+                    await DownloadCoreAsync(url, item, onBytes, onProgress, idleTimeout, chunkCount, ct)
+                        .ConfigureAwait(false);
                     watch.Stop();
 
                     // 镜像站「慢」不等于它坏了。
@@ -164,6 +177,7 @@ public static class FileDownloader
         Action<long>? onBytes,
         Action<long, long>? onProgress,
         TimeSpan? idleTimeout,
+        int? chunkCount,
         CancellationToken ct)
     {
         var tmpPath = MakeTempPath(item.TargetPath);
@@ -243,7 +257,9 @@ public static class FileDownloader
 
         try
         {
-            var chunks = ResolveChunkCount();
+            var chunks = chunkCount is > 0
+                ? Math.Clamp(chunkCount.Value, 1, MaxChunkCount)
+                : ResolveChunkCount();
             Log.Debug("下载 {File}：{Chunks} 块并行（{Mode}）",
                 item.Name, chunks, chunks > 1 ? "多连接分块" : "单连接");
 
@@ -473,7 +489,7 @@ public static class FileDownloader
     /// <summary>
     /// 候选地址：主地址 + 显式备用地址 + 镜像改写，按「用户偏好 → 源健康度」排。
     /// </summary>
-    private static List<string> BuildCandidates(DownloadItem item)
+    private static List<string> BuildCandidates(DownloadItem item, IReadOnlyList<string>? extraSources = null)
     {
         var list = new List<string>(3);
 
@@ -490,6 +506,12 @@ public static class FileDownloader
             Add(candidate);
 
         Add(item.AltUrl);
+
+        if (extraSources is not null)
+        {
+            foreach (var extra in extraSources)
+                Add(extra);
+        }
 
         // 稳定的健康度排序：被降级的主机挪到末尾，但绝不删除
         return list.OrderBy(u => DownloadSources.IsDemoted(u) ? 1 : 0).ToList();

@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:helpers="using:VibrantbitLauncher.Helpers"
+        xmlns:ctrl="using:VibrantbitLauncher.Controls"
         xmlns:ui="using:FluentAvalonia.UI.Controls">
 
     <!--
@@ -25,7 +26,7 @@
           EaseEnter     先快后慢，用于"内容落定"
           EaseExit      先慢后快，用于"内容快走"，且时长必须比进场短
 
-        ⚠️ 性能模式 / 减少动态效果 的兜底写在文件末尾：
+        注意：性能模式 / 减少动态效果 的兜底写在文件末尾：
            任何新增动效都**必须**在那里补一条清零规则，否则低端机上会拖影。
            XAML 侧的总开关是窗口根节点上的 .performanceMode / .motionReduced 类；
            代码侧的总开关是 Helpers/MotionSettings。
@@ -133,11 +134,12 @@
 
     <!--  ==================== 3. 卡片  ====================
 
-        悬停只加深描边，不抬阴影、不位移。
-        白底上的投影一旦动起来，整块内容会跟着"呼吸"，读起来很累。
+        静态卡片只过渡描边；悬停时**抬一层投影**（200ms）——
+        纸面浮在灰画布上，投影有了参照物，抬起来才像"离桌面 1mm"。
+        位移仍然只有 2px：Card 是阅读容器，不该跳。
 
         .lift 是例外：只给"整块可点"的内容卡（新闻墙这类），
-        上浮 2px + 描边加深，明确表达"这张能点开"。
+        上浮 2px + 描边加深 + 投影加深，明确表达"这张能点开"。
     -->
 
     <Style Selector="Border.card">
@@ -151,6 +153,17 @@
 
     <Style Selector="Border.card:pointerover">
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
+    </Style>
+
+    <Style Selector="Border.group">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Border.group:pointerover">
     </Style>
 
     <Style Selector="Border.hoverCard">
@@ -173,14 +186,57 @@
         <Setter Property="Transitions">
             <Transitions>
                 <BrushTransition Property="BorderBrush" Duration="0:0:0.15" Easing="{StaticResource EaseFeedback}" />
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="{StaticResource EaseEnter}" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="{StaticResource EaseEnter}" />
             </Transitions>
         </Setter>
     </Style>
 
     <Style Selector="Border.lift:pointerover">
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
-        <Setter Property="RenderTransform" Value="translateY(-2px)" />
+        <Setter Property="RenderTransform" Value="translateY(-3px)" />
+    </Style>
+
+    <!--
+        图片推近：卡片悬停时封面图缓慢放大 6%。
+
+        只在列表/卡片里的封面用。400ms 曾经"像呼吸"，但它跨过了 300ms 这条线，
+        而超过 300ms 的动作在快速划过一列条目时会叠在一起（前一条还没落定，
+        后一条已经开始）。现在收进 250ms：仍比纯色反馈慢，但不再拖尾巴。
+    -->
+    <Style Selector="Image.zoom">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="{StaticResource EaseEnter}" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Border.lift:pointerover Image.zoom">
+        <Setter Property="RenderTransform" Value="scale(1.06)" />
+    </Style>
+
+    <!--
+        页头入场：每次进页面时标题从下方 8px 处落定。
+        基础值就是终态（1 / 0），所以动效关掉或不重播时也不会留下残留状态。
+
+        挂在 .riseIn 上而不是默认样式上：类名由 PageHeader 的 code-behind
+        按 MotionSettings.AllowMovement 决定加不加 —— 性能模式和「精简」档
+        根本不会拿到这个类，动画连创建都不会创建。
+    -->
+    <Style Selector="ctrl|PageHeader.riseIn">
+        <Style.Animations>
+            <Animation Duration="0:0:0.25" FillMode="Forward" Easing="{StaticResource EaseEnter}">
+                <KeyFrame Cue="0%">
+                    <Setter Property="Opacity" Value="0" />
+                    <Setter Property="RenderTransform" Value="translateY(8px)" />
+                </KeyFrame>
+                <KeyFrame Cue="100%">
+                    <Setter Property="Opacity" Value="1" />
+                    <Setter Property="RenderTransform" Value="translateY(0px)" />
+                </KeyFrame>
+            </Animation>
+        </Style.Animations>
     </Style>
 
     <!--  ==================== 4. 输入与选择  ====================  -->
@@ -346,11 +402,12 @@
         <Setter Property="RenderTransform" Value="none" />
     </Style>
 
-    <Style Selector=".performanceMode Border.card, .performanceMode Border.hoverCard, .performanceMode Border.lift">
+    <Style Selector=".performanceMode Border.card, .performanceMode Border.hoverCard, .performanceMode Border.lift, .performanceMode Border.group">
         <Setter Property="Transitions">
             <Transitions />
         </Setter>
         <Setter Property="RenderTransform" Value="none" />
+        <!--  投影在核显上要走一次离屏模糊，性能模式直接不放  -->
     </Style>
 
     <Style Selector=".performanceMode TextBox, .performanceMode ComboBox, .performanceMode NumericUpDown, .performanceMode AutoCompleteBox">
@@ -383,6 +440,20 @@
         真正会残留的是 RenderTransform 的中间值，这里把它压回 1:1。
     -->
     <Style Selector=".performanceMode Image.bgAnimated">
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".performanceMode Image.zoom">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
+        <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+
+    <Style Selector=".motionReduced Image.zoom">
+        <Setter Property="Transitions">
+            <Transitions />
+        </Setter>
         <Setter Property="RenderTransform" Value="scale(1)" />
     </Style>
 

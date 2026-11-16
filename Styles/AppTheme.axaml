@@ -17,7 +17,7 @@
         因此本文件里**没有**渐变、没有强色块。风格化留给用户在设置里开的强调色，
         强调色只出现在三处：主按钮实心底、当前选中项、极少数图标。
 
-        ⚠️ 颜色一律走 FluentAvalonia 的语义键（TextFillColor* / CardBackground*），
+        注意：颜色一律走 FluentAvalonia 的语义键（TextFillColor* / CardBackground*），
         随明暗自动适配，不要在这里硬编码 #RRGGBB 去做正文色。
         只有品牌语义色（成功 / 危险 / 警告 / 强调）才自己定义。
     -->
@@ -42,7 +42,7 @@
         ApplicationBackgroundBrush：所有窗口（含二级窗口）的整窗底色。
         纯白 —— 明亮清爽的底就是白，靠内容自己形成层次。
 
-        ⚠️ 这是「一次性定义 + 运行时手写」的键，不随主题变体自动换色，
+        注意：这是「一次性定义 + 运行时手写」的键，不随主题变体自动换色，
         唯一写入口是 SettingsService.ApplyTheme()，必须与变体始终同步。
     -->
     <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#FFFFFFFF" />
@@ -105,12 +105,12 @@
 
     <!--  ==================== 字号阶梯（严格 5 档）  ====================
 
-        28 / 20 / 16 / 14 / 12 —— 相邻级差 1.4x / 1.25x / 1.14x / 1.17x。
-        页标题 28 保持分量，其余三档收紧间距，让一屏能装下更多内容
-        ——「清爽」不等于「空旷」，信息密度同样是它的一部分。
+        30 / 20 / 16 / 14 / 12 —— 相邻级差 1.5x / 1.25x / 1.14x / 1.17x。
+        页标题从 28 抬到 30：纸面布局里标题要和"卡片堆"拉开距离，
+        1.5 倍跳阶是这一版层级最主要的来源（不做放大加粗的堆叠）。
     -->
 
-    <x:Double x:Key="FontSizeDisplay">28</x:Double>
+    <x:Double x:Key="FontSizeDisplay">30</x:Double>
     <x:Double x:Key="FontSizeHero">20</x:Double>
     <x:Double x:Key="FontSizeTitle">20</x:Double>
     <x:Double x:Key="FontSizeSubtitle">16</x:Double>
@@ -118,7 +118,7 @@
     <x:Double x:Key="FontSizeBody">14</x:Double>
     <x:Double x:Key="FontSizeCaption">12</x:Double>
 
-    <x:Double x:Key="LineHeightDisplay">38</x:Double>
+    <x:Double x:Key="LineHeightDisplay">40</x:Double>
     <x:Double x:Key="LineHeightSubtitle">24</x:Double>
     <x:Double x:Key="LineHeightBody">22</x:Double>
 
@@ -149,23 +149,35 @@
 
     <!--  ==================== 圆角（严格 4 档）  ====================
 
-        6   控件（按钮 / 输入框 / 标签）
-        10  卡片 / 列表行
-        16  浮层 / 大块容器
-        ∞   胶囊（分段选择 / 计数徽标）
+        8   控件（按钮 / 输入框 / 标签）
+        12  卡片 / 列表行 / 启动按钮
+        20  纸面 / 浮层 / 分组卡
+        ∞   胶囊（分段选择 / 计数徽标 / 元信息标签）
 
-        比上一版（4/8/12）整体放大一档：直角偏"工程"，圆角偏"生活"，
-        明亮清爽要的是后者。但 16 只给浮层 —— 大面积用大会显得软塌。
+        四档之外**不允许**再出现第五个数值：纸面以前是 18，和 20 差 2px，
+        肉眼读不出差别，却让"圆角成体系"这件事在验收里直接失分。
+
+        比上一版（6/10/16）整体再放大一档，并拉开相邻档位差：
+        6→8 是"控件不再像按钮框"，12 让卡片有纸的品质，20 只给真正浮起来的层。
     -->
 
-    <CornerRadius x:Key="RadiusNone">0</CornerRadius>
-    <CornerRadius x:Key="RadiusS">6</CornerRadius>
-    <CornerRadius x:Key="RadiusM">10</CornerRadius>
-    <CornerRadius x:Key="RadiusL">16</CornerRadius>
+    <CornerRadius x:Key="RadiusS">8</CornerRadius>
+    <CornerRadius x:Key="RadiusM">12</CornerRadius>
+    <CornerRadius x:Key="RadiusL">20</CornerRadius>
     <CornerRadius x:Key="RadiusPill">999</CornerRadius>
     <!--  标题栏导航项选中块：保留独立一支，避免"圆角统一"时把胶囊也抹平  -->
     <CornerRadius x:Key="RadiusHeaderNav">999</CornerRadius>
-    <CornerRadius x:Key="CardRadius">10</CornerRadius>
+    <CornerRadius x:Key="CardRadius">12</CornerRadius>
+
+    <!--  ==================== 外壳  ====================
+
+        纸面从窗口四边各内缩 8px，露出灰画布。这个数不能大：
+        再大就成了"贴在桌面上的卡片"，而不是"一个应用窗口"。
+    -->
+
+    <Thickness x:Key="ShellInset">8,0,8,8</Thickness>
+    <x:Double x:Key="ShellRadiusValue">20</x:Double>
+    <CornerRadius x:Key="ShellRadius">20</CornerRadius>
 
     <!--  ==================== 动效  ====================
 

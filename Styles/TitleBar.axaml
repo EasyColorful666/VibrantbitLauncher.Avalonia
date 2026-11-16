@@ -21,8 +21,9 @@
         应用级样式里可以用普通的后代选择器直接命中模板里的命名部件，
         省掉 ControlTheme 作用域下 `^ /template/` 的层级坑（踩过）。
 
-        配色全部走本工程的标题栏资源键，明暗自动适配；
-        只有「关闭按钮悬停红」是国内 Windows 约定的固定色，直接写死。
+        配色全部走本工程的标题栏资源键，明暗自动适配。
+        关闭按钮的红色也一样走资源（AppClose*）—— 它虽然是 Windows 固定约定，
+        但写死在视图里就没法在暗色主题里压暗一档。
     -->
 
     <Style Selector="ctrl|TitleBar">
@@ -30,7 +31,7 @@
         <Setter Property="Background" Value="{DynamicResource AppHeaderBarBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AppHeaderBarForegroundBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource AppFont}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
         <Setter Property="Template">
             <ControlTemplate>
                 <!--
@@ -129,7 +130,7 @@
 
     <!--  副标题：小一号 + 压暗，默认隐藏（没设 Subtitle 时不占位）  -->
     <Style Selector="ctrl|TitleBar TextBlock#PART_Subtitle">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeCaption}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
@@ -168,19 +169,19 @@
 
     <!--  关闭按钮：悬停 / 按下用 Windows 约定的红底白字  -->
     <Style Selector="ctrl|TitleBar Button.captionClose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#C42B1C" />
+        <Setter Property="Background" Value="{DynamicResource AppCloseSurfaceBrush}" />
     </Style>
 
     <Style Selector="ctrl|TitleBar Button.captionClose:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#B0241A" />
+        <Setter Property="Background" Value="{DynamicResource AppCloseSurfacePressedBrush}" />
     </Style>
 
     <Style Selector="ctrl|TitleBar Button.captionClose:pointerover Path.captionGlyph">
-        <Setter Property="Stroke" Value="#FFFFFFFF" />
+        <Setter Property="Stroke" Value="{DynamicResource AppCloseGlyphBrush}" />
     </Style>
 
     <Style Selector="ctrl|TitleBar Button.captionClose:pressed Path.captionGlyph">
-        <Setter Property="Stroke" Value="#B0FFFFFF" />
+        <Setter Property="Stroke" Value="{DynamicResource AppCloseGlyphPressedBrush}" />
     </Style>
 
     <!--  按钮字形：1px 描边几何，不依赖任何系统图标字体（跨平台一致）  -->

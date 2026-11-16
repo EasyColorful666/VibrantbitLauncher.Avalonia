@@ -177,6 +177,9 @@ public partial class MainWindow : FAAppWindow
         _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
 
         EndWelcomeWizard();
+
+        // 向导刚走完也是「这次启动」，更新检查照做一次。
+        _ = CheckUpdateOnStartupAsync();
     }
 
     /// <summary>收起向导层并把导航入口还给主界面（可重复调用）。</summary>
@@ -561,9 +564,16 @@ public partial class MainWindow : FAAppWindow
         // 首次运行先走开机向导：它盖住整个窗口（含标题栏与侧栏），主界面等它走完再铺。
         // 非首次才直接进「启动」页。
         if (SettingsService.Current.IsFirstRun)
+        {
             StartWelcomeWizard();
+        }
         else
+        {
             _navigation?.NavigateFromMenu(ResolvePage("LaunchPage"));
+
+            // 每次启动都查一次更新；有新版就把更新窗口弹出来（不挡启动流程）。
+            _ = CheckUpdateOnStartupAsync();
+        }
 
         // Mica 只在 Windows 11 上有效。
         // 老系统上 TransparencyLevelHint 会被忽略，而我们同时把 Background 设成了
@@ -579,8 +589,50 @@ public partial class MainWindow : FAAppWindow
         }
     }
 
-    /// <summary>导航发生后同步侧边栏的选中态。
+    /// <summary>
+    /// 启动时检查更新：有新版就把更新窗口弹出来。
     ///
+    /// <para>
+    /// 失败一律静默 —— 没网、接口抽风、公司代理拦掉 api.github.com 都很常见，
+    /// 因为「查不到更新」而弹一个错误框只会让人以为程序坏了。用户想主动查的话，
+    /// 设置页有「检查更新」。
+    /// </para>
+    ///
+    /// <para>
+    /// 延迟 900ms 再查：主窗口的飞入动画（300ms）+ 首屏页面加载都在这段时间里跑完，
+    /// 叠在一起弹窗会显得很急，也容易在低配机器上抢走焦点。
+    /// </para>
+    /// </summary>
+    private async Task CheckUpdateOnStartupAsync()
+    {
+        try
+        {
+            await Task.Delay(900);
+
+            // 向导期间不打扰；用户已经在看别的子页时也不叠上去
+            if (_welcomeActive || !IsVisible || InlineHost.IsOpen)
+                return;
+
+            var result = await UpdateService.CheckAsync(SettingsService.Current.UpdateIncludePrerelease);
+
+            if (result.Status != UpdateCheckStatus.UpdateAvailable || result.Latest is null)
+                return;
+
+            // 检查期间可能发生了别的事（用户关了窗口、进了向导、打开了子页）
+            if (_welcomeActive || !IsVisible || InlineHost.IsOpen)
+                return;
+
+            Serilog.Log.Information("发现新版本 {Tag}，弹出更新窗口", result.Latest.TagName);
+
+            await InlineHost.ShowAsync(new Views.Windows.UpdateWindow(result.Latest));
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "启动时检查更新失败（不影响使用）");
+        }
+    }
+
+    /// <summary>导航发生后同步侧边栏的选中态。
     /// FANavigationView 只在**用户点击菜单项**时自己更新 SelectedItem；
     /// 代码里跳转（ViewModel 发 NavigateTo、返回栈 GoBack 等）只换了 Content，
     /// SelectedItem 仍停在上一个菜单项 —— 表现就是「页面切了，但左侧栏不高亮对应的项」。

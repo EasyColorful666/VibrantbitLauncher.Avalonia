@@ -2693,18 +2693,9 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 return;
             }
 
-            var latest = result.Latest;
-            var dialogs = AppServices.Dialogs;
-            if (dialogs is null)
-                return;
-
-            var go = await dialogs.ConfirmAsync(
-                "发现新版本",
-                $"最新版本：{latest.TagName}\n发布时间：{latest.PublishedAt.ToLocalTime():yyyy-MM-dd}\n\n是否打开下载页面？",
-                "打开", "稍后");
-
-            if (go)
-                OpenUrl(latest.HtmlUrl);
+            // 有新版就把更新窗口弹出来：窗口里能选线路、看进度、下安装包，
+            // 比原来「问一句要不要开浏览器」有用得多。
+            _ = AppLifetime.ShowDialogAsync(new Views.Windows.UpdateWindow(result.Latest));
         }
 
         /// <summary>打开一个外部链接（统一的异常处理，避免点了没反应）。</summary>

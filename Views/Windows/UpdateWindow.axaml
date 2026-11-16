@@ -1,0 +1,153 @@
+<UserControl
+    x:Class="VibrantbitLauncher.Views.Windows.UpdateWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctrl="using:VibrantbitLauncher.Controls"
+    FontFamily="{DynamicResource AppFont}"
+    FontSize="{DynamicResource FontSizeBody}"
+    mc:Ignorable="d"
+    Width="560">
+
+    <!--
+        发现新版本时弹出的更新窗口。
+
+        做成内嵌卡片页（与登录 / 补资源 / 实例工具箱同一套），而不是独立 Window：
+        独立窗口会跑到任务栏、被 Alt+Tab 当成另一个程序，而且主窗口缩小后容易飞出去。
+
+        三个下载线路给的是同一条 GitHub 直链的三种取法，选哪个只影响「怎么下」，
+        包本身一模一样 —— 所以切换线路不需要重新取版本信息。
+    -->
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource ApplicationBackgroundBrush}">
+        <ctrl:TitleBar
+            x:Name="Bar"
+            Grid.Row="0"
+            Height="36"
+            Title="发现新版本"
+            Icon="/Assets/icon.ico"
+            IsInline="True"
+            ShowMaximize="False"
+            ShowMinimize="False" />
+
+        <Grid Grid.Row="1" Margin="28,4,28,24" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+
+            <TextBlock
+                x:Name="HeaderText"
+                Grid.Row="0"
+                Classes="title"
+                Text="发现新版本" />
+
+            <TextBlock
+                x:Name="MetaText"
+                Grid.Row="1"
+                Margin="0,6,0,0"
+                Classes="caption"
+                TextWrapping="Wrap" />
+
+            <TextBlock
+                Grid.Row="2"
+                Margin="0,18,0,8"
+                Classes="secondary"
+                Text="更新内容" />
+
+            <!--  更新说明：发布页正文原样显示，长了就在框里滚，不撑高整个窗口  -->
+            <Border
+                Grid.Row="3"
+                Classes="sunken"
+                Padding="12,10">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="132">
+                    <TextBlock
+                        x:Name="BodyText"
+                        Classes="caption"
+                        TextWrapping="Wrap" />
+                </ScrollViewer>
+            </Border>
+
+            <StackPanel
+                x:Name="SourcePanel"
+                Grid.Row="4"
+                Margin="0,18,0,0"
+                Spacing="2">
+                <TextBlock
+                    Margin="0,0,0,6"
+                    Classes="secondary"
+                    Text="下载线路" />
+
+                <RadioButton
+                    x:Name="RadioV4"
+                    GroupName="updateSource"
+                    IsChecked="True"
+                    Content="IPv4 加速（v4.gh-proxy.com）" />
+
+                <TextBlock
+                    Margin="28,0,0,4"
+                    Classes="caption"
+                    Text="经 IPv4 加速站转发 GitHub 链接，多数网络下最稳" />
+
+                <RadioButton
+                    x:Name="RadioV6"
+                    GroupName="updateSource"
+                    Content="IPv4 / IPv6 加速（v6.gh-proxy.com）" />
+
+                <TextBlock
+                    Margin="28,0,0,4"
+                    Classes="caption"
+                    Text="需要网络支持 IPv6；走 IPv6 时通常更快" />
+
+                <RadioButton
+                    x:Name="RadioDirect"
+                    GroupName="updateSource"
+                    Content="直连 GitHub（github.com）" />
+
+                <TextBlock
+                    Margin="28,0,0,0"
+                    Classes="caption"
+                    Text="不经第三方，网络能直连 GitHub 时用它" />
+
+                <TextBlock
+                    x:Name="HintText"
+                    Margin="0,10,0,0"
+                    Classes="caption"
+                    IsVisible="False"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="5" Margin="0,18,0,0" Spacing="8">
+                <ProgressBar
+                    x:Name="ProgressBar"
+                    Height="6"
+                    Minimum="0"
+                    Maximum="100"
+                    IsVisible="False"
+                    Value="0" />
+
+                <TextBlock
+                    x:Name="StatusText"
+                    Classes="caption"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Row="6"
+                Margin="0,22,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal"
+                Spacing="10">
+                <Button
+                    x:Name="SecondaryButton"
+                    MinWidth="96"
+                    Padding="20,8"
+                    Classes="subtle"
+                    Content="稍后" />
+                <Button
+                    x:Name="PrimaryButton"
+                    MinWidth="132"
+                    Padding="20,8"
+                    Classes="accent"
+                    Content="下载并更新" />
+            </StackPanel>
+
+        </Grid>
+    </Grid>
+</UserControl>

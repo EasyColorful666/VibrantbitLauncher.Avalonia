@@ -21,11 +21,11 @@
 
             <!--
                 分类栏**不装框**。
-                以前它是一块玻璃面板，和右侧内容形成"两个层"；
-                但在一屏纯白的界面里，那个框其实只是多了一圈线 ——
-                分类和内容是并列关系，不是包含关系，用留白分开就够了。
+                分类和内容是并列关系，不是包含关系，用留白分开就够了 ——
+                左右两列各画一个框，反而让人以为它们是两个可折叠的模块。
                 选中态靠浅灰底表达（Fluent 列表默认行为）。
             -->
+            <Border Grid.Column="0" VerticalAlignment="Top">
             <ListBox x:Name="CategoryList"
                      Grid.Column="0"
                      Padding="0"
@@ -114,6 +114,7 @@
                     </StackPanel>
                 </ListBoxItem>
             </ListBox>
+            </Border>
 
             <!--
                 每个分类各自持有一个页面实例，切换时只改 IsVisible。

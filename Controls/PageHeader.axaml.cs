@@ -102,4 +102,29 @@ public partial class PageHeader : UserControl
     }
 
     private void SyncActions() => PART_Actions.Content = Actions;
+
+    /// <summary>
+    /// 每次页面被重新挂上视觉树时重播一次入场（标题从下方 8px 落定）。
+    ///
+    /// <para>
+    /// 页面是 DI 单例，来回切页拿到的是同一个实例，样式类不会自己"重新生效"——
+    /// 所以先摘掉类、等这一帧布局跑完再挂回去，动画才会重新创建。
+    /// 关掉动效 / 精简档时根本不加这个类（见 Animations.axaml 的 <c>ctrl|PageHeader.riseIn</c>）。
+    /// </para>
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        if (!Helpers.MotionSettings.AllowMovement)
+        {
+            Classes.Remove("riseIn");
+            return;
+        }
+
+        Classes.Remove("riseIn");
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => Classes.Add("riseIn"),
+            Avalonia.Threading.DispatcherPriority.Loaded);
+    }
 }

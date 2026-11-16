@@ -68,6 +68,11 @@ namespace VibrantbitLauncher.Views.Pages
             {
                 UpdateEmptyStates();
             }
+            else if (e.PropertyName is nameof(RunPageViewModel.ShowLaunchCard))
+            {
+                // 设置里关掉「游戏卡片」时舞台要跟着让位，不能等下次重扫磁盘
+                UpdateEmptyStates();
+            }
             else if (e.PropertyName is nameof(RunPageViewModel.DetectedJavas))
             {
                 // Java 扫描是后台完成的：扫完要把结果补进快捷设置的下拉框
@@ -76,38 +81,66 @@ namespace VibrantbitLauncher.Views.Pages
         }
 
         /// <summary>
-        /// 只在**真的一个版本都没有**时显示空状态；有版本就整块隐藏。
+        /// 在「有实例」与「一个都没有」之间切换整套版式。
+        ///
+        /// <para>
+        /// 空状态不是"把某张卡点亮"，而是**换一种版式**：左栏整列连同 300px 的列宽一起收起，
+        /// 右栏铺满整页，引导区从"舞台下方的替代品"变成页面主体。
+        /// </para>
         ///
         /// <para>
         /// 扫盘还没结束时不清空为「还没有可用的游戏版本」，而是显示「正在扫描…」——
-        /// 否则首次进入（磁盘慢、版本多）会先闪一下「没有版本」，看起来像 bug。
-        /// 底部工具栏上的「配装码」按钮不受这里影响，永远可见。
+        /// 否则首次进入（磁盘慢、版本多）会先闪一下"没有版本"，看起来像 bug。
         /// </para>
         /// </summary>
         private void UpdateEmptyStates()
         {
-            if (_launchViewModel is null)
+            var count = _launchViewModel?.MinecraftVersions.Count ?? 0;
+            var hasInstances = count > 0;
+
+            instanceColumn.IsVisible = hasInstances;
+            listHeader.IsVisible = hasInstances;
+            contentRoot.ColumnDefinitions = new ColumnDefinitions(hasInstances ? "*,340" : "0,*");
+            contentRoot.ColumnSpacing = hasInstances ? 28 : 0;
+
+            // 右栏跟列表卡同一条基线：有实例时落在第 1 行（第 0 行是「全部实例 + 添加」那条标题），
+            // 空状态时列表和标题一起收起，右栏回到第 0 行并吃掉三行高度。
+            Grid.SetRow(rightScroll, hasInstances ? 1 : 0);
+            Grid.SetRowSpan(rightScroll, hasInstances ? 1 : 3);
+
+            versionListCard.IsVisible = hasInstances;
+            emptyGuide.IsVisible = !hasInstances;
+
+            // 右栏在两个状态下都用 Stretch + MaxWidth（XAML 里写死 820）：
+            // 窗口窄时铺满，最大化时停在 820 并**左对齐**。
+            // 这里不能换成 HorizontalAlignment=Left —— 那样 StackPanel 会塌到内容宽度，
+            // 三块磁贴立刻不等宽（实测 154 / 118 / 130）。
+
+            // 舞台（当前实例）只在「有实例」且用户没关掉游戏卡片时出现。
+            // 一个版本都没有时它无处可指，露出来只是一枚点了会报错的启动按钮。
+            launchStage.IsVisible = hasInstances && (_launchViewModel?.ShowLaunchCard ?? true);
+
+            pageHeader.Subtitle = hasInstances
+                ? "左边挑一个实例，右边直接开始游戏。"
+                : "先把一个游戏版本装进来。";
+
+            if (!hasInstances)
             {
-                versionEmptyState.IsVisible = true;
+                var scanning = _launchViewModel?.IsRefreshing ?? false;
+                emptyTitle.Text = scanning ? "正在扫描本地版本…" : "还没有可用的游戏版本";
+                emptyHint.IsVisible = !scanning;
                 return;
             }
 
-            var count = _launchViewModel.MinecraftVersions.Count;
-            versionEmptyState.IsVisible = count == 0;
-
-            if (count > 0)
-                return;
-
-            var scanning = _launchViewModel.IsRefreshing;
-            emptyIcon.IsVisible = !scanning;
-            emptyTitle.Text = scanning ? "正在扫描本地版本…" : "还没有可用的游戏版本";
-            emptyHint.IsVisible = !scanning;
-            emptyLoadoutButton.IsVisible = !scanning;
+            // 扫完盘先替用户选中第一个实例：右侧舞台不要停在「未选择实例」上，
+            // 否则首个版本装好之后还得再点一下列表才能启动。
+            if (launchList.SelectedItem is null)
+                launchList.SelectedIndex = 0;
         }
 
         private void OnLaunchClick(object sender, RoutedEventArgs e)
         {
-            if (listBox.SelectedItem is LocalVersion version)
+            if (launchList.SelectedItem is LocalVersion version)
                 version.RunCommand?.Execute(version.Version);
             else
                 ShowHint("请先选择一个版本");
@@ -115,7 +148,7 @@ namespace VibrantbitLauncher.Views.Pages
 
         private void OnVersionSettingsClick(object sender, RoutedEventArgs e)
         {
-            if (listBox.SelectedItem is LocalVersion version)
+            if (launchList.SelectedItem is LocalVersion version)
             {
                 // 先导航再发版本号：版本管理页是懒加载单例，页面没创建时消息没人接收
                 // （详见 RunPageViewModel.Settings 的注释）
@@ -127,6 +160,18 @@ namespace VibrantbitLauncher.Views.Pages
                 ShowHint("请先选择一个版本");
             }
         }
+
+        /// <summary>「添加 → 装模组」：走和下载中心同一个入口。</summary>
+        private void OnAddModClick(object? sender, RoutedEventArgs e)
+            => _launchViewModel?.OpenModDownloadCommand.Execute(null);
+
+        /// <summary>空状态 → 下载游戏：直接去下载中心。</summary>
+        private void OnOpenDownloadClick(object? sender, RoutedEventArgs e)
+            => AppNavigation.Navigate(typeof(DownloadHubPage));
+
+        /// <summary>「添加 → 装整合包」。</summary>
+        private void OnAddModpackClick(object? sender, RoutedEventArgs e)
+            => _launchViewModel?.OpenModpackDownloadCommand.Execute(null);
 
         private void ShowHint(string message)
             => AppServices.Notifications?.Warning(message, "提示");

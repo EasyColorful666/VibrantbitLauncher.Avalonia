@@ -217,6 +217,10 @@ public partial class App : Application
 
                 // 热键监听只跟「游戏是否在跑」有关，界面已经出来了才谈得上按它。
                 toolbox.Start();
+
+                // 开发期离屏自检：设了 VBL_SHOT=<png 路径> 就截一张主窗口再退出。
+                // 仅用于改版时核对布局，正式运行不会走到这里。
+                TryCaptureForDesignReview(mainWindow, desktop);
             }
 
             mainWindow.Opened += OnMainWindowOpened;
@@ -361,6 +365,78 @@ public partial class App : Application
     /// 不会像启动前弹窗那样「窗口还没出来先卡一个对话框」，观感更稳。
     /// 无论用户选什么都不再问第二次（写回 PerformanceModeAsked）。
     /// </summary>
+    /// <summary>
+    /// 开发期截图自检：只认环境变量 <c>VBL_SHOT</c>，普通启动完全不触发。
+    ///
+    /// <para>
+    /// 走 <c>TopLevel.CaptureRenderedFrame</c>（合成器真帧），
+    /// 截到的是用户看到的样子，而不是"重画一遍"的近似图。截完直接退出。
+    /// </para>
+    /// </summary>
+    private static void TryCaptureForDesignReview(
+        MainWindow mainWindow,
+        Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var path = Environment.GetEnvironmentVariable("VBL_SHOT");
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        // 可选：先把界面切到某一页再截（VBL_SHOT_PAGE=DashboardPage）
+        var pageName = Environment.GetEnvironmentVariable("VBL_SHOT_PAGE");
+        if (!string.IsNullOrWhiteSpace(pageName))
+        {
+            Avalonia.Threading.DispatcherTimer.RunOnce(
+                () =>
+                {
+                    try
+                    {
+                        var type = Type.GetType("VibrantbitLauncher.Views.Pages." + pageName + ", VibrantbitLauncher.Avalonia");
+                        if (type is not null)
+                            VibrantbitLauncher.Services.AppNavigation.Current?.Navigate(type);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "设计自检：切页失败 {Page}", pageName);
+                    }
+                },
+                TimeSpan.FromMilliseconds(1200));
+        }
+
+        // 可选：截图前多等一会儿（VBL_SHOT_DELAY=6000），用于等网络内容落地
+        var delayText = Environment.GetEnvironmentVariable("VBL_SHOT_DELAY");
+        var delay = int.TryParse(delayText, out var parsed) && parsed > 0 ? parsed : 2800;
+
+        Avalonia.Threading.DispatcherTimer.RunOnce(
+            () =>
+            {
+                try
+                {
+                    // 按 DIP 1:1 渲染（乘 RenderScaling 会得到一张被放大的"局部"，看不出布局）
+                    var bounds = mainWindow.Bounds;
+                    var pixelSize = new Avalonia.PixelSize(
+                        Math.Max(1, (int)Math.Round(bounds.Width)),
+                        Math.Max(1, (int)Math.Round(bounds.Height)));
+
+                    using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                        pixelSize, new Avalonia.Vector(96, 96));
+                    bitmap.Render(mainWindow);
+
+                    using var stream = System.IO.File.Create(path);
+                    bitmap.Save(stream);
+                    Log.Information("设计自检截图已保存：{Path}（{W}×{H}）", path, pixelSize.Width, pixelSize.Height);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "设计自检截图异常");
+                }
+                finally
+                {
+                    desktop.Shutdown();
+                }
+            },
+            TimeSpan.FromMilliseconds(delay));
+    }
+
     private static async Task PromptPerformanceModeAsync(MainWindow mainWindow)
     {
         try

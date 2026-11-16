@@ -106,12 +106,40 @@
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
 
+    <!--
+        统计数字：主视觉区里的第二主角（实例数 / 版本数 / 总时长）。
+        20px + 负字距，比正文大 1.4 倍；再大就会和页标题打架。
+    -->
+    <Style Selector="TextBlock.value">
+        <Setter Property="FontFamily" Value="{DynamicResource AppDisplayFont}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeHero}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="-0.6" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <!--  元信息小标签：12px、下沉底、胶囊。用来排"1.21.1 / Fabric / 12 个模组"这类  -->
+    <Style Selector="Border.chip">
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--  1px 分隔线：横向铺满、不缩进  -->
+    <Style Selector="Border.hr">
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
     <!--  ==================== 2. 按钮  ====================
 
-        明亮清爽的按钮只有两种形态：
+        Paper 语言里的按钮只有三种形态：
           次级 —— 白底 + 1px 浅描边（不是 Fluent 默认的灰底，灰底会显脏）
-          主操 —— 实心强调色 + 白字
-        没有渐变、没有投影。按下的反馈靠底色加深，不靠位移或缩放。
+          主操 —— 实心强调色 + 白字 + 一层 1px 的投影（"按下去有重量"）
+          幽灵 —— 无底无边，只在悬停时浮出一层浅灰
+        没有渐变。按下的反馈靠底色加深 + 1.5% 回缩这两件事。
     -->
 
     <Style Selector="Button">
@@ -145,7 +173,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineStrongBrush}" />
     </Style>
 
-    <!--  主操作：实心强调色 + 白字  -->
+    <!--  主操作：实心强调色 + 白字 + 一点点"重量"  -->
     <Style Selector="Button.accent">
         <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
@@ -221,11 +249,50 @@
         <Setter Property="Padding" Value="20,7" />
     </Style>
 
+    <!--
+        启动按钮：全应用唯一的"主角控件"。
+
+        它比旁边的按钮高 14px、宽 3 倍、圆角走到胶囊，还带一层随悬停加深的投影 ——
+        这四件事叠起来才是"主角"。只加颜色是没用的，尺寸差才是层级。
+    -->
+    <Style Selector="Button.launch">
+        <Setter Property="Height" Value="52" />
+        <Setter Property="MinHeight" Value="52" />
+        <Setter Property="Padding" Value="34,0" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeSubtitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.launch /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
+        <Setter Property="Background" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.launch:pointerover">
+    </Style>
+
+    <Style Selector="Button.launch:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentDeepBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentDeepBrush}" />
+    </Style>
+
+    <Style Selector="Button.launch:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AppAccentDeepBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppAccentDeepBrush}" />
+    </Style>
+
     <!--  ==================== 3. 容器  ====================
 
-        卡片 = 白底 + 1px 浅描边 + 10px 圆角。**没有投影**。
-        投影在深色界面里负责"浮起"，在纯白界面里只会变成一圈脏边。
-        唯一带投影的是浮层（glass / 弹卡），因为它真的叠在别的内容之上。
+        卡片 = 白底 + 1px 浅描边 + 12px 圆角。
+        纸面浮在灰画布上之后，卡片**可以在悬停时抬一层投影**了 ——
+        因为投影现在有参照物（纸面），不再是白底上的一圈脏边。
+        静态卡片仍然不打投影：层次由描边 + 留白承担。
     -->
 
     <Style Selector="Border.card">
@@ -233,6 +300,32 @@
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}" />
+    </Style>
+
+    <!--
+        分组卡：一屏里"这一组是同一件事"的容器。
+        比 .card 多一点内边距，用来装 3~5 行设置 —— 页面上少画框，
+        改用一卡多行 + 行间 1px 细线。
+    -->
+    <Style Selector="Border.group">
+        <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
+        <Setter Property="Padding" Value="20,18" />
+    </Style>
+
+    <!--
+        主视觉区 面板：启动页/首页的"主角区"。
+        不用渐变、不用图片 —— 靠一块比卡片略暖的浅底 + 一圈更亮的描边，
+        把视线钉在这里。强调色只出现在里面的那颗按钮上。
+    -->
+    <Style Selector="Border.hero">
+        <Setter Property="Background" Value="{DynamicResource SurfaceCanvasSubtleBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
+        <Setter Property="Padding" Value="24,22" />
     </Style>
 
     <!--  可点卡片：默认与普通卡片一致，悬停时才浮起一层极淡的描边加深  -->
@@ -250,7 +343,6 @@
         <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{DynamicResource RadiusL}" />
-        <Setter Property="BoxShadow" Value="0 12 32 0 #14000000" />
     </Style>
 
     <!--  下沉面：输入区 / 列表底 / 代码块  -->
@@ -295,6 +387,15 @@
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
     </Style>
 
+    <!--
+        开关不写 On / Off 文案：状态由旋钮位置和底色表达就够了。
+        Fluent 默认那两个字是英文，在中文界面里是唯一一处"未翻译"的残留。
+    -->
+    <Style Selector="ToggleSwitch">
+        <Setter Property="OnContent" Value="" />
+        <Setter Property="OffContent" Value="" />
+    </Style>
+
     <Style Selector="ComboBoxItem">
         <Setter Property="CornerRadius" Value="{DynamicResource RadiusS}" />
         <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
@@ -336,6 +437,30 @@
     <!--  紧凑（图标条）：左右不留边，选中底块才填满整条 48  -->
     <Style Selector="ui|FANavigationViewItem.navCompact">
         <Setter Property="Margin" Value="0,1" />
+    </Style>
+
+    <!--
+        选中 / 悬停的状态色。
+
+        FluentAvalonia 把这些颜色写在自己的 ControlTheme 里，应用级资源键压不过它
+        （模板直接引用主题字典里的键）。这里改用「应用级 Style」——
+        在 Avalonia 里 Style 的优先级高于 ControlTheme，而模板根节点是
+        TemplateBinding Background / Foreground，所以这两条能真正生效。
+    -->
+    <Style Selector="ui|FANavigationViewItem:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="ui|FANavigationViewItem:selected">
+        <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ui|FANavigationViewItem:selected:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
 
     <!--  ==================== 6. FluentAvalonia 专属控件  ====================  -->

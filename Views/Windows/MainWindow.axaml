@@ -22,22 +22,65 @@
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
+      <ResourceDictionary>
         <!--
-            导航内容区透出底层壁纸。
+            导航项的状态色必须写在**窗口级**资源里。
+
+            原因：FluentAvalonia 会把 NavigationView 的主题字典合并进 Application.Resources，
+            而且是在 App.axaml 之后 —— 应用级同名键会被它盖掉（实测：改 App 级完全没反应）。
+            窗口级资源的查找优先级高于应用级，且这里的 ThemeDictionaries 仍然跟着明暗主题走。
+
+            设计意图：选中 = 比轨道亮一档的白底胶囊 + 深色文字 + 左侧 2px 强调色指示条。
+            一块 168×40 的蓝底在纸面布局里太响了 —— 侧栏是"位置"，不是"操作"。
+        -->
+        <ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#FFF0F2F6" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#FFE6E9F0" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#FFF7F8FA" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#FF4A5158" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FF14171C" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#FF14171C" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FF14171C" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FF14171C" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FF14171C" />
+                <SolidColorBrush x:Key="NavigationViewItemBorderBrushSelected" Color="#FFE5E8EE" />
+                <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#FFE8EAEF" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="Dark">
+                <SolidColorBrush x:Key="NavigationViewItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#FF171B22" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#FF1E242D" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#FF1A1F27" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#FF1F252E" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#FF242B35" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#FFB6BECD" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FFF2F4F7" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#FFF2F4F7" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FFF2F4F7" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FFF2F4F7" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FFF2F4F7" />
+                <SolidColorBrush x:Key="NavigationViewItemBorderBrushSelected" Color="#FF2A313C" />
+                <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#FF232833" />
+            </ResourceDictionary>
+        </ResourceDictionary.ThemeDictionaries>
+
+        <!--
+            导航内容区透出底层纸面。
             这个键是 FANavigationView 的内容宿主底色，设成全透明后，
             页面与窗口之间只隔着一层（可选的）壁纸。
         -->
         <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
 
         <!--
-            导航栏底板：**透明**，让侧栏直接落在画布上。
-            侧栏与内容之间不靠色块区分，靠左边距和「选中项的浅灰块」——
-            这是本语言处理"两个区域"的统一手法：不用分割线，用留白。
-            （键名沿用 WinUI 的官方资源名；FluentAvalonia 若没有这一版键，
-            这两条就是无害的空定义。）
+            侧栏轨道的底色由 Styles/Surfaces.axaml 按明暗主题提供
+            （NavigationViewDefaultPaneBackground / ExpandedPaneBackground）。
+            这里**不要**再写 Transparent 覆盖它们 —— 局部资源优先级高于主题字典。
         -->
-        <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
-        <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+      </ResourceDictionary>
     </Window.Resources>
 
     <Window.Styles>
@@ -164,18 +207,62 @@
             三块巨大的径向光斑在深色界面里是氛围，在白底上只会把整窗染成脏灰。
             现在背景就是画布白（或用户自己挑的壁纸），层次由内容自己承担。
         -->
-        <Grid x:Name="AppRoot" RowDefinitions="Auto,*" RenderTransformOrigin="50%,50%">
-            <!--
-                标题栏这一行分两段：左端是侧栏抽屉按钮，右边才是自定义标题栏本体。
+        <Grid x:Name="AppRoot" RenderTransformOrigin="50%,50%">
 
-                为什么按钮不放进导航视图的 PaneHeader：FluentAvalonia 的模板在
-                `:listsizecompact`（紧凑导航）下把 `PaneHeaderContentBorder` 直接隐藏，
-                放进去就变成「一收起侧栏，展开按钮也跟着消失」，人再也点不回来。
-                放在标题栏行里，按钮的位置和尺寸完全不受导航模式影响。
+            <!--
+                ==================== 纸面（AppShell） ====================
+
+                整窗是一块浅灰画布（窗口底色），内容区是这张悬浮的白纸：
+                左右下各内缩 8px，18px 圆角，1px 外沿 + 一层很淡的投影。
+
+                这一层是「布局重做」的支点：纸面一换，所有页面的构图都跟着变了
+                —— 页面不再贴着窗口边缘，而是落在一片有边界的纸上。
+
+                两层 Border 是刻意的：
+                  外层只负责投影（ClipToBounds=False，否则投影会被自己裁掉）；
+                  内层只负责圆角裁剪（ClipToBounds=True），把壁纸/内容裁进圆角里。
             -->
-            <Grid Grid.Row="0"
-                  Background="{DynamicResource AppHeaderBarBrush}"
-                  ColumnDefinitions="Auto,*">
+            <!--
+                注意：这里**不要**加 BoxShadow。
+                纸面是整窗大小的图层，投影要在每一帧重新离屏模糊；
+                侧栏收放时内容宽度每帧都在变，软件渲染下直接掉到个位数帧率
+                （用户反馈「收起 / 展开很卡」就是这个）。层次改用
+                1px 外沿 + 8px 灰缝表达，两者都不需要离屏通道。
+            -->
+            <Border x:Name="AppShell"
+                    Margin="{StaticResource ShellInset}"
+                    Background="Transparent">
+                <Border x:Name="AppShellClip"
+                        BorderBrush="{DynamicResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        ClipToBounds="True"
+                        CornerRadius="{StaticResource ShellRadius}">
+                    <Grid RowDefinitions="Auto,*">
+
+                        <!--
+                            纸面底色：有壁纸时换成 85% 的纱，让壁纸透出来一点；
+                            没有壁纸时是纯白。两者互斥，不会同时出现。
+                        -->
+                        <Border Grid.RowSpan="2"
+                                Background="{DynamicResource SurfaceSheetBrush}"
+                                IsHitTestVisible="False"
+                                IsVisible="{Binding !HasBackgroundImage}" />
+                        <Border Grid.RowSpan="2"
+                                Background="{DynamicResource SurfaceSheetVeilBrush}"
+                                IsHitTestVisible="False"
+                                IsVisible="{Binding HasBackgroundImage}" />
+
+                        <!--
+                            标题栏这一行分两段：左端是侧栏抽屉按钮，右边才是自定义标题栏本体。
+
+                            为什么按钮不放进导航视图的 PaneHeader：FluentAvalonia 的模板在
+                            `:listsizecompact`（紧凑导航）下把 `PaneHeaderContentBorder` 直接隐藏，
+                            放进去就变成「一收起侧栏，展开按钮也跟着消失」，人再也点不回来。
+                            放在标题栏行里，按钮的位置和尺寸完全不受导航模式影响。
+                        -->
+                        <Grid Grid.Row="0"
+                              Background="{DynamicResource SurfaceRailBrush}"
+                              ColumnDefinitions="Auto,*">
 
                 <Button x:Name="NavDrawerButton"
                         Grid.Column="0"
@@ -195,13 +282,14 @@
                 </Button>
 
                 <!--
-                    标题栏：与画布同色、无分隔线，和内容连成一整块白。
-                    它只承担两件事 —— 拖窗 / 系统按钮。标题本身压到次级灰。
+                    标题栏：与侧栏同色的一条横带（不再和内容同色）——
+                    纸面布局里，横带 + 侧栏构成"应用外壳"，内容才是纸。
+                    标题本身压到次级灰，右侧系统按钮保持原生。
                 -->
                 <ctrl:TitleBar x:Name="AppTitleBar"
                                Grid.Column="1"
                                Height="44"
-                               Title="VibrantbitLauncher"
+                               Title="Vibrantbit Launcher"
                                Icon="/Assets/icon.ico" />
             </Grid>
 
@@ -214,7 +302,7 @@
                 而模式一换宽度就是瞬间跳过去的（控件自己不做过渡）。
                 驱动逻辑在 MainWindow.axaml.cs 的 ToggleNavigationAsync。
 
-                ⚠️ 别改成 Top + IsPaneVisible=False —— 上一版这么做时顶部自适应测量
+                注意：别改成 Top + IsPaneVisible=False —— 上一版这么做时顶部自适应测量
                 反复重排、整个窗口卡死（1.0.24.0 实测）。
             -->
             <ui:FANavigationView x:Name="RootNavigation"
@@ -264,10 +352,14 @@
                 </ui:FANavigationView.FooterMenuItems>
             </ui:FANavigationView>
 
+                    </Grid>
+                </Border>
+            </Border>
+
             <!--
                 轻提示宿主：右下角，位于导航内容之上。
 
-                ⚠️ 必须是 StackPanel 而不是 Panel：Panel 会把所有子元素叠在**同一个位置**，
+                注意：必须是 StackPanel 而不是 Panel：Panel 会把所有子元素叠在**同一个位置**，
                 两条通知同时存在时文字直接重影（1.0.10.6 用户实测截图）。
                 StackPanel 才会真正纵向堆叠。
             -->
@@ -342,8 +434,7 @@
                     Background="{DynamicResource AppDropPanelBrush}"
                     BorderBrush="{DynamicResource AppAccentBrush}"
                     BorderThickness="2"
-                    CornerRadius="{DynamicResource RadiusL}"
-                    BoxShadow="0 24 60 0 #40000000">
+                    CornerRadius="{DynamicResource RadiusL}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                     <ui:FASymbolIcon HorizontalAlignment="Center"
                                      FontSize="{StaticResource IconSizeHero}"
