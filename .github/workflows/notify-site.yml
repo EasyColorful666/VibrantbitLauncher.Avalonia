@@ -1,0 +1,55 @@
+# =============================================================================
+# CHANGELOG.md 更新 → 通知网站仓库重新构建
+#
+# GitHub Actions 原生不支持「监听另一个仓库的 push」（workflow_run 也只在同仓库内
+# 有效），所以只能由源头主动向目标仓库发 repository_dispatch 事件。
+#
+# 目标：EasyColorful666/vibrantbitlauncher-website
+#       它的 .github/workflows/deploy.yml 里有
+#       `on: repository_dispatch: types: [changelog-updated]`，收到就同步
+#       CHANGELOG.md 并重新部署。
+#
+# 需要的 secret：SITE_DISPATCH_TOKEN
+#   必须是**能写目标仓库**的 PAT。本仓库自动提供的 GITHUB_TOKEN 只能操作本仓库，
+#   发不了的。推荐 fine-grained PAT：
+#     - 只勾选仓库 vibrantbitlauncher-website
+#     - 权限 Contents: Read and write（发 dispatch 属于 contents 写）
+#   classic PAT 勾 repo 也可以，但权限会覆盖所有仓库。
+#
+# 这一步是可选的加速通道：就算这里失败，网站仓库的定时任务（每 6 小时）
+# 也会自己在兜底，最迟 6 小时内站点会跟上。
+# =============================================================================
+name: Notify website
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'CHANGELOG.md'
+
+# 只用来发一个 HTTP 请求，不需要本仓库任何写权限
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch changelog-updated
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to website repo
+        env:
+          TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::没有配置 SITE_DISPATCH_TOKEN。到本仓库 Settings → Secrets and variables → Actions 添加，值为能写 vibrantbitlauncher-website 的 PAT。"
+            exit 1
+          fi
+
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/EasyColorful666/vibrantbitlauncher-website/dispatches \
+            -d '{"event_type":"changelog-updated"}'
+
+          echo "已通知 vibrantbitlauncher-website，事件 changelog-updated"

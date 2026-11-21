@@ -152,6 +152,30 @@
         <Style Selector="Button.tile /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="CornerRadius" Value="{DynamicResource RadiusM}" />
         </Style>
+
+        <!--
+            身份卡头像环：有账户时是强调色的「在用」标记；
+            没账户时退成一条灰线 —— 亮着蓝圈却没人登录，等于撒谎。
+            用 Ellipse 描边而不是圆角 Border：圆是这里唯一的形状，
+            没必要为它多开一个 34px 的圆角档位。
+        -->
+        <Style Selector="Ellipse.avatarRing">
+            <Setter Property="Stroke" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+        </Style>
+
+        <Style Selector="Ellipse.avatarRing.inactive">
+            <Setter Property="Stroke" Value="{DynamicResource HairlineBrush}" />
+        </Style>
+
+        <!--  「当前身份」前面那颗小圆点，逻辑同上：没账户时不成"在线"信号  -->
+        <Style Selector="Ellipse.presenceDot">
+            <Setter Property="Fill" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+
+        <Style Selector="Ellipse.presenceDot.inactive">
+            <Setter Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+        </Style>
     </UserControl.Styles>
 
     <Grid Classes="page" RowDefinitions="Auto,*">
@@ -314,6 +338,86 @@
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
                 <StackPanel x:Name="rightStack" MaxWidth="820">
+
+                <!--  ==================== 当前身份  ====================
+                      启动这件事只认一个人 —— 右栏顶上先回答「我现在是谁」，
+                      再往下才是「这台机器上装了什么」。
+                      头像是账户页按 UUID 存的那张，没有就退回内置史蒂夫。
+
+                      限宽 360：空状态时右栏会摊到整页宽，不限宽的话这张卡
+                      会拉成一条 800 宽、内容全挤在左边的大白板。
+                -->
+                <Border
+                    x:Name="identityCard"
+                    Margin="0,0,0,16"
+                    Padding="18,16"
+                    MaxWidth="360"
+                    Classes="group">
+                    <Grid ColumnDefinitions="Auto,*">
+
+                        <Grid
+                            Grid.Column="0"
+                            Width="68"
+                            Height="68"
+                            VerticalAlignment="Center">
+                            <Ellipse
+                                Width="64"
+                                Height="64"
+                                Classes="avatarRing"
+                                Classes.inactive="{Binding !HasAccount}" />
+                            <Image
+                                Width="62"
+                                Height="62"
+                                RenderOptions.BitmapInterpolationMode="HighQuality"
+                                Source="{Binding AccountAvatarPath, Converter={StaticResource SkinPathToImage}}">
+                                <Image.Clip>
+                                    <EllipseGeometry Center="31,31" RadiusX="31" RadiusY="31" />
+                                </Image.Clip>
+                            </Image>
+                        </Grid>
+
+                        <StackPanel
+                            Grid.Column="1"
+                            Margin="14,0,0,0"
+                            VerticalAlignment="Center"
+                            Spacing="3">
+
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse
+                                    Width="6"
+                                    Height="6"
+                                    VerticalAlignment="Center"
+                                    Classes="presenceDot"
+                                    Classes.inactive="{Binding !HasAccount}" />
+                                <TextBlock
+                                    Classes="eyebrow"
+                                    LetterSpacing="0.6"
+                                    Text="当前身份" />
+                            </StackPanel>
+
+                            <TextBlock Classes="title" Text="{Binding AccountDisplayName}" />
+
+                            <!--
+                                类型 chip + 一句说明。中文刚好挤在一行，
+                                英文（Offline account / Used when launching the game）
+                                在这个宽度里放不下，所以用 WrapPanel 让说明自己掉到下一行。
+                            -->
+                            <WrapPanel Margin="0,3,0,0" Orientation="Horizontal">
+                                <Border
+                                    Margin="0,0,6,0"
+                                    Classes="chip"
+                                    IsVisible="{Binding HasAccount}">
+                                    <TextBlock Classes="caption" Text="{Binding AccountTypeText}" />
+                                </Border>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Classes="caption"
+                                    Text="{Binding AccountHintText}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <Border
                     x:Name="launchStage"
                     Margin="0,0,0,16"
@@ -323,19 +427,18 @@
                     <StackPanel Spacing="0">
 
                         <!--
-                            右栏是固定窄栏，标题和启动按钮不并排：
-                            并排时标题只剩两百来像素，长实例名当场截断。
-                            竖排之后标题独占整行，启动按钮撑满整栏，主操作反而更醒目。
+                            右栏是固定窄栏，标题独占整行：
+                            和按钮并排时只剩两百来像素，长实例名当场截断。
+                            问候语贴右边，字号比标题小一档，长名字自己截断。
                         -->
-                        <Grid ColumnDefinitions="*,Auto">
+                        <Grid ColumnDefinitions="Auto,*">
                             <TextBlock
                                 Grid.Column="0"
-                                VerticalAlignment="Center"
                                 Classes="eyebrow"
                                 Text="当前实例" />
                             <TextBlock
                                 Grid.Column="1"
-                                Margin="10,0,0,0"
+                                HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
                                 Classes="caption"
                                 IsVisible="{Binding ShowGreeting}"

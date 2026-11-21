@@ -79,7 +79,12 @@ internal static class UiSettings
         d["主页"] = "Home";
         d["控制「启动」页显示哪些模块。关掉的模块只是不在这里出现，功能本身在别的页面仍然可达。（游戏卡片的开关在启动页的快捷设置里，账户相关的在「账户」页。）"] =
             "Choose which panels show up on the Launch page. Turning one off only hides it here — the feature stays reachable elsewhere. (The game card toggle is in the Launch page's quick settings; account options live on the Accounts page.)";
+        d["显示当前实例卡片"] = "Show the current instance card";
+        d["启动页右侧那块写着实例名、版本和占用空间的区域"] =
+            "The panel on the right of the Launch page showing the instance name, version and disk usage";
         d["显示问候语"] = "Show the greeting";
+        d["当前实例卡片右上角那句「晚上好，某某」"] =
+            "The \"Good evening, …\" line in the top-right corner of the current instance card";
         d["显示最近游玩"] = "Show recently played";
         d["显示实例概览"] = "Show instances";
         d["显示快捷入口"] = "Show shortcuts";

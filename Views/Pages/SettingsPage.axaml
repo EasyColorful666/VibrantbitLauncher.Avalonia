@@ -169,11 +169,11 @@
                                 <TextBlock Classes="caption" Margin="0,0,0,16" TextWrapping="Wrap"
                                            Text="控制「启动」页显示哪些模块。关掉的模块只是不在这里出现，功能本身在别的页面仍然可达。" />
 
-                                <ctrl:SettingRow Header="显示当前实例卡片" Description="启动页右侧那块写着实例名、带启动按钮的区域">
+                                <ctrl:SettingRow Header="显示当前实例卡片" Description="启动页右侧那块写着实例名、版本和占用空间的区域">
                                     <ToggleSwitch IsChecked="{Binding ShowHomeLaunchCard, Mode=TwoWay}" />
                                 </ctrl:SettingRow>
 
-                                <ctrl:SettingRow Header="显示问候语" Description="顶部一句「晚上好，某某」，带上当前账户">
+                                <ctrl:SettingRow Header="显示问候语" Description="当前实例卡片右上角那句「晚上好，某某」">
                                     <ToggleSwitch IsChecked="{Binding ShowHomeGreeting, Mode=TwoWay}" />
                                 </ctrl:SettingRow>
 

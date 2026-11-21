@@ -97,6 +97,50 @@ namespace VibrantbitLauncher.ViewModels.Pages
         // 这些开关都在「设置 → 通用 → 主页」里，页面本身只负责按开关显示或隐藏。
         // 每次导航进来都要重新读一遍配置：用户可能刚在设置里关掉某一项。
 
+        // ===== 身份卡（右栏顶部） =====
+        //
+        // 启动页只需要「我现在是谁」这一个事实：点启动用的就是这个人。
+        // 数据来源与设置页的账户卡片完全一致（MainModel.Account），不另外缓存，
+        // 每次进场重算一遍 —— 用户可能刚在账户页换了人。
+
+        private bool hasAccount;
+        private string accountDisplayName = "未登录";
+        private string accountTypeText = string.Empty;
+        private string accountHintText = "在「账户」页登录后即可启动";
+        private string accountAvatarPath = string.Empty;
+
+        public bool HasAccount
+        {
+            get => hasAccount;
+            private set => SetProperty(ref hasAccount, value);
+        }
+
+        public string AccountDisplayName
+        {
+            get => accountDisplayName;
+            private set => SetProperty(ref accountDisplayName, value);
+        }
+
+        /// <summary>账户类型（离线账户 / 微软账户 / 第三方登录）。未登录时为空，卡片据此隐藏这颗 chip。</summary>
+        public string AccountTypeText
+        {
+            get => accountTypeText;
+            private set => SetProperty(ref accountTypeText, value);
+        }
+
+        /// <summary>身份卡里那句说明：有账户时讲「启动会用它」，没账户时讲「去哪登录」。</summary>
+        public string AccountHintText
+        {
+            get => accountHintText;
+            private set => SetProperty(ref accountHintText, value);
+        }
+
+        public string AccountAvatarPath
+        {
+            get => accountAvatarPath;
+            private set => SetProperty(ref accountAvatarPath, value);
+        }
+
         public bool ShowGreeting => SettingsService.Current.ShowHomeGreeting;
         public bool ShowRecent => SettingsService.Current.ShowHomeRecent;
         public bool ShowInstanceOverview => SettingsService.Current.ShowHomeInstanceOverview;
@@ -155,6 +199,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
         {
             ShowLaunchCard = SettingsService.Current.ShowHomeLaunchCard;
 
+            RefreshAccountCard();
+
             OnPropertyChanged(nameof(ShowGreeting));
             OnPropertyChanged(nameof(ShowRecent));
             OnPropertyChanged(nameof(ShowInstanceOverview));
@@ -193,6 +239,33 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 var text = bytes <= 0 ? "—" : FormatSize(bytes);
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => InstanceSizeText = text);
             });
+        }
+
+        /// <summary>把当前账户摊平成身份卡需要的四段文字 + 一张头像。</summary>
+        private void RefreshAccountCard()
+        {
+            var account = MainWindowViewModel.MainModel.Account;
+            HasAccount = account is not null;
+
+            if (account is null)
+            {
+                AccountDisplayName = "未登录";
+                AccountTypeText = string.Empty;
+                AccountHintText = "在「账户」页登录后即可启动";
+                AccountAvatarPath = AccountPageViewModel.DefaultAvatarPath();
+                return;
+            }
+
+            AccountDisplayName = string.IsNullOrWhiteSpace(account.Name) ? "未知账户" : account.Name;
+            AccountTypeText = account switch
+            {
+                MicrosoftAccount => "微软账户",
+                YggdrasilAccount => "外置账户",
+                OfflineAccount => "离线账户",
+                _ => "账户"
+            };
+            AccountHintText = "启动游戏时使用这个身份";
+            AccountAvatarPath = AccountPageViewModel.ResolveAvatarPath(account.Uuid.ToString());
         }
 
         private static string BuildGreeting()

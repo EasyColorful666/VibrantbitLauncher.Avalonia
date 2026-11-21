@@ -171,13 +171,15 @@
 
     <!--  ==================== 外壳  ====================
 
-        纸面从窗口四边各内缩 8px，露出灰画布。这个数不能大：
-        再大就成了"贴在桌面上的卡片"，而不是"一个应用窗口"。
+        纸面直接贴窗口四边：内容顶到边，窗口看起来就是「一块满的界面」，
+        而不是浮在白色底上、四周留一圈边的一张卡片。
+        圆角交给系统窗口自己（Win11 / macOS 的窗口本来就有圆角），
+        这里再写一个圆弧反而会在四角露出底下的窗口白。
     -->
 
-    <Thickness x:Key="ShellInset">8,0,8,8</Thickness>
-    <x:Double x:Key="ShellRadiusValue">20</x:Double>
-    <CornerRadius x:Key="ShellRadius">20</CornerRadius>
+    <Thickness x:Key="ShellInset">0</Thickness>
+    <x:Double x:Key="ShellRadiusValue">0</x:Double>
+    <CornerRadius x:Key="ShellRadius">0</CornerRadius>
 
     <!--  ==================== 动效  ====================
 

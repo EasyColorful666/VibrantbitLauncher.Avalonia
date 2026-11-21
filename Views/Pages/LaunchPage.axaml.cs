@@ -111,6 +111,13 @@ namespace VibrantbitLauncher.Views.Pages
             versionListCard.IsVisible = hasInstances;
             emptyGuide.IsVisible = !hasInstances;
 
+            // 身份卡跟着右栏走：有实例时右栏固定 340，卡片铺满整栏；
+            // 空状态右栏摊到整页宽，卡片限宽 360 并左对齐，否则会拉成
+            // 一条 800 宽、内容全挤在左边的大白板。
+            identityCard.HorizontalAlignment = hasInstances
+                ? Avalonia.Layout.HorizontalAlignment.Stretch
+                : Avalonia.Layout.HorizontalAlignment.Left;
+
             // 右栏在两个状态下都用 Stretch + MaxWidth（XAML 里写死 820）：
             // 窗口窄时铺满，最大化时停在 820 并**左对齐**。
             // 这里不能换成 HorizontalAlignment=Left —— 那样 StackPanel 会塌到内容宽度，

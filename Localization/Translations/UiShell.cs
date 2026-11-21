@@ -27,6 +27,7 @@ internal static class UiShell
         d["从右侧选一种登录方式，添加后即可启动游戏"] = "Pick a sign-in method on the right — once added, you can launch the game";
         d["当前身份"] = "Current identity";
         d["启动游戏时使用这个身份"] = "Used when launching the game";
+        d["在「账户」页登录后即可启动"] = "Sign in on the Accounts page to launch";
         d["更换皮肤"] = "Change skin";
         d["尚未选择启动身份"] = "No identity selected yet";
         d["在下方账户里点「切换」，右侧还可以再添加一个"] = "Hit \u201cSwitch\u201d on an account below, or add another one on the right";
