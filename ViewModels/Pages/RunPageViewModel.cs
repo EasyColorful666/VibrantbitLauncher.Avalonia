@@ -97,6 +97,89 @@ namespace VibrantbitLauncher.ViewModels.Pages
         // 这些开关都在「设置 → 通用 → 主页」里，页面本身只负责按开关显示或隐藏。
         // 每次导航进来都要重新读一遍配置：用户可能刚在设置里关掉某一项。
 
+        // ===== 启动前的 Java 自动安装 =====
+        //
+        // 玩家点「启动游戏」时如果机器上没有能用的 Java，不再只丢一句
+        // 「未找到匹配的 Java 版本」，而是当场下一个（Adoptium Temurin），
+        // 进度显示在启动页顶部那条通知条上；下不动 / 装不上才把「手动下载」推给玩家。
+        //
+        // 状态放在 ViewModel 而不是页面里：下载要跑几分钟，玩家可以切去别的页面再回来，
+        // 回来时进度条还在，不会「一离开就消失」。
+
+        private CancellationTokenSource? javaSetupCts;
+        private bool javaSetupVisible;
+        private string javaSetupTitle = string.Empty;
+        private string javaSetupMessage = string.Empty;
+        private double javaSetupProgress;
+        private bool javaSetupIndeterminate;
+        private bool javaSetupFailed;
+
+        public bool JavaSetupVisible
+        {
+            get => javaSetupVisible;
+            private set
+            {
+                if (SetProperty(ref javaSetupVisible, value))
+                    NotifyJavaSetupShape();
+            }
+        }
+
+        public string JavaSetupTitle
+        {
+            get => javaSetupTitle;
+            private set => SetProperty(ref javaSetupTitle, value);
+        }
+
+        public string JavaSetupMessage
+        {
+            get => javaSetupMessage;
+            private set => SetProperty(ref javaSetupMessage, value);
+        }
+
+        public double JavaSetupProgress
+        {
+            get => javaSetupProgress;
+            private set => SetProperty(ref javaSetupProgress, value);
+        }
+
+        /// <summary>还没拿到体积信息时进度条走「不确定」态，别让用户对着一条 0% 的绿条干等。</summary>
+        public bool JavaSetupIndeterminate
+        {
+            get => javaSetupIndeterminate;
+            private set
+            {
+                if (SetProperty(ref javaSetupIndeterminate, value))
+                    NotifyJavaSetupShape();
+            }
+        }
+
+        /// <summary>失败后通知条不自动消失：上面挂着「手动下载」这个出口。</summary>
+        public bool JavaSetupFailed
+        {
+            get => javaSetupFailed;
+            private set
+            {
+                if (SetProperty(ref javaSetupFailed, value))
+                    NotifyJavaSetupShape();
+            }
+        }
+
+        /// <summary>进度条只在「进行中」出现；失败态留着一条空进度条像是卡住了。</summary>
+        public bool JavaSetupRunning => javaSetupVisible && !javaSetupFailed;
+
+        /// <summary>百分比同理：失败时显示一个 0% 只会让人以为还在跑。</summary>
+        public bool JavaSetupPercentVisible => javaSetupVisible && !javaSetupFailed && !javaSetupIndeterminate;
+
+        private void NotifyJavaSetupShape()
+        {
+            OnPropertyChanged(nameof(JavaSetupRunning));
+            OnPropertyChanged(nameof(JavaSetupPercentVisible));
+        }
+
+        public RelayCommand CancelJavaSetupCommand { get; }
+        public RelayCommand OpenJavaDownloadCommand { get; }
+        public RelayCommand DismissJavaSetupCommand { get; }
+
         // ===== 身份卡（右栏顶部） =====
         //
         // 启动页只需要「我现在是谁」这一个事实：点启动用的就是这个人。
@@ -372,6 +455,27 @@ namespace VibrantbitLauncher.ViewModels.Pages
                 AppNavigation.Navigate(typeof(DownloadHubPage)));
             OpenModpackDownloadCommand = new RelayCommand(() =>
                 AppNavigation.Navigate(typeof(DownloadHubPage)));
+
+            CancelJavaSetupCommand = new RelayCommand(() =>
+            {
+                try
+                {
+                    javaSetupCts?.Cancel();
+                }
+                catch
+                {
+                    // 已经结束了
+                }
+            });
+
+            // 自动装不上的出口：跳到 Java 页，让玩家挑版本、挑目录自己装。
+            OpenJavaDownloadCommand = new RelayCommand(() =>
+            {
+                HideJavaSetup();
+                AppNavigation.Navigate(typeof(JavaDownloadPage));
+            });
+
+            DismissJavaSetupCommand = new RelayCommand(HideJavaSetup);
         }
 
         private static List<string> GetLocalVersionIds()
@@ -415,37 +519,243 @@ namespace VibrantbitLauncher.ViewModels.Pages
             return result;
         }
 
+        /// <summary>
+        /// 重新扫一遍机器上的 Java，重建「自动匹配」与「下拉框」两份列表。
+        ///
+        /// <para>
+        /// 从 <see cref="LoadAsync"/> 里抽出来的：自动装完一个 JDK 之后也要重扫一遍，
+        /// 否则界面上还是「未检测到 Java」，玩家会以为装失败了。
+        /// 纯后台逻辑，不碰 UI —— 通知由调用方在自己的线程上下文里发。
+        /// </para>
+        /// </summary>
+        private async Task RebuildJavaListsAsync()
+        {
+            try
+            {
+                // 两份列表：合并版给自动匹配，全量版给「快捷设置 → Java」下拉框
+                var all = await JavaHelper.FindAllJavasAsync();
+                var customJava = MainWindowViewModel.MainModel.JavaPath;
+
+                // 设置里的自定义 Java 也要在列表里（同样要过静态体检，
+                // 避免把 PATH 里的 Oracle 转发器当成可用 Java 存进列表）。
+                // 手工选过的路径多半不在扫描范围内（比如 D:\Dev\jdk），漏掉的话
+                // 下拉框会因为「当前值对不上任何一项」显示成空白 —— 看起来像没设置。
+                if (JavaHelper.IsUsableJava(customJava)
+                    && !all.Any(j => string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // 探一下版本号：下拉框第一行要显示 "21.0.3" 这种，否则只有路径、看不出是哪版
+                    var probed = await JavaHelper.ProbeJavaAsync(customJava);
+                    all.Add(probed ?? new JavaEntry { JavaPath = customJava, Is64bit = true });
+                }
+
+                allJavas = all;
+
+                // 自动匹配仍旧一份「每个主版本 + 位数留最新」的紧凑列表
+                asyncJavas = all
+                    .GroupBy(j => $"{JavaHelper.MajorOf(j.JavaVersion)}|{j.Is64bit}")
+                    .Select(g => g.First())
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "扫描 Java 失败");
+            }
+        }
+
+        /// <summary>
+        /// 把 Java 列表同步到界面：快捷设置的下拉框挂在 <see cref="DetectedJavas"/> 上，
+        /// 扫描是异步的，不通知的话它永远显示「未检测到」。必须在 UI 线程调用。
+        /// </summary>
+        private void PublishJavaLists()
+        {
+            if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(PublishJavaLists);
+                return;
+            }
+
+            javaVersions.Clear();
+            foreach (var j in asyncJavas)
+                javaVersions.Add(j.JavaVersion);
+
+            OnPropertyChanged(nameof(DetectedJavas));
+        }
+
+        // ===== Java 自动安装：通知条的三种形态（进行中 / 完成 / 失败） =====
+
+        private void ShowJavaSetup(string title, string message, bool indeterminate)
+        {
+            JavaSetupTitle = title;
+            JavaSetupMessage = message;
+            JavaSetupIndeterminate = indeterminate;
+            JavaSetupProgress = 0;
+            JavaSetupFailed = false;
+            JavaSetupVisible = true;
+        }
+
+        private void HideJavaSetup()
+        {
+            JavaSetupVisible = false;
+            JavaSetupFailed = false;
+        }
+
+        /// <summary>失败后通知条不自动消失：上面挂着「手动下载」这个出口。</summary>
+        private void FailJavaSetup(string message)
+        {
+            JavaSetupIndeterminate = false;
+            JavaSetupProgress = 0;
+            JavaSetupTitle = "自动安装 Java 失败";
+            JavaSetupMessage = message;
+            JavaSetupFailed = true;
+            JavaSetupVisible = true;
+        }
+
+        /// <summary>下载器从后台线程逐块回调，必须 Post 回 UI 线程再改绑定属性。</summary>
+        private void ReportJavaSetup(int percent, string message)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                JavaSetupIndeterminate = false;
+                JavaSetupProgress = Math.Clamp(percent, 0, 100);
+                JavaSetupMessage = message;
+            });
+        }
+
+        /// <summary>
+        /// 没有匹配的 Java 时自动装一个。成功返回可直接用于启动的 <see cref="JavaEntry"/>；
+        /// 失败 / 取消返回 null —— 此时通知条上已经摆好了「手动下载」。
+        /// </summary>
+        private async Task<JavaEntry?> EnsureJavaForLaunchAsync(int major, Action<string> diag)
+        {
+            if (major <= 0)
+                major = 8;
+
+            javaSetupCts?.Dispose();
+            javaSetupCts = new CancellationTokenSource();
+            var ct = javaSetupCts.Token;
+
+            ShowJavaSetup($"正在准备 Java {major}", "正在查询可用的 Java 版本…", indeterminate: true);
+
+            try
+            {
+                var releases = await JavaRuntimeService.GetReleasesAsync(major, ct);
+                var item = releases.FirstOrDefault()
+                           ?? throw new InvalidOperationException(
+                               $"没有找到适用于当前平台（{JavaRuntimeService.PlatformText}）的 Java {major} 安装包");
+
+                diag($"Auto install Java {item.Version}");
+
+                var targetDir = Path.Combine(
+                    JavaRuntimeService.ResolveRuntimeRoot(),
+                    JavaRuntimeService.BuildInstallFolderName(item));
+
+                JavaSetupTitle = $"正在安装 Java {item.Version}";
+                diag($"Java target dir: {targetDir}");
+
+                var javaPath = await JavaRuntimeService.InstallAsync(item, targetDir, ReportJavaSetup, ct);
+
+                diag($"Java installed: {javaPath}");
+
+                // 装完必须重扫：JavaHelper 才是「检测得到」的唯一口径。
+                // 直接拿安装返回值顶替列表，下拉框和自动匹配会还是空的。
+                await RebuildJavaListsAsync();
+                PublishJavaLists();
+
+                JavaSetupProgress = 100;
+                JavaSetupMessage = $"Java {item.Version} 已就绪";
+                HideJavaSetup();
+                _notification.Success($"Java {item.Version} 安装完成", "Java");
+
+                return asyncJavas.FirstOrDefault(j => string.Equals(j.JavaPath, javaPath, StringComparison.OrdinalIgnoreCase))
+                       ?? allJavas.FirstOrDefault(j => string.Equals(j.JavaPath, javaPath, StringComparison.OrdinalIgnoreCase))
+                       ?? new JavaEntry { JavaPath = javaPath, Is64bit = true };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                diag("Java auto install cancelled");
+                HideJavaSetup();
+                _notification.Show("已取消自动下载，可在「Java」页手动安装", "Java");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                diag($"Java auto install failed: {ex.GetType().Name}: {ex.Message}");
+                Serilog.Log.Error(ex, "自动安装 Java {Major} 失败", major);
+
+                FailJavaSetup(DescribeJavaSetupFailure(ex));
+                _notification.Error("自动安装 Java 失败，可以手动下载安装", "Java");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 把异常翻成一句玩家能听懂的话。
+        ///
+        /// <para>
+        /// 原始消息大多是英文（<c>Response status code does not indicate success: 404</c>），
+        /// 摆在通知条上等于「失败了，为什么你自己猜」。网络类给一句行动建议，其余仍用我们自己抛的中文。
+        /// </para>
+        /// </summary>
+        private static string DescribeJavaSetupFailure(Exception ex) => ex switch
+        {
+            HttpRequestException => "连不上 Java 下载源，检查一下网络后重试",
+            // HttpClient 超时抛的是 TaskCanceledException，但它不是「用户取消」（上面那条 when 已经挡掉）
+            TaskCanceledException => "连接 Java 下载源超时，检查一下网络后重试",
+            UnauthorizedAccessException => "没有权限写入安装目录，可以手动装到别的目录",
+            _ => ShortenForNotice(ex.Message)
+        };
+
+        /// <summary>
+        /// 在已扫描到的 Java 里挑一个能跑这个实例的：同主版本优先（64 位优先），
+        /// 其次挑「比要求略新」里最低的那个。
+        ///
+        /// <para>
+        /// 不用 MinecraftLaunch 的 <c>GetAppropriateJava</c>：它挑不到时是抛异常，
+        /// 而这里必须区分「挑不到」（要触发自动下载）和「扫描本身失败」（不该下载）。
+        /// </para>
+        /// </summary>
+        private static JavaEntry? PickMatchedJava(IReadOnlyList<JavaEntry> javas, int requiredMajor)
+        {
+            var usable = javas.Where(j => JavaHelper.IsUsableJava(j.JavaPath)).ToList();
+
+            if (usable.Count == 0)
+                return null;
+
+            if (requiredMajor <= 0)
+                return usable[0];
+
+            var exact = usable
+                .Where(j => JavaHelper.MajorOf(j.JavaVersion) == requiredMajor)
+                .OrderByDescending(j => j.Is64bit)
+                .FirstOrDefault();
+
+            if (exact is not null)
+                return exact;
+
+            return usable
+                .Where(j => JavaHelper.MajorOf(j.JavaVersion) > requiredMajor)
+                .OrderBy(j => JavaHelper.MajorOf(j.JavaVersion))
+                .FirstOrDefault();
+        }
+
+        /// <summary>错误详情压成一行：通知条是通知条，不是日志窗口。</summary>
+        private static string ShortenForNotice(string message)
+        {
+            var firstLine = message
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()?.Trim();
+
+            if (string.IsNullOrEmpty(firstLine))
+                return "未知原因";
+
+            return firstLine.Length <= 120 ? firstLine : firstLine[..120] + "…";
+        }
+
         public async Task LoadAsync()
         {
             await Task.Run(async () =>
             {
-                try
-                {
-                    // 两份列表：合并版给自动匹配，全量版给「快捷设置 → Java」下拉框
-                    var all = await JavaHelper.FindAllJavasAsync();
-                    var customJava = MainWindowViewModel.MainModel.JavaPath;
-
-                    // 设置里的自定义 Java 也要在列表里（同样要过静态体检，
-                    // 避免把 PATH 里的 Oracle 转发器当成可用 Java 存进列表）。
-                    // 手工选过的路径多半不在扫描范围内（比如 D:\Dev\jdk），漏掉的话
-                    // 下拉框会因为「当前值对不上任何一项」显示成空白 —— 看起来像没设置。
-                    if (JavaHelper.IsUsableJava(customJava)
-                        && !all.Any(j => string.Equals(j.JavaPath, customJava, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        // 探一下版本号：下拉框第一行要显示 "21.0.3" 这种，否则只有路径、看不出是哪版
-                        var probed = await JavaHelper.ProbeJavaAsync(customJava);
-                        all.Add(probed ?? new JavaEntry { JavaPath = customJava, Is64bit = true });
-                    }
-
-                    allJavas = all;
-
-                    // 自动匹配仍旧一份「每个主版本 + 位数留最新」的紧凑列表
-                    asyncJavas = all
-                        .GroupBy(j => $"{JavaHelper.MajorOf(j.JavaVersion)}|{j.Is64bit}")
-                        .Select(g => g.First())
-                        .ToList();
-                }
-                catch { }
+                await RebuildJavaListsAsync().ConfigureAwait(false);
 
                 try
                 {
@@ -459,18 +769,7 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         }
                     });
 
-                    Avalonia.Threading.Dispatcher.UIThread.Invoke(() =>
-                    {
-                        javaVersions.Clear();
-                        foreach (var j in asyncJavas)
-                        {
-                            javaVersions.Add(j.JavaVersion);
-                        }
-
-                        // 启动页的「快捷设置 → Java」下拉框挂在这个属性上：
-                        // 扫描是异步的，不通知的话它永远显示「未检测到」
-                        OnPropertyChanged(nameof(DetectedJavas));
-                    });
+                    Avalonia.Threading.Dispatcher.UIThread.Invoke(PublishJavaLists);
                 }
                 catch (Exception ex)
                 {
@@ -633,65 +932,8 @@ namespace VibrantbitLauncher.ViewModels.Pages
                     return;
                 }
 
-                // 匹配 Java。
-                //
-                // 顺序：**玩家自己选的 > 自动匹配**。
-                // 以前不管设置里选了什么都先跑 GetAppropriateJava（它只在候选里按 MC 版本挑
-                // 「够新」的一个，完全无视用户选择），于是「快捷设置里换了 Java」看起来毫无效果，
-                // 甚至会把装了 MOD 的 1.20.1 实例丢给 JDK 27 去跑 —— 老 Forge / Mixin
-                // 在超高版本 JDK 上直接崩，用户看到的只是「异常退出（代码 1）」。
-                JavaEntry javaPath = null;
-                var configuredJava = MainWindowViewModel.MainModel.JavaPath;
-
-                if (JavaHelper.IsUsableJava(configuredJava))
-                {
-                    javaPath = allJavas.FirstOrDefault(j =>
-                                   string.Equals(j.JavaPath, configuredJava, StringComparison.OrdinalIgnoreCase))
-                               ?? new JavaEntry { JavaPath = configuredJava, Is64bit = true };
-                    Diag($"Using user-selected Java: {javaPath.JavaPath}");
-                }
-                else
-                {
-                    try
-                    {
-                        javaPath = selectedMinecraftEntry.GetAppropriateJava(asyncJavas);
-                        Diag($"Java matched: {javaPath?.JavaPath} (version {javaPath?.JavaVersion})");
-                    }
-                    catch (Exception ex)
-                    {
-                        Diag($"GetAppropriateJava threw: {ex.Message}");
-                        if (asyncJavas.Count > 0)
-                        {
-                            javaPath = asyncJavas.First();
-                            Diag($"Fallback to first Java: {javaPath?.JavaPath}");
-                        }
-                        else
-                        {
-                            Diag("No Java found");
-                            ShowError("未找到匹配的 Java 版本，请在设置中选择 Java");
-                            lock (launchingVersions) { launchingVersions.Remove(McVersion); }
-                            return;
-                        }
-                    }
-                }
-
-                // 启动前再体检一次选中的 Java：PATH 里的 Oracle 转发器（javapath / java8path）
-                // 会让 java.exe 弹出「could not find java.dll」的模态框，必须换成真正能用的那一份。
-                if (!JavaHelper.IsUsableJava(javaPath?.JavaPath))
-                {
-                    Diag($"Java not usable: {javaPath?.JavaPath}");
-                    var fallback = asyncJavas.FirstOrDefault(j => JavaHelper.IsUsableJava(j.JavaPath));
-                    if (fallback == null)
-                    {
-                        ShowError($"Java 不可用: {javaPath?.JavaPath}（该目录下没有 java.dll，请在设置里重新选择 Java）");
-                        lock (launchingVersions) { launchingVersions.Remove(McVersion); }
-                        return;
-                    }
-
-                    Diag($"Fallback to usable Java: {fallback.JavaPath}");
-                    javaPath = fallback;
-                }
-
+                // 先确认「能不能启动」，再决定「要不要下一个 200 MB 的 Java」：
+                // 没登录 / 令牌失效时抢先下载，玩家回来还得先登录，流量白花。
                 // 检查账户
                 if (MainWindowViewModel.MainModel.Account == null)
                 {
@@ -721,6 +963,73 @@ namespace VibrantbitLauncher.ViewModels.Pages
                         lock (launchingVersions) { launchingVersions.Remove(McVersion); }
                         return;
                     }
+                }
+
+                // 匹配 Java。
+                //
+                // 顺序：**玩家自己选的 > 自动匹配 > 自动下载**。
+                // 以前不管设置里选了什么都先跑 GetAppropriateJava（它只在候选里按 MC 版本挑
+                // 「够新」的一个，完全无视用户选择），于是「快捷设置里换了 Java」看起来毫无效果，
+                // 甚至会把装了 MOD 的 1.20.1 实例丢给 JDK 27 去跑 —— 老 Forge / Mixin
+                // 在超高版本 JDK 上直接崩，用户看到的只是「异常退出（代码 1）」。
+                //
+                // 自动匹配挑不到时过去是「随便拿一个凑」，结果是必然崩在启动阶段；
+                // 现在改成当场下载没装的那个主版本（进度显示在启动页顶部），
+                // 下不动才把出口交回玩家。
+                JavaEntry javaPath = null;
+                var configuredJava = MainWindowViewModel.MainModel.JavaPath;
+
+                if (JavaHelper.IsUsableJava(configuredJava))
+                {
+                    javaPath = allJavas.FirstOrDefault(j =>
+                                   string.Equals(j.JavaPath, configuredJava, StringComparison.OrdinalIgnoreCase))
+                               ?? new JavaEntry { JavaPath = configuredJava, Is64bit = true };
+                    Diag($"Using user-selected Java: {javaPath.JavaPath}");
+                }
+                else
+                {
+                    var requiredMajor = JavaRequirement.Resolve(mcFolder, McVersion);
+                    Diag($"Required Java major: {requiredMajor}");
+
+                    javaPath = PickMatchedJava(asyncJavas, requiredMajor);
+
+                    if (javaPath is not null)
+                    {
+                        Diag($"Java matched: {javaPath.JavaPath} (version {javaPath.JavaVersion}, " +
+                             $"major {JavaHelper.MajorOf(javaPath.JavaVersion)})");
+                    }
+                    else
+                    {
+                        Diag($"No Java satisfying major {requiredMajor}, auto installing…");
+
+                        javaPath = await EnsureJavaForLaunchAsync(requiredMajor, Diag);
+
+                        if (javaPath is null)
+                        {
+                            // 下载失败或被取消：通知条已经切到「手动下载」形态，这里只收摊
+                            lock (launchingVersions) { launchingVersions.Remove(McVersion); }
+                            return;
+                        }
+
+                        Diag($"Java installed and matched: {javaPath.JavaPath}");
+                    }
+                }
+
+                // 启动前再体检一次选中的 Java：PATH 里的 Oracle 转发器（javapath / java8path）
+                // 会让 java.exe 弹出「could not find java.dll」的模态框，必须换成真正能用的那一份。
+                if (!JavaHelper.IsUsableJava(javaPath?.JavaPath))
+                {
+                    Diag($"Java not usable: {javaPath?.JavaPath}");
+                    var fallback = asyncJavas.FirstOrDefault(j => JavaHelper.IsUsableJava(j.JavaPath));
+                    if (fallback == null)
+                    {
+                        ShowError($"Java 不可用: {javaPath?.JavaPath}（该目录下没有 java.dll，请在设置里重新选择 Java）");
+                        lock (launchingVersions) { launchingVersions.Remove(McVersion); }
+                        return;
+                    }
+
+                    Diag($"Fallback to usable Java: {fallback.JavaPath}");
+                    javaPath = fallback;
                 }
 
                 // 启动前完整性体检：client.jar / 资源索引 / 依赖库 / 资源对象。

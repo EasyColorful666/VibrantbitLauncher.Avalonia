@@ -216,6 +216,27 @@ internal static class UiMessages2
             "Extracted, but {0} wasn't found — the folder layout may differ: {1}";
         d["JDK 压缩包是空的"] = "The JDK archive is empty";
 
+        // ===== 启动前的 Java 自动安装（启动页通知条） =====
+        d["正在准备 Java {0}"] = "Preparing Java {0}";
+        d["正在查询可用的 Java 版本…"] = "Looking up available Java versions…";
+        d["正在安装 Java {0}"] = "Installing Java {0}";
+        d["Java {0} 已就绪"] = "Java {0} is ready";
+        d["自动安装 Java 失败"] = "Automatic Java install failed";
+        d["自动安装 Java 失败，可以手动下载安装"] =
+            "Couldn't install Java automatically — you can download it manually";
+        d["已取消自动下载，可在「Java」页手动安装"] =
+            "Automatic download cancelled. You can install it on the Java page";
+        d["没有找到适用于当前平台（{0}）的 Java {1} 安装包"] =
+            "No Java {1} package was found for this platform ({0})";
+        d["连不上 Java 下载源，检查一下网络后重试"] =
+            "Couldn't reach the Java download source — check your network and try again";
+        d["连接 Java 下载源超时，检查一下网络后重试"] =
+            "Timed out reaching the Java download source — check your network and try again";
+        d["没有权限写入安装目录，可以手动装到别的目录"] =
+            "No permission to write to the install folder — you can install to another folder manually";
+        d["未知原因"] = "Unknown reason";
+        d["手动下载"] = "Download manually";
+
         // ===== 局域网联机模组 =====
         d["进游戏 → Esc → 对局域网开放。新出现的「正版验证」按钮选「禁用 + 修复 UUID」"] =
             "In-game → Esc → Open to LAN. On the new “Online mode” button choose “Disable + fix UUID”";

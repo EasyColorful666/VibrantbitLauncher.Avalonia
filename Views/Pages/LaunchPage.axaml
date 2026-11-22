@@ -178,7 +178,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Classes="page" RowDefinitions="Auto,*">
+    <Grid Classes="page" RowDefinitions="Auto,Auto,*">
 
         <ctrl:PageHeader
             x:Name="pageHeader"
@@ -198,7 +198,7 @@
         -->
         <Grid
             x:Name="contentRoot"
-            Grid.Row="1"
+            Grid.Row="2"
             MaxWidth="1440"
             RowDefinitions="Auto,*,Auto"
             ColumnDefinitions="*,340"
@@ -736,5 +736,92 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+
+        <!--  ==================== Java 自动安装通知条  ====================
+              点「启动游戏」时机器上没有能跑的 Java，就在这一条里当场下载并装好。
+              放在页头与内容之间而不是浮在列表上：窄栏里浮层一定会盖住第一个实例，
+              而玩家这会儿正盯着「我要启动的是哪一个」。
+
+              三种形态：
+                进行中 —— 进度条 + 「取消」
+                失败   —— 换成「关闭 / 手动下载」，进度条与百分比一起收起
+                完成   —— 直接收起，启动流程接着走
+        -->
+        <Border
+            Grid.Row="1"
+            Margin="0,0,0,12"
+            Padding="16,13,16,15"
+            Classes="glass"
+            IsVisible="{Binding JavaSetupVisible}">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+
+                <ui:FASymbolIcon
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    FontSize="{StaticResource IconSizeLarge}"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    Symbol="Download" />
+
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Spacing="3">
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock
+                            Grid.Column="0"
+                            Classes="body"
+                            FontWeight="SemiBold"
+                            Text="{Binding JavaSetupTitle}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="10,0,0,0"
+                            VerticalAlignment="Center"
+                            Classes="caption"
+                            IsVisible="{Binding JavaSetupPercentVisible}"
+                            Text="{Binding JavaSetupProgress, StringFormat={}{0:0}%}" />
+                    </Grid>
+
+                    <TextBlock
+                        Classes="caption"
+                        Text="{Binding JavaSetupMessage}"
+                        TextTrimming="CharacterEllipsis" />
+
+                    <ProgressBar
+                        Margin="0,3,0,0"
+                        Height="4"
+                        Minimum="0"
+                        Maximum="100"
+                        IsIndeterminate="{Binding JavaSetupIndeterminate}"
+                        IsVisible="{Binding JavaSetupRunning}"
+                        Value="{Binding JavaSetupProgress}" />
+                </StackPanel>
+
+                <Button
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Classes="subtle"
+                    Command="{Binding CancelJavaSetupCommand}"
+                    Content="取消"
+                    IsVisible="{Binding !JavaSetupFailed}" />
+
+                <StackPanel
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding JavaSetupFailed}"
+                    Orientation="Horizontal"
+                    Spacing="6">
+                    <Button
+                        Classes="subtle"
+                        Command="{Binding DismissJavaSetupCommand}"
+                        Content="关闭" />
+                    <Button
+                        Classes="accent"
+                        Command="{Binding OpenJavaDownloadCommand}"
+                        Content="手动下载" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>
